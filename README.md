@@ -66,24 +66,19 @@ The best things come for free. You’re free to use your favourite Python IDE an
 
 Each POSC object contains member functions for all the OpenScad transformations. (BTW, these functions are simply wrapper functions over the transformation class constructors) This API style is more traditional of solid modelling APIs. However, the POSC implementation gives no preference between either and objects created with one API can be mixed and matched with objects created using the other API. All the [OpenPyScad](https://github.com/taxpon/openpyscad) equivalent classes have capitalized names while the [SolidPython](https://github.com/SolidCode/SolidPython) classes have lower case names (the classes are different but they can be compared for equality). i.e.
 
-<table>
-  <tr>
-    <td>>>> from pythonopenscad import Text, text
->>> Text() == text()
-True
->>> Text('a') == text()
-False</td>
-  </tr>
-</table>
+-----
+	>>> from pythonopenscad import Text, text
+	>>> Text() == text()
+	True
+	>>> Text('a') == text()
+	False
+-----
 
-
-[OpenPyScad](https://github.com/taxpon/openpyscad)’s modifier interface is not implemented. A different PythonOpenScad specific API accomplishes the same function. Modifiers are flags, the PythonOpenScad. There are 4 flags,
-
-DISABLE, SHOW_ONLY, DEBUG and TRANSPARENT. They can be added and removed with the add_modifier, remove_modifier and has_modifiers functions.
+[OpenPyScad](https://github.com/taxpon/openpyscad)’s modifier interface is not implemented but a different PythonOpenScad specific API accomplishes the same function. Modifiers are flags. In PythonOpenScad There are 4 flags, DISABLE, SHOW_ONLY, DEBUG and TRANSPARENT. They can be added and removed with the add_modifier, remove_modifier and has_modifiers functions.
 
 ## Why Yet Another OpenScad Script Generator?
 
-Using Python to produce solid models using OpenScad seems to be a popular pass time.
+Using Python to produce 3D solid models using OpenScad seems to be a popular pass time.
 
 Here are some:
 
