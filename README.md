@@ -7,7 +7,7 @@ PythonOpenScad (POSC)
 
 PythonOpenScad is yet another [OpenSCAD](https://www.openscad.org/) script/model generator with Python syntax.
 
-The Python code below, to generate a solid model of text saying ‘Hello world!’, uses the same style as [OpenPyScad](https://github.com/taxpon/openpyscad) API and in fact, apart from the import line, should execute as expected using [OpenPyScad](https://github.com/taxpon/openpyscad).
+The Python code below, that generates a 3D solid model of text saying ‘Hello world!’, uses the same style as [OpenPyScad](https://github.com/taxpon/openpyscad) API and in fact, apart from the import line, should execute as expected using [OpenPyScad](https://github.com/taxpon/openpyscad).
 
 -----
 	from pythonopenscad import Text 
