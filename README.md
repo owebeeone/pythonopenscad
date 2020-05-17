@@ -9,46 +9,38 @@ PythonOpenScad is yet another [OpenSCAD](https://www.openscad.org/) script/model
 
 The Python code below, to generate a solid model of text saying ‘Hello world!’, uses the same style as [OpenPyScad](https://github.com/taxpon/openpyscad) API and in fact, apart from the import line, should execute as expected using [OpenPyScad](https://github.com/taxpon/openpyscad).
 
-<table>
-  <tr>
-    <td>from pythonopenscad import Text
-
-print(
-    Text('Hello world!', size=15).linear_extrude(height=2)
-        .translate([-60, 0, 0]))</td>
-  </tr>
-</table>
+-----
+	from pythonopenscad import Text 
+	
+	print(|
+	  Text('Hello world!', size=15).linear_extrude(height=2)
+	      .translate([-60, 0, 0]))
+-----
 
 
 However, as an alternative, [SolidPython](https://github.com/SolidCode/SolidPython) style is also supported, like this.
 
-<table>
-  <tr>
-    <td>from pythonopenscad import text, linear_extrude, translate
+-----
+	from pythonopenscad import text, linear_extrude, translate
 
-print(
-    translate(v=[-60, 0, 0]) (
-        linear_extrude(height=2) (
-            text(text='Hello world!', size=15)
-        ),
-    )
-)</td>
-  </tr>
-</table>
-
+	print(
+	    translate(v=[-60, 0, 0]) (
+	        linear_extrude(height=2) (
+	            text(text='Hello world!', size=15)
+	        ),
+	    )
+	)
+-----
 
 The generated OpenScad code in both cases above looks like the SolidPython style code with some interesting differences, note the braces ({}) which encapsulates the list of objects that the transforms apply to.
 
-<table>
-  <tr>
-    <td>translate(v=[-60.0, 0.0, 0.0]) {
-  linear_extrude(height=2.0) {
-    text(text="Hello world!", size=15.0);
-  }
-}</td>
-  </tr>
-</table>
-
+-----
+	translate(v=[-60.0, 0.0, 0.0]) {
+	  linear_extrude(height=2.0) {
+	    text(text="Hello world!", size=15.0);
+	  }
+	}
+-----
 
 Note that OpenScad script above is all using floating point numbers. This is because PythonOpenScad converts all parameters to their corresponding expected type.
 
