@@ -1,13 +1,10 @@
-# README #
-
-
-PythonOpenScad (POSC)
+# PythonOpenScad (POSC) #
 
 # Introduction
 
 PythonOpenScad is yet another [OpenSCAD](https://www.openscad.org/) script/model generator with Python syntax.
 
-The Python code below, that generates a 3D solid model of text saying ‘Hello world!’, uses the same style as [OpenPyScad](https://github.com/taxpon/openpyscad) API and in fact, apart from the import line, should execute as expected using [OpenPyScad](https://github.com/taxpon/openpyscad).
+The Python code below generates a 3D solid model of text saying ‘Hello world!’. This demostrates the [OpenPyScad](https://github.com/taxpon/openpyscad) style API and in fact, apart from the import line and conversion to string in print, should execute as expected using [OpenPyScad](https://github.com/taxpon/openpyscad).
 
 -----
 	from pythonopenscad import Text 
@@ -42,7 +39,7 @@ The generated OpenScad code in both cases above looks like the SolidPython style
 	}
 -----
 
-Note that OpenScad script above is all using floating point numbers. This is because PythonOpenScad converts all parameters to their corresponding expected type.
+Note that the OpenScad script above is all using floating point numbers. This is because PythonOpenScad converts all parameters to their corresponding expected type.
 
 If you paste this code into OpenScad you get this:
 
@@ -78,7 +75,10 @@ Each POSC object contains member functions for all the OpenScad transformations.
 
 ## Why Yet Another OpenScad Script Generator?
 
-Using Python to produce 3D solid models using OpenScad seems to be a popular pass time.
+I mainly wanted a more functionality that was not being offered and it didn't seem OpenPyScad (my preferred style) was pulling changes very quickly (as luck would have it my small pull request was 
+published about the same time I got PythonOpenScad working to a sufficiently stable state. I really want type checking/conversion and a bit more pydoc.
+
+Apart from that, it seems that using Python to produce 3D solid models using OpenScad Is a prestigious line of work with a long and glorious tradition.
 
 Here are some:
 
@@ -98,7 +98,7 @@ Here are some:
 
 [https://github.com/defnull/pyscad](https://github.com/defnull/pyscad) (2014)
 
-It seems like lots of dead projects but a popular theme nonetheless.
+It also seems like lots of dead projects but a popular theme nonetheless.
 
 Given there are 2 active projects the big difference seems to be the API. [SolidPython](https://github.com/SolidCode/SolidPython) seems to mimic OpenScad like syntax (e,g, translate(v)cube()) while [OpenPyScad](https://github.com/taxpon/openpyscad) employs a more common syntax (e.g. cube().translate()).
 
