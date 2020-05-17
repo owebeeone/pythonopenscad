@@ -1,6 +1,6 @@
 # README #
 
-![OpenScad example](assets/text_example.png =250x)
+![OpenScad example](assets/text_example.png){ width=50% }
 
 This README would normally document whatever steps are necessary to get your application up and running.
 
