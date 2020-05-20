@@ -1095,7 +1095,7 @@ class Sphere(PoscBase):
 
     def check_valid(self):
         '''Checks that the construction of cylinder is valid.'''
-        if not all(x is None for x in [self.r, self.d]):
+        if all(x is None for x in [self.r, self.d]):
             raise RequiredParameterNotProvided(
                 'Both parameters r and d are None. A value for r or d must be provided.'
             )
