@@ -1,6 +1,6 @@
 '''PythonOpenScad is API layer over OpenScad scripts for generating OpenScad models.
 
-The design goal for PythonOpenScad is to remain a thin layer for OpenScad scripts 
+The design goal for PythonOpenScad is to remain a thin layer for OpenScad scripts
 and only provide functionality for producing such scripts. This may include binding
 to a CSG library that skips the need to invoke OpenScad altogether but this is not
 currently planned but does constrain design choices.
@@ -18,8 +18,8 @@ See:
     `OpenScad <http://www.openscad.org/documentation.html>`
     `OpenPyScad <http://github.com/taxpon/openpyscad>`
     `SolidPython <http://github.com/SolidCode/SolidPython>`
-    
-License: 
+
+License:
 
 Copyright (C) 2020  Gianni Mariani
 
@@ -245,7 +245,7 @@ def one_of(typ, *args):
 
 class OscKeyword(object):
     '''Converts to the given string for allowing True to to true and False to false conversion.
-    In the special case of the 'false' keyword, it converts to False on bool cast. 
+    In the special case of the 'false' keyword, it converts to False on bool cast.
     '''
     def __init__(self, kw):
         self.kw = kw
@@ -381,19 +381,19 @@ BASE_MODIFIERS_SET = set(BASE_MODIFIERS)
 
 class PoscModifiers(object):
     '''Functions to add/remove OpenScad modifiers.
-    
+
     The add_modifier and remove_modifier functions can be chained as they return self.
-    
+
     e.g.
     Cylinder() - Cube().add_modifier(SHOW_ONLY, DEBUG).color('#f00')
-    
+
     Will create a red 1x1x1 cube with the ! and # OpenScad modifiers. The SHOW_ONLY
     modifier will cause the cylinder to not be displayed.
         difference() {
           cylinder(h=1.0, r=1.0, center=false);
           !#cube(size=[1.0, 1.0, 1.0]);
         }
-        
+
     This API is specified to PythonOpenScad. OpenPyScad and SolidPython use different
     APIs for this feature.
     '''
@@ -619,14 +619,14 @@ class CodeDumper(object):
     def should_add_suffix(self):
         '''Returns true if the suffix should be added. OpenScad is always true.'''
         return True
-    
+
     def get_modifiers_prefix_suffix(self, obj):
         '''Returns the OpenScad modifiers string.'''
         return (obj.get_modifiers(), '')
 
 
 class CodeDumperForPython(CodeDumper):
-    '''Helper for pretty printing to Python code compatible with SolidPython 
+    '''Helper for pretty printing to Python code compatible with SolidPython
     and PythonOpenScad.
     Args:
         Same parameters as CodeDumper but overrides defaults for str_quotes and
@@ -861,7 +861,7 @@ class PoscBase(PoscModifiers):
     def __eq__(self, other):
         '''Exact object tree equality. (Not resulting shape equality)'''
         return self.equals(other)
-    
+
     def __ne__(self, other):
         '''Exact object tree inequality. (Not resulting shape equality)'''
         return not self.equals(other)
@@ -1015,7 +1015,7 @@ class Rotate(PoscParentBase):
 
 @apply_posc_attributes
 class Cylinder(PoscBase):
-    '''Creates a cylinder or truncated cone about the z axis. Cone needs r1 and r2 or d1 and d2 
+    '''Creates a cylinder or truncated cone about the z axis. Cone needs r1 and r2 or d1 and d2
     provided with different lengths.
     d1 & d2 have precedence over d which have precedence over r1 and r2 have precedence over r.
     Hence setting r is overridden by any other value.
@@ -1079,8 +1079,6 @@ class Sphere(PoscBase):
     OSC_API_SPEC = OpenScadApiSpecifier('sphere', (
         Arg('r', float, 1.0, 'radius of sphere. Ignores d if set.'),
         Arg('d', float, None, 'diameter of sphere.'),
-        Arg('center',  bool_strict, False,
-            'If True sets center at origin.'),
         FA_ARG,
         FS_ARG,
         FN_ARG),
@@ -1106,7 +1104,7 @@ class Sphere(PoscBase):
 class Cube(PoscBase):
     '''Creates a cube with it's bottom corner centered at the origin.'''
     OSC_API_SPEC = OpenScadApiSpecifier('cube', (
-        Arg('size', one_of(float, VECTOR3_FLOAT_DEFAULT_1), [1, 1, 1], 
+        Arg('size', one_of(float, VECTOR3_FLOAT_DEFAULT_1), [1, 1, 1],
             'The x, y and z sizes of the cube or rectangular prism', required=True),
         Arg('center', bool_strict, None, 'If true places the center of the cube at the origin.'),),
         OPEN_SCAD_URL_TAIL_PRIMITIVES)
@@ -1125,9 +1123,9 @@ class Resize(PoscParentBase):
     '''Scales the object so the newsize (x,y,z) parameters given. A zero (0.0) scale is ignored
     and that dimension's scale factor is 1.'''
     OSC_API_SPEC = OpenScadApiSpecifier('resize', (
-        Arg('newsize', list_of(float, len_min_max=(0, 3)), None, 
+        Arg('newsize', list_of(float, len_min_max=(0, 3)), None,
             'The new (x,y,z) sizes of the resulting object.'),
-        Arg('auto', one_of(bool_strict, VECTOR3_BOOL), None, 
+        Arg('auto', one_of(bool_strict, VECTOR3_BOOL), None,
             'A vector of (x,y,z) booleans to indicate which axes will be resized.'),),
         OPEN_SCAD_URL_TAIL_TRANSFORMS)
 
@@ -1145,8 +1143,8 @@ class Multmatrix(PoscParentBase):
     '''Homogeneous matrix multiply. The provided matrix can both rotate and translate.
     '''
     OSC_API_SPEC = OpenScadApiSpecifier('multmatrix', (
-        Arg('m', list_of(VECTOR4_FLOAT, len_min_max=(3, 4)), None, 
-            '''A 4x4 or 4x3 matrix. The last row must always be [0,0,0,1] and in the 
+        Arg('m', list_of(VECTOR4_FLOAT, len_min_max=(3, 4)), None,
+            '''A 4x4 or 4x3 matrix. The last row must always be [0,0,0,1] and in the
             case of a 4x3 matrix that row is added. The resulting matrix is always 4x4.'''),),
         OPEN_SCAD_URL_TAIL_TRANSFORMS)
 
@@ -1163,11 +1161,11 @@ class Multmatrix(PoscParentBase):
 
 @apply_posc_transformation_attributes
 class Color(PoscParentBase):
-    '''Apply a color (only supported in OpenScad preview mode). Colors can be a 3 vector 
+    '''Apply a color (only supported in OpenScad preview mode). Colors can be a 3 vector
     of values [0.0-1.0] for RGG or additionally a 4 vector if alpha is included for an
     RGBA color. Colors can be specified as #RRGGBB and it's variants.'''
     OSC_API_SPEC = OpenScadApiSpecifier('color', (
-        Arg('c', one_of(str_strict, VECTOR3OR4_FLOAT), None, 
+        Arg('c', one_of(str_strict, VECTOR3OR4_FLOAT), None,
             'A 3 or 4 color RGB or RGBA vector or a string descriptor of the color.'),
         Arg('alpha', float, None, 'The alpha of the color if not already provided by c.'),),
         OPEN_SCAD_URL_TAIL_TRANSFORMS)
@@ -1196,7 +1194,7 @@ class Offset(PoscParentBase):
 class Projection(PoscParentBase):
     '''Project a 3D object into a 2D surface.'''
     OSC_API_SPEC = OpenScadApiSpecifier('projection', (
-        Arg('cut', bool_strict, None, 
+        Arg('cut', bool_strict, None,
             'If false, the projection is a "shadow" of the object otherwise it is an intersection.'),),
         OPEN_SCAD_URL_TAIL_2D, '3D_to_2D_Projection')
 
@@ -1215,13 +1213,13 @@ class Linear_Extrude(PoscParentBase):
     '''Creates an 3D object with a linear extrusion of a 2D shape.'''
     OSC_API_SPEC = OpenScadApiSpecifier('linear_extrude', (
         Arg('height', float, 100, 'The height of the resulting extrusion.'),
-        Arg('center', bool_strict, None, 
+        Arg('center', bool_strict, None,
             'If true, the final object\'s height center point is placed at z=0.'),
         Arg('convexity', int, None, 'A convexity value used for preview mode to aid rendering.'),
-        Arg('twist', float, None, 
+        Arg('twist', float, None,
             'If provided the object is rotated about the z axis by this total angle'),
         Arg('slices', int, None, 'The number of slices to be applied in the resulting extrusion.'),
-        Arg('scale', one_of(float, VECTOR2_FLOAT), None, 
+        Arg('scale', one_of(float, VECTOR2_FLOAT), None,
             'A scale factor to applied to the children incrementally per extrusion layer.',
              attr_name='scale_'),
         FN_ARG),
@@ -1252,7 +1250,7 @@ class Circle(PoscBase):
         FS_ARG,
         FN_ARG),
         OPEN_SCAD_URL_TAIL_2D)
-    
+
     def get_r(self):
         '''Returns the top radius of the circle.'''
         if not self.d is None:
@@ -1272,10 +1270,10 @@ class Circle(PoscBase):
 class Square(PoscBase):
     '''Creates a 2D square shape'''
     OSC_API_SPEC = OpenScadApiSpecifier('square', (
-        Arg('size', one_of(float, VECTOR2_FLOAT_DEFAULT_1), 1, 
+        Arg('size', one_of(float, VECTOR2_FLOAT_DEFAULT_1), 1,
             'The square size, if a 2 vector (x,y) is provided a rectangle is generated.'),
-        Arg('center', bool_strict, None, 
-            'If true the resulting shape is centered otherwise a corner is at the origin.'),), 
+        Arg('center', bool_strict, None,
+            'If true the resulting shape is centered otherwise a corner is at the origin.'),),
         OPEN_SCAD_URL_TAIL_2D)
 
 
@@ -1286,9 +1284,9 @@ class Polygon(PoscBase):
     is the number of points provided.
     '''
     OSC_API_SPEC = OpenScadApiSpecifier('polygon', (
-        Arg('points', list_of(VECTOR2_FLOAT, len_min_max=(None, None)), None, 
+        Arg('points', list_of(VECTOR2_FLOAT, len_min_max=(None, None)), None,
             'A collection of (x,y) points to be indexed in paths.'),
-        Arg('paths', list_of(list_of(int, len_min_max=(None, None)), len_min_max=(None, None)), 
+        Arg('paths', list_of(list_of(int, len_min_max=(None, None)), len_min_max=(None, None)),
             None,
             'A list of paths which are a list of indexes into the points collection.'),
         Arg('convexity', int, None, 'A convexity value used for preview mode to aid rendering.'),),
@@ -1319,7 +1317,7 @@ class Polyhedron(PoscBase):
     '''Creates an arbitrary polyhedron 3D object.
     Note: triangles is deprecated.'''
     OSC_API_SPEC = OpenScadApiSpecifier('polyhedron', (
-        Arg('points', list_of(VECTOR3_FLOAT, len_min_max=(None, None)), None, 
+        Arg('points', list_of(VECTOR3_FLOAT, len_min_max=(None, None)), None,
             'A list of 3D points. The index to these points are used in faces or triangles.'),
         Arg('triangles', list_of(list_of(int, len_min_max=(3, 3)), len_min_max=(None,None)), None,
             'A list of triangles. Each triangle is 3 indexes into the points list.'),
@@ -1355,10 +1353,10 @@ class Import(PoscBase):
     SVG and DXF files generate 2D shapes.
     STL, OFF, AMF and 3MF files generate 3D shapes.'''
     OSC_API_SPEC = OpenScadApiSpecifier('import', (
-        Arg('file', str_strict, None, 
+        Arg('file', str_strict, None,
             'The filename to import. Relative path names are relative to the script location.'),
         Arg('convexity', int, None, 'A convexity value used for preview mode to aid rendering.'),
-        Arg('layer', str, None, 
+        Arg('layer', str, None,
             'When importing a DXF file, this will select the layer to be imported.'),),
         OPEN_SCAD_URL_TAIL_IMPORTING)
 
@@ -1368,9 +1366,9 @@ class Surface(PoscBase):
     '''Import a file as a height map. This can be a image file or a text file.'''
     OSC_API_SPEC = OpenScadApiSpecifier('surface', (
         Arg('file', str_strict, None, 'File name used to load the height map.'),
-        Arg('center', bool_strict, None, 
+        Arg('center', bool_strict, None,
             'If true the resulting shape is centered otherwise a corner is at the origin.'),
-        Arg('invert', bool_strict, None, 
+        Arg('invert', bool_strict, None,
             'If the file is an image, a value of true will invert the height data.'),
         Arg('convexity', int, None, 'A convexity value used for preview mode to aid rendering.'),),
         OPEN_SCAD_URL_TAIL_OTHER, 'Surface')
