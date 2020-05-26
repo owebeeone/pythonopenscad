@@ -1319,9 +1319,9 @@ class Polyhedron(PoscBase):
     OSC_API_SPEC = OpenScadApiSpecifier('polyhedron', (
         Arg('points', list_of(VECTOR3_FLOAT, len_min_max=(None, None)), None,
             'A list of 3D points. The index to these points are used in faces or triangles.'),
-        Arg('triangles', list_of(list_of(int, len_min_max=(3, 3)), len_min_max=(None,None)), None,
+        Arg('triangles', list_of(list_of(int, len_min_max=(3, 3)), len_min_max=(None, None)), None,
             'A list of triangles. Each triangle is 3 indexes into the points list.'),
-        Arg('faces', list_of(list_of(int, len_min_max=(3, None)), len_min_max=(None,None)), None,
+        Arg('faces', list_of(list_of(int, len_min_max=(3, None)), len_min_max=(None, None)), None,
             'A list of faces. Each face is a minimum of 3 indexes into the points list'),
         Arg('convexity', int, 10, 'A convexity value used for preview mode to aid rendering.'),),
         OPEN_SCAD_URL_TAIL_PRIMITIVES)
