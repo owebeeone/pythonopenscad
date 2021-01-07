@@ -452,7 +452,7 @@ class Maker(Shape):
     reference_shape: ModeShapeFrame
     entries: dict
     
-    def __init__(self, mode=None, shape_frame=None, /, *, copy_of=None, attributes=None):
+    def __init__(self, mode=None, shape_frame=None, *, copy_of=None, attributes=None):
         if copy_of is None:
             self.reference_shape = ModeShapeFrame(mode, shape_frame, attributes=attributes)
             self.entries = {shape_frame.name: self.reference_shape.inverted()}
@@ -669,6 +669,11 @@ class Box(Shape):
         ((0, ), (0, 1), (0, 1, 2), (0, 2)),
         )
     
+    COORDINATES_EDGE_HALVES = tuple(
+        tuple([
+            tuple([tuple(set(face[i]) ^ set(face[(i + 1) % 4])) for i in range(4)])
+            for face in COORDINATES_CORNERS]))
+    
     COORDINATES_CORNERS_ZEROS = tuple(
         tuple([
             tuple([tuple(set((0,1,2)) - set(coords)) for coords in face])
@@ -680,6 +685,7 @@ class Box(Shape):
     
     EXAMPLE_ANCHORS=tuple(
         (surface_args('face_corner', f, c)) for f in (0, 3) for c in range(4)
+        ) + tuple(surface_args('face_edge', f, c) for f in (1, 3) for c in range(4)
         ) + tuple(surface_args('face_centre', f) for f in (0, 3)
                                     ) + (inner_args('centre'),)
     EXAMPLE_SHAPE_ARGS=args([20, 30, 40])
@@ -701,6 +707,19 @@ class Box(Shape):
         loc = l.GVector(self.size)  # make a copy.
         for i in self.COORDINATES_CORNERS_ZEROS[face][corner]:
             loc[i] = 0.0
+        return l.translate(loc) * orientation
+    
+    @anchor('Edge centre of box given face (0-5) and edge (0-3)')
+    def face_edge(self, face, edge):
+        orientation = self.ORIENTATION[face] * l.rotZ(90 * edge)
+        loc = l.GVector(self.size)  # make a copy.
+        half_of = self.COORDINATES_EDGE_HALVES[face][edge]
+        zero_of = self.COORDINATES_CORNERS_ZEROS[face][edge]
+        for i in range(3):
+            if i in half_of:
+                loc[i] *= 0.5
+            elif i in zero_of:
+                loc[i]  = 0.0
         return l.translate(loc) * orientation
         
     @anchor('Centre of face given face (0-5)')
