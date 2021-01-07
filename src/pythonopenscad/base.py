@@ -199,7 +199,7 @@ def list_of(typ, len_min_max=(3, 3), fill_to_min=None):
         '''
         converted_value = []
         for v in value:
-            if len_min_max[1] and len(converted_value) > len_min_max[1]:
+            if len_min_max[1] and len(converted_value) >= len_min_max[1]:
                 raise ConversionException(
                     'provided length too large, max is %d' % len_min_max[1])
             converted_value.append(typ(v))
@@ -1079,6 +1079,8 @@ class Sphere(PoscBase):
     OSC_API_SPEC = OpenScadApiSpecifier('sphere', (
         Arg('r', float, 1.0, 'radius of sphere. Ignores d if set.'),
         Arg('d', float, None, 'diameter of sphere.'),
+        Arg('center',  bool_strict, False,
+            'If True sets center at origin.'),
         FA_ARG,
         FS_ARG,
         FN_ARG),
@@ -1301,7 +1303,7 @@ class Text(PoscBase):
         Arg('size', float, None, ''),
         Arg('font', str_strict, None, ''),
         Arg('halign', of_set('left', 'center', 'right'), None, ''),
-        Arg('valign', of_set('top', 'center', 'baseline' 'bottom'), None, ''),
+        Arg('valign', of_set('top', 'center', 'baseline', 'bottom'), None, ''),
         Arg('spacing', float, None, ''),
         Arg('direction', of_set('ltr', 'rtl', 'ttb', 'btt'), None, ''),
         Arg('language', str_strict, None, ''),
