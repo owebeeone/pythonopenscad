@@ -32,7 +32,7 @@ class AnchorSpecifierNotFoundException(BaseException):
     
 class IncorrectAnchorArgs(BaseException):
     '''Attempted to call an anchor and it failed.'''
-    
+
 
 def args(*args, **kwds):
     '''Returns a tuple or args and kwds passed to this function.'''

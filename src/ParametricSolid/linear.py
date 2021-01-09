@@ -514,13 +514,17 @@ MIRROR_Z = GMatrix([
     [0.0, 0.0, -1.0, 0.0],
     [0.0, 0.0, 0.0, 1.0]])
 
+def clean(v, epsilon=1.e-13):
+    if np.abs(v) < epsilon:
+        return 0
+    return v
 
 def rotZ(degrees=90, radians=None):
     '''Returns a GMatrix that causes a rotation about Z a given number of degrees.'''
     if radians is None:
         radians = np.pi * (degrees / 180.0)
-    cosr = np.cos(radians)
-    sinr = np.sin(radians)
+    cosr = clean(np.cos(radians))
+    sinr = clean(np.sin(radians))
     return GMatrix(np.matrix([[cosr, -sinr, 0.0, 0], 
                               [sinr, cosr, 0, 0], 
                               [0, 0, 1, 0], 
@@ -530,8 +534,8 @@ def rotX(degrees=90, radians=None):
     '''Returns a GMatrix that causes a rotation about X a given number of degrees.'''
     if radians is None:
         radians = np.pi * (degrees / 180.0)
-    cosr = np.cos(radians)
-    sinr = np.sin(radians)
+    cosr = clean(np.cos(radians))
+    sinr = clean(np.sin(radians))
     return GMatrix(np.matrix([[1.0, 0, 0, 0], 
                               [0, cosr, -sinr, 0], 
                               [0, sinr, cosr, 0], 
@@ -541,8 +545,8 @@ def rotY(degrees=90, radians=None):
     '''Returns a GMatrix that causes a rotation about Y a given number of degrees.'''
     if radians is None:
         radians = np.pi * (degrees / 180.0)
-    cosr = np.cos(radians)
-    sinr = np.sin(radians)
+    cosr = clean(np.cos(radians))
+    sinr = clean(np.sin(radians))
     return GMatrix(np.matrix([[cosr, 0.0, sinr, 0], 
                               [0, 1, 0, 0],
                               [-sinr, 0, cosr, 0], 
@@ -554,8 +558,8 @@ def rotV(v, degrees=90, radians=None):
         v = GVector(v)
     if radians is None:
         radians = np.pi * (degrees / 180.0)
-    cosr = np.cos(radians)
-    sinr = np.sin(radians)
+    cosr = clean(np.cos(radians))
+    sinr = clean(np.sin(radians))
     u = v.N
     ux = u.x
     uy = u.y
