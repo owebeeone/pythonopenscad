@@ -687,7 +687,10 @@ class Box(Shape):
         (surface_args('face_corner', f, c)) for f in (0, 3) for c in range(4)
         ) + tuple(surface_args('face_edge', f, c) for f in (1, 3) for c in range(4)
         ) + tuple(surface_args('face_centre', f) for f in (0, 3)
-                                    ) + (inner_args('centre'),)
+        ) + (
+            surface_args('face_edge', 2, 2, 0.1),
+            surface_args('face_edge', 2, 2, -0.5),
+             inner_args('centre'),)
     EXAMPLE_SHAPE_ARGS=args([20, 30, 40])
     
     def __init__(self, size=[1, 1, 1]):
@@ -710,14 +713,14 @@ class Box(Shape):
         return l.translate(loc) * orientation
     
     @anchor('Edge centre of box given face (0-5) and edge (0-3)')
-    def face_edge(self, face, edge):
+    def face_edge(self, face, edge, t=0.5):
         orientation = self.ORIENTATION[face] * l.rotZ(90 * edge)
         loc = l.GVector(self.size)  # make a copy.
         half_of = self.COORDINATES_EDGE_HALVES[face][edge]
         zero_of = self.COORDINATES_CORNERS_ZEROS[face][edge]
         for i in range(3):
             if i in half_of:
-                loc[i] *= 0.5
+                loc[i] *= t
             elif i in zero_of:
                 loc[i]  = 0.0
         return l.translate(loc) * orientation
