@@ -511,6 +511,7 @@ class LinearExtrude(ExtrudedShape):
             self, renderer, ('fn',), exclude=('path'), xlation_table={'h': 'height'})
         return renderer.add(renderer.model.linear_extrude(**parmas)(polygon))
     
-                
+
 if __name__ == "__main__":
-    pass
+    core.anchorscad_main()
+    

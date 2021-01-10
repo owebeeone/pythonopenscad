@@ -130,17 +130,17 @@ class Container():
         return heads[0]
     
     def close(self, mode, parent_container):
-        if mode == core.ModeShapeFrame.SOLID:
+        if mode.mode == core.ModeShapeFrame.SOLID.mode:
             solids = self.build_combine()
             parent_container.add_solid(*solids)
-        elif mode == core.ModeShapeFrame.HOLE:
+        elif mode.mode == core.ModeShapeFrame.HOLE.mode:
             holes = self.build_combine()
             parent_container.add_hole(*holes)
-        elif mode == core.ModeShapeFrame.COMPOSITE:
+        elif mode.mode == core.ModeShapeFrame.COMPOSITE.mode:
             solids, holes = self.build_composite()
             parent_container.add_solid(*solids)
             parent_container.add_hole(*holes)
-        elif mode == core.ModeShapeFrame.CAGE:
+        elif mode.mode == core.ModeShapeFrame.CAGE.mode:
             pass # Drop these. They are not part of the model.
             
 
@@ -223,11 +223,11 @@ class Renderer():
     '''Provides renderer machinery for ParametricSolid. Renders to PythonOpenScad models.'''
     model = posc
     
-    def __init__(self):
+    def __init__(self, initial_frame=None, initial_attrs=None):
         self.context = Context(self)
         self.result = None
         # Push an item on the stack that will collect the final objects.
-        self.context.push(core.ModeShapeFrame.SOLID, None, None)
+        self.context.push(core.ModeShapeFrame.SOLID, initial_frame, initial_attrs)
         
     def close(self):
         count = len(self.context.stack)
@@ -254,9 +254,9 @@ class Renderer():
         self.context.get_last_container().add_solid(*object)
 
 
-def render(shape):
+def render(shape, initial_frame=None, initial_attrs=None):
     '''Renders a shape and returns the model root object.'''
-    renderer = Renderer()
+    renderer = Renderer(initial_frame, initial_attrs)
     shape.render(renderer)
     return renderer.close()
 

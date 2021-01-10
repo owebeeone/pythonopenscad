@@ -2,9 +2,15 @@
 
 '''
 
+import argparse
 import copy
 from dataclasses import dataclass
-from pip._internal import self_outdated_check
+import fnmatch
+import os
+import pathlib
+import re
+import sys
+import textwrap
 
 from frozendict import frozendict
 
@@ -175,6 +181,9 @@ class ModelAttributes(object):
     
 EMPTY_ATTRS = ModelAttributes()
 
+@dataclass(frozen=True)
+class ShapeDescriptor:
+    anchors: tuple
 
 @dataclass(frozen=True)
 class ShapeFrame(object):
@@ -303,13 +312,13 @@ class Shape():
         return Maker(ModeShapeFrame.CAGE, ShapeFrame(name, self.copy_if_mutable(), reference_frame))
     
     def has_anchor(self, name):
-        return name in self.anchors.anchors
+        return name in self.anchorscad.anchors
     
     def anchor_names(self):
         return tuple(self.anchors.anchors.keys())
     
     def at(self, anchor_name, *args, **kwds):
-        spec = self.anchors.get(anchor_name)
+        spec = self.anchorscad.get(anchor_name)
         func = spec[0]
         try:
             return func(self, *args, **kwds)
@@ -319,13 +328,18 @@ class Shape():
                 f' with args={args!r} kwds={kwds!r}') from e
     
     def name(self):
-        return self.anchors.name
+        return self.anchorscad.name
     
     def render(self, renderer):
         raise UnimplementedRenderException(f'Unimplemented render in {self.name()!r}.')
     
     @classmethod
-    def example(cls):
+    def examples(cls):
+        '''Returns a list of available examples.'''
+        return ('default',)
+    
+    @classmethod
+    def example(cls, name='default'):
         maker = cls(*cls.EXAMPLE_SHAPE_ARGS[0], **cls.EXAMPLE_SHAPE_ARGS[1]
             ).solid('example').projection(l.IDENTITY)
         for entry in cls.EXAMPLE_ANCHORS:
@@ -585,15 +599,16 @@ class Maker(Shape):
                 v.shape().render(renderer)
             finally:
                 renderer.pop()
-    
-class AnchorSpec():
-    def __init__(self, description):
-        self.description = description
-        
 
+
+@dataclass(frozen=True)
+class AnchorSpec():
+    description: str
+
+        
 def anchor(description):
     def decorator(func):
-        func.anchor_spec = AnchorSpec(description)
+        func.__anchor_spec__ = AnchorSpec(description)
         return func
     return decorator
 
@@ -606,6 +621,7 @@ VECTOR3_FLOAT_DEFAULT_1 = l.list_of(
 @dataclass(frozen=True)
 class Anchors():
     name: str
+    level: int
     anchors: frozendict
         
     def get(self, name):
@@ -614,11 +630,16 @@ class Anchors():
     
 @dataclass()
 class AnchorsBuilder():
+    '''\
+    name: is the shape class name to use
+    '''
     name: str
+    level: int
     anchors: dict
     
-    def __init__(self, name, anchors={}):
+    def __init__(self, name, level=10, anchors={}):
         self.name = name
+        self.level = level
         self.anchors = dict(anchors)
         
     def add(self, name, func, anchor_spec):
@@ -628,25 +649,25 @@ class AnchorsBuilder():
         return self.anchors.get(name)
     
     def build(self):
-        return Anchors(name=self.name, anchors=frozendict(self.anchors))
+        return Anchors(name=self.name, level=self.level, anchors=frozendict(self.anchors))
 
-def shape(name):
+def shape(name=None, level=10):
     def decorator(clazz):
-        builder = AnchorsBuilder(name)
+        builder = AnchorsBuilder(name, level)
         for func_name in dir(clazz):
             if func_name.startswith("__"):
                 continue
             func = getattr(clazz, func_name)
             if not callable(func):
                 continue
-            if not hasattr(func, 'anchor_spec'):
+            if not hasattr(func, '__anchor_spec__'):
                 continue
-            builder.add(func_name, func, func.anchor_spec)
-        clazz.anchors = builder.build()
+            builder.add(func_name, func, func.__anchor_spec__)
+        clazz.anchorscad = builder.build()
         return clazz
     return decorator
 
-@shape('box')
+@shape('anchorscad/core/box')
 @dataclass
 class Box(Shape):
     '''Generates rectangular prisms (cubes where l=w=h).'''
@@ -767,7 +788,7 @@ def fill_params(
         xlation_table2=ARGS_XLATION_TABLE):
     cur_attrs = renderer.get_current_attributes()
     params = cur_attrs.fill_dict(
-        non_defaults_dict(shape), attr_names, include=include, exclude=exclude)
+        non_defaults_dict(shape, include=include, exclude=exclude), attr_names)
     if xlation_table:
         params = translate_names(params, xlation_table=xlation_table)
     if xlation_table2:
@@ -775,7 +796,7 @@ def fill_params(
     return params
 
 
-@shape('text')
+@shape('anchorscad/core/text')
 @dataclass
 class Text(Shape):
     '''Generates 3D text.'''
@@ -805,7 +826,7 @@ class Text(Shape):
     
 
 ANGLES_TYPE = l.list_of(l.strict_float, len_min_max=(3, 3), fill_to_min=0.0)
-@shape('sphere')
+@shape('anchorscad/core/sphere')
 @dataclass
 class Sphere(Shape):
     '''Generates a Sphere.'''
@@ -858,7 +879,7 @@ class Sphere(Shape):
 
 
 CONE_ARGS_XLATION_TABLE={'r_base': 'r1', 'r_top': 'r2'}
-@shape('cone')
+@shape('anchorscad/core/cone')
 @dataclass
 class Cone(Shape):
     '''Generates cones or horizontal conical slices and cylinders.'''
@@ -938,7 +959,7 @@ class CompositeShape(Shape):
         return self.maker.at(*args, **kwds)
 
 
-@shape('arrow')
+@shape('anchorscad/core/arrow')
 @dataclass
 class Arrow(CompositeShape):
     
@@ -985,7 +1006,7 @@ class Arrow(CompositeShape):
     def within(self, *args, **kwds):
         return self.maker.at(*args, **kwds)
     
-@shape('coordinates_cage')
+@shape('anchorscad/core/coordinates_cage')
 @dataclass
 class CoordinatesCage(Shape):
     base_frame: l.GMatrix=l.IDENTITY
@@ -1010,7 +1031,7 @@ class CoordinatesCage(Shape):
         return l.ROTV111_240 * self.base_frame
     
 
-@shape('coordinates')
+@shape('anchorscad/core/coordinates')
 @dataclass
 class Coordinates(CompositeShape):
     
@@ -1053,7 +1074,7 @@ class Coordinates(CompositeShape):
         return self.maker.at(*args, **kwds)
     
     
-@shape('annotated_coordinates')
+@shape('anchorscad/core/annotated_coordinates')
 @dataclass
 class AnnotatedCoordinates(CompositeShape):
     
@@ -1080,5 +1101,246 @@ class AnnotatedCoordinates(CompositeShape):
     def origin(self, *args, **kwds):
         return l.IDENTITY
     
+def get_shape_class(module, name):
+    mv = getattr(module, name)
+    if not mv:
+        return None
+    
+    if not isinstance(mv, type):
+        return False
+    
+    if not hasattr(mv, 'anchorscad'):
+        return False
+    
+    if isinstance(mv.anchorscad, Anchors):
+        return mv
+    
+    return None
 
+def find_all_shape_classes(module):
+    '''Returns all the shape classes (those containing __anchorscad__) and returns 
+    a list.
+    '''
+    shape_classes = []
+    for name in dir(module):
+        shape_class = get_shape_class(module, name)
+        if shape_class:
+            shape_classes.append(shape_class)
+    return shape_classes
+
+
+@dataclass
+class RenderOptions:
+    render_attributes: ModelAttributes
+    level: int
+    class_name: tuple
+    names_re: re.Pattern=None
+    
+    def __post_init__(self):
+        self.class_name_re = re.compile('|'.join(
+            tuple('(?:' + fnmatch.translate(n) + ')' for n in self.class_name)))
+
+    def match_name(self, cname):
+        return self.class_name_re.match(cname)
+                
+
+def render_exmaples(module, render_options, consumer):
+    '''Scans a module for all Anchorscad shape classes and renders examples.'''
+    classes = find_all_shape_classes(module)
+    # Lazy import renderer since renderer depends on this.
+    import ParametricSolid.renderer as renderer
+    
+    shape_count = 0
+    example_count = 0
+    for clz in classes:
+        if render_options.match_name(clz.__name__):
+            shape_count += 1
+            for e in clz.examples():
+                example_count += 1
+                try:
+                    obj = clz.example(e)
+                    poscobj = renderer.render(
+                        obj, initial_frame=None, initial_attrs=render_options.render_attributes)
+                    consumer(poscobj, clz, e)
+                except BaseException as ex:
+                    sys.stderr.write(f'Error while rendering {clz.__name__}:\n{ex}\n')
+    return shape_count, example_count
+
+
+class ExampleCommandLineRenderer():
+    '''Command line parser and runner for invoking the renderer on examples.'''
+        
+    DESCRIPTION='''\
+    Renders Anchorscad examples their respective scad files.
+    
+    Example opensacd scad files also render anchors so that it's useful to visualise
+    both the location and the orientation of the anchor.
+    '''
+    
+    EXAMPLE_USAGE='''\
+    To render the Arrow shape in the core anchorscad example shapes. This will generate 
+    an opensacd (.scad) file for all the selected shape classes in the Anchorscad.core 
+    module.
+    
+        python3 -m Anchorscad.core --no-write --class_name Arrow 
+        
+    '''
+    
+    def __init__(self, args, do_exit_on_completion=None):
+        
+        argp = argparse.ArgumentParser(
+            formatter_class=argparse.RawDescriptionHelpFormatter,
+            description=self.DESCRIPTION,
+            epilog=textwrap.dedent(self.EXAMPLE_USAGE))
+        
+        argp.add_argument(
+            'command', 
+            metavar='command',
+            type=str,
+            nargs='?',
+            help='List of image files.'
+        )
+        
+        argp.add_argument(
+            '--class_name', 
+            type=str,
+            default='*',
+            nargs='*',
+            help='The name/s of the shape classes to render.')
+        
+        argp.add_argument(
+            '--module', 
+            type=str,
+            default=None,
+            help='The python module to be loaded.')
+        
+        argp.add_argument(
+            '--no-write', 
+            dest='write_files',
+            action='store_false',
+            help='Perform a test run. It will not make changes to file system.')
+        
+        argp.add_argument(
+            '--write', 
+            dest='write_files',
+            action='store_true',
+            help='Writes models to files.')
+        argp.set_defaults(write_files=False)
+
+        argp.add_argument(
+            '--out_file_name', 
+            type=str,
+            default=os.path.join(
+                'examples_out', 'anchorcad_{class_name}_{example}_example.scad'),
+            help='The python module to be loaded..')
+        
+        argp.add_argument(
+            '--level', 
+            type=int,
+            default=10,
+            help=('The \'level\' at or above of the shape classes to render. '
+                  'Shape classes with a lower level than this are excluded unless '
+                  'they are specifically named.'))
+        
+        argp.add_argument(
+            '--list_shapes', 
+            action='store_true',
+            default=False,
+            help=('List Shape class names.'))
+        
+        self.argp = argp.parse_args()
+        
+        self.do_exit_on_completion = do_exit_on_completion
+        if do_exit_on_completion is None:
+            self.do_exit_on_completion = not getattr(sys, 'ps1', sys.flags.interactive)
+            
+        self.options = RenderOptions(
+            render_attributes=ModelAttributes(),
+            level=self.argp.level,
+            class_name=self.argp.class_name)
+        self.set_mkdir = set()
+        self.counts = (0, 0)
+        self.status = 1
+        
+    def _load_anchorcad_module(self, module):
+        if self.argp.module:
+            globalsd = {}
+            localsd = {}
+            exec(f'import {module} as _m', globalsd, localsd)
+            self.module = locals.get('_m')
+            self.module_name = module
+        else:
+            self.module = sys.modules['__main__']
+            self.module_name = ''
+
+    def file_writer(self, obj, clz, example_name):
+        fname = self.argp.out_file_name.format(
+            class_name=clz.__name__, example=example_name)
+        path = pathlib.Path(fname)
+        if self.argp.write_files:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            obj.write(path)
+        else:
+            if not path.parent in self.set_mkdir and not path.parent.exists():
+                self.set_mkdir.add(path.parent)
+                sys.stderr.write(f'directory "{path.parent}" does not exist. Will be created.\n')
+            strv = obj.dumps()
+            sys.stdout.write(
+                f'Shape: {clz.__name__} {example_name} {len(strv)}\n')
+        
+    def invoke_render_examples(self):
+        self.counts = render_exmaples(self.module, self.options, self.file_writer)
+    
+    def list_shapes(self):
+        classes = find_all_shape_classes(self.module)
+        for clz in classes:
+            print(clz.__name__)
+        
+    def run(self):
+        '''Renders the example shapes on the Shape classes found in the specified module.
+        Note that by default, run() will exit the process.
+        '''
+        try:
+            if not self.argp.write_files:
+                sys.stderr.write(
+                    f'Anchorscad example renderer running in (--no-write) mode.\n')
+            if self.argp.module:
+                self._load_anchorcad_module(self.argp.module)
+            else:
+                self.module = sys.modules['__main__']
+                self.module_name = ''
+        
+            if self.argp.list_shapes:
+                self.list_shapes()
+            else:
+                self.invoke_render_examples()
+            
+            sys.stderr.write(f'shapes: {self.counts[0]}\nexamples: {self.counts[1]}\n')
+        except BaseException as ex:
+            if self.do_exit_on_completion:
+                sys.stderr.write(f'{str(ex)}\nAnchorscad example renderer exiting with errors.')
+                self.status= 3
+            raise
+        finally:
+            if self.do_exit_on_completion:
+                sys.exit(self.status) 
+        
+    
+def anchorscad_main(do_exit_on_completion=None):
+    '''Executes the standard command line runner for Anchorscad modules. 
+    
+    To use this function it is reccommended to place the following 2 lines at the end of the module.
+        if __name__ == "__main__":
+            Anchorscad.anchorscad_main()
+
+    '''
+    clr = ExampleCommandLineRenderer(sys.argv, do_exit_on_completion)
+    clr.run()
+    return clr.status
+
+
+if __name__ == "__main__":
+    anchorscad_main(False)
+    
+    
     

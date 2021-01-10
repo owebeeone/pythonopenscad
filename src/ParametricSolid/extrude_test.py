@@ -232,7 +232,7 @@ class Test(TestCase):
                                   [3.       , 3.       ]]))
         
 
-    def testPolygonParams(self):
+    def testPolygonMultiplePoltygons(self):
         builder = extrude.PathBuilder(multi=True)
         builder.move([0, 0], 'start'
                      ).line([1, 0], 'line'
