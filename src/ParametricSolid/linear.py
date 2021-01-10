@@ -351,6 +351,13 @@ class GMatrix(object):
                 self.m.A[3].tolist())
 
     @classmethod
+    def from_zyx_axis(cls, x, y, z):
+        '''Returns rotation only matrix from an x, y and z axis vector.'''
+        v3A = [GVector(x).N.A[:3], 
+               GVector(y).N.A[:3],
+               GVector(z).N.A[:3]]
+
+    @classmethod
     def _validate(cls, v):
         if isinstance(v, GMatrix):
             return v.m.copy()
@@ -384,8 +391,8 @@ class GMatrix(object):
             vm = np.matrix(LIST_3_4X4_FLOAT(v))
             if np.shape(vm) == (4, 4):
                 return vm
-            elif shape == (3, 4):
-                return cls._add_last_row(v)
+            elif np.shape(vm) == (3, 4):
+                return cls._add_last_row(vm)
             else:
                 raise MatrixShapeError(
                     'Matrix supplied is not a 4x4 or 3x4, Shape is %s' %

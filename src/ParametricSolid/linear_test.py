@@ -107,6 +107,13 @@ class TestLinear(unittest.TestCase):
         v2 = [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 2]]
         self.assertRaises(linear.MatrixInvalidError, linear.GMatrix, v2)
         
+        v3A = [linear.GVector([1., 0, 0]).A[:3], 
+               linear.GVector([0., 1, 0]).A[:3],
+               linear.GVector([0., 0, 1]).A[:3]]
+        
+        m3I = linear.GMatrix(v3A)
+        self.assertEqual(m3I, linear.IDENTITY, 'Identity inverse should be equal')
+        
     def testVectorAdd(self):
         v1 = linear.GVector([1, 2, 3, 1])
         v2 = linear.GVector([1, -2, 3, 1])

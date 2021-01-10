@@ -291,6 +291,7 @@ class Shape():
     
     def cage(self, name):
         return NamedShape(self.copy_if_mutable(), ModeShapeFrame.CAGE, name)
+    
     def as_solid(self, name, reference_frame):
         return Maker(
             ModeShapeFrame.SOLID, ShapeFrame(name, self.copy_if_mutable(), reference_frame))
@@ -756,10 +757,22 @@ def translate_names(out_dict, xlation_table=ARGS_XLATION_TABLE):
             del out_dict[old_name]
     return out_dict
 
-def fill_params(shape, renderer, attr_names):
+def fill_params(
+        shape, 
+        renderer, 
+        attr_names, 
+        include=None, 
+        exclude=(), 
+        xlation_table=None, 
+        xlation_table2=ARGS_XLATION_TABLE):
     cur_attrs = renderer.get_current_attributes()
-    params = cur_attrs.fill_dict(non_defaults_dict(shape), attr_names)
-    return translate_names(params)
+    params = cur_attrs.fill_dict(
+        non_defaults_dict(shape), attr_names, include=include, exclude=exclude)
+    if xlation_table:
+        params = translate_names(params, xlation_table=xlation_table)
+    if xlation_table2:
+        params = translate_names(params, xlation_table=xlation_table2)
+    return params
 
 
 @shape('text')
