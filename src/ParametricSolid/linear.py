@@ -356,6 +356,7 @@ class GMatrix(object):
         v3A = [GVector(x).N.A[:3], 
                GVector(y).N.A[:3],
                GVector(z).N.A[:3]]
+        return GMatrix(v3A)
 
     @classmethod
     def _validate(cls, v):

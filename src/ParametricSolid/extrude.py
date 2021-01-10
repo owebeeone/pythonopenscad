@@ -21,7 +21,13 @@ class MoveNotAllowedException(Exception):
     '''Attempt to insert a move in a closed path.'''
     
 class InvalidSplineParametersException(Exception):
-    '''PathBuiler.spine requires 3 control points or 2 points and a length..'''
+    '''PathBuiler.spine requires 3 control points or 2 points and a length.'''
+    
+class IncorrectAnchorArgsException(Exception):
+    '''Unable to interpret args..'''
+    
+class UnknownOperationException(Exception):
+    '''Requested anchor is not found...'''
 
 def strict_t_or_none(v, t):
     if v is None or v == 'None':
@@ -436,45 +442,48 @@ class PathBuilder():
 class ExtrudedShape(core.Shape):
         
     def has_anchor(self, name):
-        return name in self.anchors.anchors
+        return name in self.anchorscad.anchors or name in self.path.name_map
     
     def anchor_names(self):
-        return tuple(set(self.anchors.anchors.keys()) + tuple(self.path.ops_map.keys()))
+        return tuple(set(self.anchorscad.anchors.keys()) + tuple(self.path.name_map.keys()))
     
     def at(self, anchor_name, *args, **kwds):
-        spec = self.anchors.get(anchor_name, None)
+        spec = self.anchorscad.get(anchor_name)
         if spec:
             func = spec[0]
             try:
                 return func(self, *args, **kwds)
-            except TypeError as e:
-                raise IncorrectAnchorArgs(
-                    f'Attempted to call {anchor_name} on {self.__class__.__name__}'
-                    f' with args={args!r} kwds={kwds!r}') from e
+            except TypeError as ex:
+                raise IncorrectAnchorArgsException(
+                    f'{ex}\nAttempted to call {anchor_name} on {self.__class__.__name__}'
+                    f' with args={args!r} kwds={kwds!r}') from ex
         else:
             self.node(anchor_name, *args, forward=False, **kwds)
             
     def to_3d_from_2d(self, vec_2d):
-        return l.rot() * l.GVector(vec_2d)
+        return l.IDENTITY * l.GVector([vec_2d[0], vec_2d[1], 0])
     
     @core.anchor('Anchor to the path for a given operation.')
     def node(self, path_node_name, *args, op='edge', forward=True, **kwds):
         if op == 'edge':
-            return edge(path_node_name, *args, **kwds)
+            return self.edge(path_node_name, *args, **kwds)
         
-        op = self.path.ops_map.get(path_node_name)
+        op = self.path.name_map.get(path_node_name)
         if core.Shape.has_anchor(self, op) and forward:
             return self.at(op, path_node_name, *args, forward=False, **kwds)
         raise UnknownOperationException(
             f'Undefined anchor operation {op!r} for node {path_node_name!r}.')
+        
+    def eval_z_vector(self, h):
+        return l.GVector([0, 0, 1])
 
     @core.anchor('Anchor to the path edge')
     def edge(self, path_node_name, t=0, h=0):
-        op = self.path.ops_map.get(path_node_name)
+        op = self.path.name_map.get(path_node_name)
         pos = self.to_3d_from_2d(op.position(t))
         x_direction = self.to_3d_from_2d(op.direction_normalized(t))
         z_direction = self.eval_z_vector(h)
-        y_direction = z_direction.cross3D(z_direction)
+        y_direction = z_direction.cross3D(x_direction)
         orientation = l.GMatrix.from_zyx_axis(x_direction, y_direction, z_direction)
         return l.translate(pos) * orientation
 
@@ -513,5 +522,5 @@ class LinearExtrude(ExtrudedShape):
     
 
 if __name__ == "__main__":
-    core.anchorscad_main()
+    core.anchorscad_main(False)
     

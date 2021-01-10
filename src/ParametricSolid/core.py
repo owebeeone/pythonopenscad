@@ -1137,6 +1137,8 @@ class RenderOptions:
     names_re: re.Pattern=None
     
     def __post_init__(self):
+        if not self.class_name:
+            self.class_name = ('*',)
         self.class_name_re = re.compile('|'.join(
             tuple('(?:' + fnmatch.translate(n) + ')' for n in self.class_name)))
 
