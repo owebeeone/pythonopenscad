@@ -765,6 +765,12 @@ class Box(Shape):
 TEXT_DEPTH_MAP={'centre':0.0, 'rear': -0.5, 'front':0.5}
 
 def non_defaults_dict(dataclas_obj, include=None, exclude=()):
+    if not (include is None or isinstance(include, tuple) or isinstance(include, dict)):
+        raise IllegalParameterException(
+            f'Expected parameter \'include\' to be a tuple but is a {include.__class__.__name__}')
+    if not (exclude is None or isinstance(exclude, tuple) or isinstance(include, dict)):
+        raise IllegalParameterException(
+            f'Expected parameter \'exclude\' to be a tuple but is a {exclude.__class__.__name__}')
     return dict((k, getattr(dataclas_obj, k)) 
                 for k in dataclas_obj.__annotations__.keys() 
                 if (not k in exclude) and (
@@ -1112,7 +1118,7 @@ def get_shape_class(module, name):
     if not hasattr(mv, 'anchorscad'):
         return False
     
-    if isinstance(mv.anchorscad, Anchors):
+    if mv.anchorscad.__class__.__name__ == 'Anchors':
         return mv
     
     return None
@@ -1269,7 +1275,7 @@ class ExampleCommandLineRenderer():
             globalsd = {}
             localsd = {}
             exec(f'import {module} as _m', globalsd, localsd)
-            self.module = locals.get('_m')
+            self.module = localsd.get('_m')
             self.module_name = module
         else:
             self.module = sys.modules['__main__']

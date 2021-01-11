@@ -150,7 +150,7 @@ class CubicSpline():
                     for i in range(self.dimensions))
     
     def derivative(self, t):
-        return np.sum(
+        return -np.sum(
             np.multiply(
                 np.multiply(self.coefs, self._dcoeffs(1)), self._make_ta2(t)), axis=0)
     
@@ -265,7 +265,7 @@ class PathBuilder():
                 list(([p0[k], p1[k]] if p0[k] < p1[k] else [p1[k], p0[k]]) for k in range(len(p0))))
             
         def position(self, t):
-            return self.point + t * self.direction(0)
+            return self.point + (t - 1) * self.direction(0)
             
     
     @dataclass(frozen=True)
@@ -320,6 +320,8 @@ class PathBuilder():
                 meta_data = self.meta_data
     
             count = meta_data.fn
+            if not count:
+                count = 10
     
             for i in range(1, count + 1):
                 t = float(i) / float(count)
@@ -328,7 +330,7 @@ class PathBuilder():
                 map_builder.append((self, t, count))
     
         def direction(self, t):
-            return self.spline.derivative(t)
+            return -self.spline.derivative(t)
         
         def direction_normalized(self, t):
             return _normalize(self.direction(t))
@@ -374,7 +376,7 @@ class PathBuilder():
             points: Either 3 point list (first control point is the last point) or a 
                     2 point list and cv_len with the first element set to the distance 
                     the control point follows along the previous operations last direction.
-            cv_len: If provided will force the length of the control point points (1 an 2)
+            cv_len: If provided will force the length of the control point (1 an 2)
                     to be the given length.
             name: The name of this node. Naming a node will make it an anchor.
             metadata: Provides parameters for rendering that override the renderer metadata.
@@ -382,6 +384,8 @@ class PathBuilder():
                     respectively.
             radians: line degrees but in radians. If radians are provided they override any
                     degrees values provided.
+            rel_len: Forces control points to have relatively the same length as the
+                    distance from the end points. If cv_len is set it is used as a multiplier.
         '''
         assert len(self.ops) > 0, "Cannot line to without starting point"
         degrees = LIST_2_INT_OR_NONE(degrees) if degrees else (None, None)
@@ -407,8 +411,8 @@ class PathBuilder():
             cv2 = points[1]
             cv3 = points[2]
         if not rel_len is None:
-            l = np.sqrt(np.sum((cv0 - cv1)**2))
-            cv_len = tuple(rel_len if v is None else v * l * rel_len for v in cv_len)
+            l = np.sqrt(np.sum((cv0 - cv3)**2))
+            cv_len = tuple(rel_len * l if v is None else v * l * rel_len for v in cv_len)
         cv1 = self.squeeze_and_rot(cv0, cv1, cv_len[0], degrees[0], radians[0])
         cv2 = self.squeeze_and_rot(cv3, cv2, cv_len[1], degrees[1], radians[1])
         
@@ -458,10 +462,10 @@ class ExtrudedShape(core.Shape):
                     f'{ex}\nAttempted to call {anchor_name} on {self.__class__.__name__}'
                     f' with args={args!r} kwds={kwds!r}') from ex
         else:
-            self.node(anchor_name, *args, forward=False, **kwds)
+            return self.node(anchor_name, *args, forward=False, **kwds)
             
-    def to_3d_from_2d(self, vec_2d):
-        return l.IDENTITY * l.GVector([vec_2d[0], vec_2d[1], 0])
+    def to_3d_from_2d(self, vec_2d, h=0):
+        return l.IDENTITY * l.GVector([vec_2d[0], vec_2d[1], h])
     
     @core.anchor('Anchor to the path for a given operation.')
     def node(self, path_node_name, *args, op='edge', forward=True, **kwds):
@@ -475,18 +479,7 @@ class ExtrudedShape(core.Shape):
             f'Undefined anchor operation {op!r} for node {path_node_name!r}.')
         
     def eval_z_vector(self, h):
-        return l.GVector([0, 0, 1])
-
-    @core.anchor('Anchor to the path edge')
-    def edge(self, path_node_name, t=0, h=0):
-        op = self.path.name_map.get(path_node_name)
-        pos = self.to_3d_from_2d(op.position(t))
-        x_direction = self.to_3d_from_2d(op.direction_normalized(t))
-        z_direction = self.eval_z_vector(h)
-        y_direction = z_direction.cross3D(x_direction)
-        orientation = l.GMatrix.from_zyx_axis(x_direction, y_direction, z_direction)
-        return l.translate(pos) * orientation
-
+        return l.GVector([0, 0, h])
 
 @core.shape('linear_extrude')
 @dataclass
@@ -499,26 +492,58 @@ class LinearExtrude(ExtrudedShape):
     scale: float=(1.0, 1.0)
     fn: int=None
     
+    SCALE=0.4
+    
     EXAMPLE_SHAPE_ARGS=core.args(
         PathBuilder()
             .move([0, 0])
-            .line([50, 0], 'linear')
-            .spline([[75, 50], [0, 50]], name='curve', cv_len=(1,), degrees=(90,), rel_len=0.3)
-            .build()
+            .line([100 * SCALE, 0], 'linear')
+            .spline([[150 * SCALE, 100 * SCALE], [20 * SCALE, 100 * SCALE]],
+                     name='curve', cv_len=(0.5,0.4), degrees=(90,), rel_len=0.8)
+            .line([0, 100 * SCALE], 'linear2')
+            .line([0, 0], 'linear3')
+            .build(),
+        h=40
         )
 
     EXAMPLE_ANCHORS=(
-                core.surface_args('edge', 'linear', 0),
-                core.surface_args('linear', -1),
-                core.surface_args('curve', 0),
-                core.surface_args('curve', 0.5, h=10),
-                core.surface_args('curve', 1, h=20),)
+                core.surface_args('edge', 'linear', 0.5),
+                core.surface_args('linear2', 0.5, 10),
+                core.surface_args('linear3', 0.5, 20),
+                core.surface_args('curve', 0, 40),
+                core.surface_args('curve', 0.1, rh=0.9),
+                core.surface_args('curve', 0.2, 40),
+                core.surface_args('curve', 0.3, 40),
+                core.surface_args('curve', 0.4, 40),
+                core.surface_args('curve', 0.5, 40),
+                core.surface_args('curve', 0.6, 40),
+                core.surface_args('curve', 0.7, 40),
+                core.surface_args('curve', 0.8, 40),
+                core.surface_args('curve', 0.9, 40),
+                core.surface_args('curve', 1.0, 40),
+                )
 
     def render(self, renderer):
-        polygon = renderer.model.Polygon(*ath.polygons(renderer.get_current_attributes()))
+        polygon = renderer.model.Polygon(*self.path.polygons(renderer.get_current_attributes()))
         params = core.fill_params(
-            self, renderer, ('fn',), exclude=('path'), xlation_table={'h': 'height'})
-        return renderer.add(renderer.model.linear_extrude(**parmas)(polygon))
+            self, renderer, ('fn',), exclude=('path',), xlation_table={'h': 'height'})
+        return renderer.add(renderer.model.linear_extrude(**params)(polygon))
+    
+    
+    @core.anchor('Anchor to the path edge')
+    def edge(self, path_node_name, t=0, h=0, rh=None):
+        if not rh is None:
+            h = rh * self.h
+        op = self.path.name_map.get(path_node_name)
+        pos = self.to_3d_from_2d(op.position(t), h)
+        plane_dir = op.direction_normalized(t)
+        x_direction = self.to_3d_from_2d([plane_dir[0], -plane_dir[1]])
+        z_direction = self.eval_z_vector(1)
+        y_direction = z_direction.cross3D(x_direction)
+        orientation = l.GMatrix.from_zyx_axis(x_direction, y_direction, z_direction)
+        return l.translate(pos) * orientation * l.rotX(90)
+
+
     
 
 if __name__ == "__main__":
