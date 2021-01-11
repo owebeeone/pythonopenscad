@@ -509,13 +509,15 @@ class LinearExtrude(ExtrudedShape):
             .build(),
         h=40,
         fn=30,
-        twist=0,
+        twist=90,
         scale=(1, 0.3)
         )
 
     EXAMPLE_ANCHORS=(
                 core.surface_args('edge', 'linear', 0.5),
                 core.surface_args('linear2', 0.5, 10),
+                core.surface_args('linear2', 0, 40),
+                core.surface_args('linear2', 1, 40),
                 core.surface_args('linear3', 0.5, 20),
                 core.surface_args('curve', 0, 40),
                 core.surface_args('curve', 0.1, rh=0.9),
@@ -527,7 +529,10 @@ class LinearExtrude(ExtrudedShape):
                 core.surface_args('curve', 0.7, 40),
                 core.surface_args('curve', 0.8, 40),
                 core.surface_args('curve', 0.9, 40),
-                core.surface_args('curve', 1.0, 40),
+                core.surface_args('curve', 1, 40),
+                core.surface_args('linear2', 0.1, rh=0.9),
+                core.surface_args('linear2', 0.5, rh=0.9),
+                core.surface_args('linear2', 1.0, rh=0.9),
                 )
 
     def render(self, renderer):
@@ -536,9 +541,16 @@ class LinearExtrude(ExtrudedShape):
             self, renderer, ('fn',), exclude=('path',), xlation_table={'h': 'height'})
         return renderer.add(renderer.model.linear_extrude(**params)(polygon))
     
+    def _z_radians_scale_align(self, rel_h, twist_vector):
+        xelipse_max = self.scale[0] * rel_h + (1 - rel_h)
+        yelipse_max = self.scale[1] * rel_h + (1 - rel_h)
+        eliplse_angle = np.arctan2(xelipse_max * twist_vector.y, yelipse_max * twist_vector.x)
+        circle_angle = np.arctan2(twist_vector.y, twist_vector.x)
+        return eliplse_angle - circle_angle
+        
     
     @core.anchor('Anchor to the path edge and surface.')
-    def edge(self, path_node_name, t=0, h=0, rh=None, align_twist=False):
+    def edge(self, path_node_name, t=0, h=0, rh=None, align_twist=False, align_scale=False):
         '''Anchors to the edge and surface of the linear extrusion.
         Args:
             path_node_name: The path node name to attach to.
@@ -575,11 +587,24 @@ class LinearExtrude(ExtrudedShape):
             twist_align = l.rotZ(
                 radians=np.arctan2(self.twist * np.pi / 180 * twist_radius , self.h))
 
-        twisted = twist_rot * l.translate(pos) * z_to_centre.I * twist_align * z_to_centre * orientation 
-        
         # The scale factors are for the x and y axii.
         scale = l.scale(
             tuple(self.scale[i] * rel_h + (1 - rel_h) for i in range(2)) + (1,))
+        
+        scale_zalign = l.IDENTITY
+        if align_scale:
+            # Scaling adjustment along the Z plane is equivalent to a z rotation 
+            # of the difference of the angle of a circle and the scaleg cirle.
+            scale_zalign = l.rotY(radians=self._z_radians_scale_align(rel_h, twist_vector)) 
+            
+            scaled_vector = scale * twist_vector
+            scale_xalign = l.rotZ(radians=-np.arctan2(
+                twist_vector.length() - scaled_vector.length(), rel_h * self.h)) 
+                      
+
+        twisted = (twist_rot * l.translate(pos) * z_to_centre.I 
+                   * twist_align * z_to_centre * orientation * scale_zalign * scale_xalign)
+        
         
         result = scale * twisted 
 
