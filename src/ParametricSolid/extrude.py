@@ -544,7 +544,9 @@ class LinearExtrude(ExtrudedShape):
             path_node_name: The path node name to attach to.
             t: 0 to 1 being the beginning and end of the segment. Numbers out of 0-1
                range will depart the path linearly.
-               
+            h: The absolute height of the anchor location.
+            rh: The relative height (0-1).
+            align_twist: Align the anchor for the twist factor.
         '''
         if not rh is None:
             h = rh * self.h
