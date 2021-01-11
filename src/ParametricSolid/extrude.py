@@ -592,6 +592,7 @@ class LinearExtrude(ExtrudedShape):
             tuple(self.scale[i] * rel_h + (1 - rel_h) for i in range(2)) + (1,))
         
         scale_zalign = l.IDENTITY
+        scale_xalign = l.IDENTITY
         if align_scale:
             # Scaling adjustment along the Z plane is equivalent to a z rotation 
             # of the difference of the angle of a circle and the scaleg cirle.

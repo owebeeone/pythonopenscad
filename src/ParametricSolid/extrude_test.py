@@ -6,6 +6,7 @@ Created on 8 Jan 2021
 from dataclasses import dataclass
 from unittest import TestCase
 
+import ParametricSolid.core as core
 import ParametricSolid.extrude as extrude
 import numpy as np
 
@@ -247,22 +248,43 @@ class Test(TestCase):
         iterable_assert(self.assertAlmostEqual, path.polygons(TestMetaData()),
                         (([[0.        , 0.        ],
                            [1.        , 0.        ],
-                           [1.08033762, 0.09607477],
-                           [1.23453375, 0.35493251],
-                           [1.44486332, 0.73252337],
-                           [1.69360124, 1.18479752],
-                           [1.96302245, 1.6677051 ],
-                           [2.23540186, 2.13719627],
-                           [2.4930144 , 2.5492212 ],
-                           [2.71813499, 2.85973002],
-                           [2.89303855, 3.0246729 ],
+                           [1.25326914, 0.12753619],
+                           [1.47673525, 0.46679535],
+                           [1.67713536, 0.95275334],
+                           [1.86120651, 1.52038605],
+                           [2.03568577, 2.10466933],
+                           [2.20731016, 2.64057907],
+                           [2.38281673, 3.06309113],
+                           [2.56894253, 3.3071814 ],
+                           [2.77242461, 3.30782573],
                            [3.        , 3.        ],
                            [1.        , 0.        ],
                            [2.        , 0.        ],
                            [2.        , 1.        ],
                            [1.        , 2.        ]]), 
-                          ((1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12), 
-                           (13, 14, 15))))
+                           ((1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12), 
+                            (13, 14, 15))))
+
+    def makeTestObject(self, scale=1):
+        return extrude.LinearExtrude(
+            extrude.PathBuilder()
+                .move([0, 0])
+                .line([100 * scale, 0], 'linear')
+                .spline([[150 * scale, 100 * scale], [20 * scale, 100 * scale]],
+                         name='curve', cv_len=(0.5,0.4), degrees=(90,), rel_len=0.8)
+                .line([0, 100 * scale], 'linear2')
+                .line([0, 0], 'linear3')
+                .build(),
+            h=40,
+            fn=30,
+            twist=90,
+            scale=(1, 0.3)
+            )
+    
+
+    def testLinearExtrude(self):
+        le = self.makeTestObject()
+        iterable_assert(self.assertAlmostEqual, le.at('linear', 0.5).A, [[1]])
 
                 
 if __name__ == "__main__":
