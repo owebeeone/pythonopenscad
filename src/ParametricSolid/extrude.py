@@ -503,7 +503,8 @@ class LinearExtrude(ExtrudedShape):
             .line([0, 100 * SCALE], 'linear2')
             .line([0, 0], 'linear3')
             .build(),
-        h=40
+        h=40,
+        scale=(1, 0.5)
         )
 
     EXAMPLE_ANCHORS=(
