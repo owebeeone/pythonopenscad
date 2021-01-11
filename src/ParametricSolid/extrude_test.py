@@ -77,7 +77,7 @@ class Test(TestCase):
         expects = [[0.0, 0.75], [-0.28, 1.0]]
         iterable_assert(self.assertAlmostEqual, b.extents(), [[0., -0.28], [ 0.75, 1]])
         minima = b.cuve_maxima_minima_t()
-        self.assertAlmostEqual(b.normal2d(minima[0][0])[1], -1, 5)
+        self.assertAlmostEqual(b.normal2d(minima[0][0])[1], 1, 5)
         
     def testPathGenerator(self):
         builder = extrude.PathBuilder()
@@ -228,9 +228,9 @@ class Test(TestCase):
         
         iterable_assert(self.assertAlmostEqual, 
                         path.get_node('curve').points,
-                        np.array([[1.125    , 0.       ],
-                                  [2.7763932, 3.4472136],
-                                  [3.       , 3.       ]]))
+                        np.array([[1.90138782, 0.        ],
+                                  [2.19377423, 4.61245155],
+                                  [3.        , 3.        ]]))
         
 
     def testPolygonMultiplePoltygons(self):
@@ -284,7 +284,11 @@ class Test(TestCase):
 
     def testLinearExtrude(self):
         le = self.makeTestObject()
-        iterable_assert(self.assertAlmostEqual, le.at('linear', 0.5).A, [[1]])
+        iterable_assert(self.assertAlmostEqual, le.at('linear', 0.5).A, 
+                        [[ 1.,  0.,  0., 50.],
+                         [ 0.,  0., -1.,  0.],
+                         [ 0.,  1.,  0.,  0.],
+                         [ 0.,  0.,  0.,  1.]])
 
                 
 if __name__ == "__main__":
