@@ -342,6 +342,10 @@ class PathBuilder():
             return self.spline.extents()
         
         def position(self, t):
+            if t < 0:
+                return self.direction(0) * t + self.prev_op.lastPosition()
+            elif t > 1:
+                return self.direction(1) * t + self.points[2]
             return self.spline.evaluate(t)
     
     def __init__(self, multi=False):
@@ -487,12 +491,12 @@ class LinearExtrude(ExtrudedShape):
     '''Generates an extrusion of a given Path.'''
     path: Path
     h: float=100
-    twist: float=None
+    twist: float=0.0
     slices: int=None
-    scale: float=(1.0, 1.0)
+    scale: float=(1.0, 1.0)  # (x, y)
     fn: int=None
     
-    SCALE=0.4
+    SCALE=0.8
     
     EXAMPLE_SHAPE_ARGS=core.args(
         PathBuilder()
@@ -504,7 +508,9 @@ class LinearExtrude(ExtrudedShape):
             .line([0, 0], 'linear3')
             .build(),
         h=40,
-        scale=(1, 0.5)
+        fn=30,
+        twist=0,
+        scale=(1, 0.3)
         )
 
     EXAMPLE_ANCHORS=(
@@ -531,20 +537,53 @@ class LinearExtrude(ExtrudedShape):
         return renderer.add(renderer.model.linear_extrude(**params)(polygon))
     
     
-    @core.anchor('Anchor to the path edge')
-    def edge(self, path_node_name, t=0, h=0, rh=None):
+    @core.anchor('Anchor to the path edge and surface.')
+    def edge(self, path_node_name, t=0, h=0, rh=None, align_twist=False):
+        '''Anchors to the edge and surface of the linear extrusion.
+        Args:
+            path_node_name: The path node name to attach to.
+            t: 0 to 1 being the beginning and end of the segment. Numbers out of 0-1
+               range will depart the path linearly.
+               
+        '''
         if not rh is None:
             h = rh * self.h
         op = self.path.name_map.get(path_node_name)
         pos = self.to_3d_from_2d(op.position(t), h)
-        plane_dir = op.direction_normalized(t)
+        normal_t = 0 if t < 0 else 1 if t > 1 else t 
+        twist_vector = self.to_3d_from_2d(op.position(normal_t), 0)
+        twist_radius = twist_vector.length()
+        plane_dir = op.direction_normalized(normal_t)
         x_direction = self.to_3d_from_2d([plane_dir[0], -plane_dir[1]])
         z_direction = self.eval_z_vector(1)
         y_direction = z_direction.cross3D(x_direction)
-        orientation = l.GMatrix.from_zyx_axis(x_direction, y_direction, z_direction)
-        return l.translate(pos) * orientation * l.rotX(90)
+        orientation = l.GMatrix.from_zyx_axis(x_direction, y_direction, z_direction) * l.rotX(90)
+        
+        # The twist andle is simply a rotation about Z depending on height.
+        rel_h = h / self.h
+        twist_angle = self.twist * rel_h
+        twist_rot = l.rotZ(-twist_angle)
+        
+        twist_align = l.IDENTITY
+        z_to_centre = l.IDENTITY
+        if align_twist:
+            # Aligning to the twist requires rotation about a axis perpendicular to the
+            # axis of the twist (which is at (0, 0, h).
+            z_to_centre = l.rot_to_V(twist_vector, [0, 0, 1])
+            twist_align = l.rotZ(
+                radians=np.arctan2(self.twist * np.pi / 180 * twist_radius , self.h))
 
+        twisted = twist_rot * l.translate(pos) * z_to_centre.I * twist_align * z_to_centre * orientation 
+        
+        # The scale factors are for the x and y axii.
+        scale = l.scale(
+            tuple(self.scale[i] * rel_h + (1 - rel_h) for i in range(2)) + (1,))
+        
+        result = scale * twisted 
 
+        # Descaling the matrix so the co-ordinates don't skew.
+        result = result.descale()
+        return result
     
 
 if __name__ == "__main__":
