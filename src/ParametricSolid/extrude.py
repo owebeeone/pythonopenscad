@@ -4,10 +4,10 @@ Created on 7 Jan 2021
 @author: gianni
 '''
 
+from builtins import staticmethod
 from dataclasses import dataclass
 
 from frozendict import frozendict
-from scipy.constants.constants import degree
 
 import ParametricSolid.core as core
 import ParametricSolid.linear as l
@@ -68,6 +68,7 @@ class CubicSpline():
         [ -3,  3,  0,  0 ],
         [  1,  0,  0,  0 ]])
     
+
     def _dcoeffs_builder(dims):
         zero_order_derivative_coeffs=np.array([[1.] * dims, [1] * dims, [1] * dims, [1] * dims])
         derivative_coeffs=np.array([[3.] * dims, [2] * dims, [1] * dims, [0] * dims])
