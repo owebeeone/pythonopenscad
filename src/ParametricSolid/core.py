@@ -1115,13 +1115,16 @@ def get_shape_class(module, name):
     if not isinstance(mv, type):
         return False
     
-    if not hasattr(mv, 'anchorscad'):
+    if not hasattr(mv, 'anchorscad') or not hasattr(mv, '__module__'):
+        return False
+    
+    if mv.__module__ != module.__name__:
         return False
     
     if mv.anchorscad.__class__.__name__ == 'Anchors':
         return mv
     
-    return None
+    return False
 
 def find_all_shape_classes(module):
     '''Returns all the shape classes (those containing __anchorscad__) and returns 
