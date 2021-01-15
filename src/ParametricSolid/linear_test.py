@@ -2,8 +2,11 @@
 
 '''
 import unittest
+
 from ParametricSolid import linear
+from ParametricSolid.test_tools import iterable_assert
 import numpy as np
+
 
 class TestLinear(unittest.TestCase):
 
@@ -215,7 +218,18 @@ class TestLinear(unittest.TestCase):
                          'Equivalence for initialization by list or GVector')
         self.assertEqual(t.I, linear.translate(-v),
                          'Inversion of translate is translate back.')
+    
+    def testRotAlign(self):
+        preserve_axis = linear.GVector([1, 1, 1])
+        preserve_frame = linear.rotV(preserve_axis, 22) * linear.rot_to_V(linear.Y_AXIS, preserve_axis)
+        align_preserve_axis = preserve_frame * linear.X_AXIS
+        plane_axis = linear.Z_AXIS
+        xform = linear.rotAlign(preserve_axis, align_preserve_axis, plane_axis)
         
+        iterable_assert(self.assertAlmostEqual, (xform * preserve_axis).A, preserve_axis)
+        self.assertAlmostEqual((xform * align_preserve_axis).z, 0)
+
+
     def testMirror(self):
         pass
 

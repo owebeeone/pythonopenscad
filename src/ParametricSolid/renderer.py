@@ -12,13 +12,13 @@ from ParametricSolid import linear as l
 import pythonopenscad as posc
 
 
-class EmptyRenderStack(core.BaseException):
+class EmptyRenderStack(core.CoreEception):
     '''Before adding items to renderer a renderer.push must be called.'''
     
-class UnpoppedItemsOnRenderStack(core.BaseException):
+class UnpoppedItemsOnRenderStack(core.CoreEception):
     '''Before closing the renderer, all pushed frames must be pop()ed..'''
     
-class PopCalledTooManyTimes(core.BaseException):
+class PopCalledTooManyTimes(core.CoreEception):
     '''The render stack ran out of elements to pop..'''
 
 HEAD_CONTAINER=1

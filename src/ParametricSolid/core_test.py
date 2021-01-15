@@ -13,7 +13,7 @@ from frozendict import frozendict
 
 from ParametricSolid import linear as l
 from ParametricSolid.core import Box, Colour, Text, Cone, Arrow, Coordinates, \
-    Sphere, AnnotatedCoordinates
+    Sphere, AnnotatedCoordinates, at_spec, lazy_shape, args, CoordinatesCage
 from ParametricSolid.renderer import render
 import numpy as np
 import pythonopenscad as posc
@@ -31,6 +31,9 @@ def pick_colour(face, corner):
     return COLOURS[(face * 17 + corner) % len(COLOURS)]
 
 class CoreTest(unittest.TestCase):
+    
+    def setUp(self):
+        self.points = []
 
     def write(self, maker, test):
         obj = render(maker)
@@ -167,7 +170,91 @@ class CoreTest(unittest.TestCase):
                      'box2', 'face_centre', 3, post=l.rotX(180))
         self.write(maker, 'BoxStack')
         
+    
+    def testAddBetween(self):
+        shape1 = Box([30, 30, 30])
+        #shape2 = Sphere(50)
+        shape2 = Box([50, 50, 50])
+        maker = shape1.solid('inner').transparent(True).at('centre'
+                     ).add(shape2.solid('outer').transparent(True).at('centre'))
         
+        #outer_here = at_spec('outer', 'surface', [0, 0, 90])
+        outer_here = at_spec('outer', 'face_corner', 5, 1)
+        maker.add_between(
+            at_spec('inner', 'face_edge', 2, 3, 0),
+            outer_here,
+            lazy_shape(Cone, 'h', other_args=args(r_base=5)).solid('in_between').colour([1, 0, 0]),
+            at_spec('top'),
+            at_spec('base'),
+            align_axis=l.X_AXIS,
+            align_plane=l.Z_AXIS
+            )
+        
+        print(maker)
+         
+        for i in range(6):
+            maker.add_at(Text(str(i)).solid(('face_text', 'inner', i)).colour([0,1,0]).at(), 'face_centre', i)
+              
+        maker.add_at(Text('Here').solid('here_text').at(), 
+                     *outer_here.args_positional, **outer_here.args_named)
+        
+        self.write(maker, 'addBetween')
+    
+    def plot_point(self, v, name):
+        colour = COLOURS[len(self.points) % len(COLOURS)]
+        self.points.append((v, name, colour))
+        
+    def render_points(self, maker):
+        scale = 30
+        for v, name, colour in self.points:
+            pos_frame = l.translate(v * scale)
+            maker.add(Sphere().solid(name).colour(colour).projection(pos_frame.I))
+            maker.add(Text(name).solid(('text', name)).colour(colour).projection(l.rotZ(-45) * pos_frame.I))
+        
+    def testRotAlign(self):
+        maker = CoordinatesCage().cage('origin').at('origin')
+        
+        maker.add(Coordinates().solid('coordinates').at('origin'))
+        
+        preserve_axis = l.GVector([1, 1, 1]).N
+        
+        preserve_frame =  l.rotV(preserve_axis, 45) * l.rot_to_V(l.Y_AXIS, preserve_axis)
+        
+        align_preserve_axis = preserve_frame * l.X_AXIS
+        
+        o_align_pres_axis = preserve_axis.cross3D(align_preserve_axis).cross3D(preserve_axis)
+        
+        #o_align_pres_axis = -preserve_axis.cross3D(preserve_axis.cross3D(align_preserve_axis)).N
+        
+        self.plot_point(preserve_axis, 'preserve_axis')
+        self.plot_point(o_align_pres_axis, 'o_align_pres_axis')
+
+        plane_axis = l.Z_AXIS
+        
+        self.plot_point(plane_axis, 'plane_axis')
+        
+        to_plane = l.rotToPlane(preserve_axis, plane_axis)
+        on_plane = to_plane * preserve_axis
+        self.plot_point(on_plane, 'on_plane')
+        
+        t1_o_align_pres_axis = to_plane * o_align_pres_axis
+        self.plot_point(t1_o_align_pres_axis, 't1_o_align_pres_axis')
+        
+        tx = l.rotToPlane(t1_o_align_pres_axis, plane_axis)
+        on_plane_align_pres_axis = tx * align_preserve_axis
+        self.plot_point(on_plane_align_pres_axis, 'on_plane_align_pres_axis')
+        
+        result = to_plane.I * tx * to_plane
+        
+        new_align_preserve_axis = result * align_preserve_axis
+        self.plot_point(new_align_preserve_axis, 'new_align_preserve_axis')
+        
+        new_preserve_axis = result * preserve_axis
+        self.plot_point(new_preserve_axis, '  new_preserve_axis')
+    
+        self.render_points(maker)
+
+        self.write(maker, 'rotAlign')
 
 if __name__ == "__main__":
     #import sys;sys.argv = ['', 'Test.testName']

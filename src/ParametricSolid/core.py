@@ -3,6 +3,7 @@
 '''
 
 import argparse
+from builtins import isinstance
 import copy
 from dataclasses import dataclass
 import fnmatch
@@ -19,25 +20,28 @@ import numpy as np
 import pythonopenscad as posc
 
 
-class BaseException(Exception):
+class CoreEception(Exception):
     '''Base exception functionality'''
     def __init__(self, message):
         self.message = message
 
-class DuplicateNameException(BaseException):
+class DuplicateNameException(CoreEception):
     '''Attempting to add a shape with a name that is already used.'''
 
-class UnimplementedRenderException(BaseException):
+class UnimplementedRenderException(CoreEception):
     '''Attempting to render from a class that has nor implemented render().'''
 
-class IllegalParameterException(BaseException):
+class IllegalParameterException(CoreEception):
     '''Received an unexpected parameter.'''   
 
-class AnchorSpecifierNotFoundException(BaseException):
+class AnchorSpecifierNotFoundException(CoreEception):
     '''Requested anchor is not found.'''
     
-class IncorrectAnchorArgs(BaseException):
+class IncorrectAnchorArgs(CoreEception):
     '''Attempted to call an anchor and it failed.'''
+
+class InvalidNumberOfParametersException(CoreEception):
+    '''Number of parameters provided is incorrect.'''
 
 
 def args(*args, **kwds):
@@ -203,36 +207,34 @@ class ShapeFrame(object):
         return ShapeFrame(
             self.name, self.shape, self.reference_frame * reference_frame, self.attributes)
 
+
+def apply_post_pre(reference_frame, post: l.GMatrix=None, pre: l.GMatrix=None):
+    '''Optionally applies a pre and post matrix to the given reference_frame.'''
+    if pre:
+        reference_frame = pre * reference_frame
+    if post:
+        reference_frame = reference_frame * post
+    return reference_frame
+            
+
 @dataclass(frozen=True)
-class NamedShape(object):
-    shape: object  # Shape or Maker
+class NamedShapeBase(object):
+    shape: object  # Shape or Maker or LazyShape
     shape_type: object  # Hashable
     name: object  # Hashable
     attributes: ModelAttributes = None
+
+    def _as_non_defaults_dict(self):
+        return dict((k, getattr(self, k)) 
+                    for k in self.__annotations__.keys() if not getattr(self, k) is None)
     
-    def at(self, *args, post: l.GMatrix=None, pre: l.GMatrix=None, **kwds):
-        '''Creates a shape containing the nominated shape at the reference frame given.
-        *args, **kwds: Parameters for the shape given. If none is provided then IDENTITY is used.
-        pre: The pre multiplied transform.
-        post: The post multiplied transform,
-        '''
-        
-        reference_frame = self.shape.at(*args, **kwds) if args or kwds else l.IDENTITY
-        if pre:
-            reference_frame = pre * reference_frame
-        if post:
-            reference_frame = reference_frame * post
-        return self.projection(reference_frame)
-        
-    def projection(self, reference_frame: l.GMatrix):
-        return Maker(
-            self.shape_type, 
-            ShapeFrame(self.name, self.shape, reference_frame), 
-            attributes=self.attributes)
+    def _with(self, fname, value):
+        d = self._as_non_defaults_dict()
+        d[fname] = value
+        return self.__class__(**d)
         
     def with_attributes(self, attributes):
-        return NamedShape(
-            shape=self.shape, shape_type=self.shape_type, name=self.name, attributes=attributes)
+        return self.__class__(**self._with('attributes', attributes))
         
     def get_attributes_or_default(self) :
         attributes = self.attributes
@@ -241,47 +243,244 @@ class NamedShape(object):
         return attributes
         
     def colour(self, colour):
-        return NamedShape(
-            shape=self.shape, shape_type=self.shape_type, name=self.name, 
-            attributes=self.get_attributes_or_default().with_colour(colour))
+        return self._with(
+            'attributes', self.get_attributes_or_default().with_colour(colour))
     
     def fa(self, fa):
-        return NamedShape(
-            shape=self.shape, shape_type=self.shape_type, name=self.name,
-            attributes=self.get_attributes_or_default().with_fa(fa))
+        return self._with(
+            'attributes', self.get_attributes_or_default().with_fa(fa))
     
     def fs(self, fs):
-        return NamedShape(
-            shape=self.shape, shape_type=self.shape_type, name=self.name,
-            attributes=self.get_attributes_or_default().with_fs(fs))
+        return self._with(
+            'attributes', self.get_attributes_or_default().with_fs(fs))
     
     def fn(self, fn):
-        return NamedShape(
-            shape=self.shape, shape_type=self.shape_type, name=self.name,
-            attributes=self.get_attributes_or_default().with_fn(fn))
+        return self._with(
+            'attributes', self.get_attributes_or_default().with_fn(fn))
     
     def disable(self, disable):
-        return NamedShape(
-            shape=self.shape, shape_type=self.shape_type, name=self.name,
-            attributes=self.get_attributes_or_default().with_disable(disable))
+        return self._with(
+            'attributes', self.get_attributes_or_default().with_disable(disable))
     
     def show_only(self, show_only):
-        return NamedShape(
-            shape=self.shape, shape_type=self.shape_type, name=self.name,
-            attributes=self.get_attributes_or_default().with_show_only(show_only))
+        return self._with(
+            'attributes', self.get_attributes_or_default().with_show_only(show_only))
     
     def debug(self, debug):
-        return NamedShape(
-            shape=self.shape, shape_type=self.shape_type, name=self.name,
-            attributes=self.get_attributes_or_default().with_debug(debug))
+        return self._with(
+            'attributes', self.get_attributes_or_default().with_debug(debug))
     
     def transparent(self, transparent):
-        return NamedShape(
-            shape=self.shape, shape_type=self.shape_type, name=self.name,
-            attributes=self.get_attributes_or_default().with_transparent(transparent))
+        return self._with(
+            'attributes', self.get_attributes_or_default().with_transparent(transparent))
 
 
-class Shape():
+class NamedShape(NamedShapeBase):
+    
+    def at(self, *args, post: l.GMatrix=None, pre: l.GMatrix=None, **kwds):
+        '''Creates a shape containing the nominated shape at the reference frame given.
+        *args, **kwds: Parameters for the shape given. If none is provided then IDENTITY is used.
+        pre: The pre multiplied transform.
+        post: The post multiplied transform,
+        '''
+        
+        if not args and not kwds:
+            reference_frame = l.IDENTITY
+        else:
+            reference_frame = self.shape.at(*args, **kwds)
+        
+        reference_frame = apply_post_pre(reference_frame, pre=pre, post=post)
+        
+        return self.projection(reference_frame)
+        
+    def projection(self, reference_frame: l.GMatrix):
+        return Maker(
+            self.shape_type, 
+            ShapeFrame(self.name, self.shape, reference_frame), 
+            attributes=self.attributes)
+
+class ShapeNamer:
+    def named_shape(self, name, model_shape_frame):
+        assert False, 'This method needs to be overridden in child classes.'
+        
+        # Shape like functions.    
+    def solid(self, name):
+        return self.named_shape(name, ModeShapeFrame.SOLID)
+    
+    def hole(self, name):
+        return self.named_shape(name, ModeShapeFrame.HOLE)
+    
+    def cage(self, name):
+        return self.named_shape(name, ModeShapeFrame.CAGE)
+
+
+class ShapeMaker:
+    def as_maker(self, name, model_shape_frame, reference_frame):
+        assert False, 'This method needs to be overridden in child classes.'
+
+    def as_solid(self, name, reference_frame):
+        return self.as_maker(name, ModeShapeFrame.SOLID, reference_frame)
+    
+    def as_hole(self, name, reference_frame):
+        return self.as_maker(name, ModeShapeFrame.HOLE, reference_frame)
+    
+    def as_cage(self, name, reference_frame):
+        return self.as_maker(name, ModeShapeFrame.CAGE, reference_frame)
+
+
+class LazyNamedShape(NamedShapeBase):
+    '''Provides attributes but no transformation to a maker.'''
+    
+    def to_named_shape(self, shape):
+        values = self._as_non_defaults_dict()
+        values['shape'] = shape
+        return NamedShape(**values)
+
+@dataclass(frozen=True)
+class LazyShape(ShapeNamer):
+    shape_type: type
+    field_specifiers: tuple
+    other_args: tuple
+    
+    def build(self, *params):
+        if len(params) != len(self.field_specifiers):
+            raise InvalidNumberOfParametersException(
+                f'Received {len(params)} but expected {len(self.field_specifiers)}')
+
+        args = copy.deepcopy(self.other_args)
+        for field_specifier, value in zip(self.field_specifiers, params):
+            if isinstance(field_specifier, str):
+                args[1][field_specifier] = value
+            else:
+                field_specifier(value, args)
+        
+        return self.shape_type(*args[0], **args[1])
+
+    def named_shape(self, name, model_shape_frame):
+        return LazyNamedShape(self, model_shape_frame, name)
+
+
+@dataclass(frozen=True)
+class AtSpecifier:
+    args_positional: tuple
+    args_named: frozendict
+    
+    def apply(self, shape_obj):
+        return shape_obj.at(*self.args_positional, **self.args_named)
+
+def at_spec(*args, **kwds):
+    return AtSpecifier(args, kwds)
+
+def add_between(
+    source_maker,
+    target_from, 
+    target_to,
+    lazy_named_shape,
+    shape_from,
+    shape_to,
+    shape_add_at=None,
+    align_axis=None,
+    align_plane=None,
+    target_maker=None):
+    
+    #### remove from here
+#     source_maker.add(
+#         Coordinates().solid('cc_from').projection(target_from.apply(source_maker).I))
+#     source_maker.add(
+#         Coordinates().solid('cc_to').projection(target_to.apply(source_maker).I))
+    #### remove to here
+    
+    # Get start and end points.
+    from_frame = target_from.apply(source_maker)
+    from_vec = from_frame.get_translation()
+    to_vec = target_to.apply(source_maker).get_translation()
+    
+    # Need the diff vector to align to.
+    diff_vector = from_vec - to_vec
+    
+    #### remove from here
+#     source_maker.add(
+#          Coordinates().solid('diff_vec-fI').projection(l.translate(diff_vector + to_vec).I))
+#     source_maker.add(
+#          Coordinates().solid('diff_vec-tI').projection(l.translate(from_vec - diff_vector).I))
+#     source_maker.add(
+#          Coordinates().solid('diff_vec-f').projection(l.translate(diff_vector + to_vec)))
+#     source_maker.add(
+#          Coordinates().solid('diff_vec-t').projection(l.translate(from_vec - diff_vector)))
+    #### remove to here
+    
+    # The length allows us to build the shape now.
+    length = diff_vector.length()
+    shape_obj = lazy_named_shape.shape.build(length)
+    
+    #### remove from here
+    source_maker.add(
+        shape_obj.solid('original').colour([0, 1, 1]).at())
+    #### remove to here
+    
+    # Get the new shape's alignment vector.
+    shape_from_frame = shape_from.apply(shape_obj)
+    shape_to_frame = shape_to.apply(shape_obj)
+    
+    # Get the frame of reference of the target point.
+    shape_add_at_frame = shape_add_at.apply(shape_obj) if shape_add_at else shape_from_frame
+    shape_add_at_frame_inv = shape_add_at_frame.I  ##???
+    
+    world_shape_to =  (shape_to_frame * shape_add_at_frame_inv)
+    world_shape_from = (shape_from_frame * shape_add_at_frame_inv)
+    
+    #### remove from here
+#     source_maker.add(
+#         Coordinates().solid('wf_from').projection(world_shape_from))
+#     source_maker.add(
+#         Coordinates().solid('wf_to').projection(world_shape_to))
+    #### remove to here
+    
+    align_vec = world_shape_from.get_translation() - world_shape_to.get_translation()
+    align_frame = l.rot_to_V(align_vec, diff_vector)
+     
+    if align_axis and align_plane:
+        align_axis_vec = shape_add_at_frame.get_rotation() * align_axis
+        align_plane_vec = from_frame.get_rotation() * align_plane
+        axis_alignment = l.rotAlign(from_frame.get_rotation() * diff_vector, align_axis_vec, align_plane_vec)
+        #align_frame = align_frame * axis_alignment
+    
+    add_at_frame = l.translate(to_vec) * align_frame
+    #add_at_frame  = l.translate(to_vec) #### remove
+    #add_at_frame = l.IDENTITY #### remove
+    
+        
+    #### remove from here
+#     source_maker.add(
+#         Coordinates().solid('nwf_from').projection(add_at_frame.I))
+#     source_maker.add(
+#         Coordinates().solid('nwf_to').projection(add_at_frame * world_shape_to))
+    #### remove to here
+    
+    target_maker = target_maker if target_maker else source_maker
+    
+    named_shape = lazy_named_shape.to_named_shape(shape_obj)
+    
+    
+    target_maker.add_at(
+        named_shape.projection(shape_from_frame), pre=add_at_frame)
+    
+    #### remove from here
+    target_maker.add_at(Coordinates().solid('top_ib').at('origin'), 'in_between', 'top')
+    target_maker.add_at(Coordinates().solid('base_ib').at('origin'), 'in_between', 'base')
+    
+#     target_maker.add_at(
+#         Coordinates().solid('cc').projection(shape_from_frame), pre=add_at_frame)
+    #### remove to here
+    
+    return target_maker
+    
+
+def lazy_shape(shape_type, *field_specifiers, other_args=args()):
+    return LazyShape(shape_type, field_specifiers, other_args)
+
+
+class Shape(ShapeNamer, ShapeMaker):
     
     EXAMPLE_ANCHORS=()
     EXAMPLE_SHAPE_ARGS=args()
@@ -291,40 +490,35 @@ class Shape():
     
     def copy_if_mutable(self):
         return self
+        
+    def named_shape(self, name, model_shape_frame):
+        'Overrides ShapeNamer.named_shape'
+        return NamedShape(self.copy_if_mutable(), model_shape_frame, name)
     
-    def solid(self, name):
-        return NamedShape(self.copy_if_mutable(), ModeShapeFrame.SOLID, name)
-    
-    def hole(self, name):
-        return NamedShape(self.copy_if_mutable(), ModeShapeFrame.HOLE, name)
-    
-    def cage(self, name):
-        return NamedShape(self.copy_if_mutable(), ModeShapeFrame.CAGE, name)
-    
-    def as_solid(self, name, reference_frame):
+    def as_maker(self, name, model_shape_frame, reference_frame):
+        'Overrides ShapeNamer.as_maker'
         return Maker(
-            ModeShapeFrame.SOLID, ShapeFrame(name, self.copy_if_mutable(), reference_frame))
-    
-    def as_hole(self, name, reference_frame):
-        return Maker(ModeShapeFrame.HOLE, ShapeFrame(name, self.copy_if_mutable(), reference_frame))
-    
-    def as_cage(self, name, reference_frame):
-        return Maker(ModeShapeFrame.CAGE, ShapeFrame(name, self.copy_if_mutable(), reference_frame))
-    
+            model_shape_frame, ShapeFrame(name, self.copy_if_mutable(), reference_frame))
+
     def has_anchor(self, name):
         return name in self.anchorscad.anchors
     
     def anchor_names(self):
-        return tuple(self.anchors.anchors.keys())
+        return tuple(self.anchorscad.anchors.keys())
     
     def at(self, anchor_name, *args, **kwds):
         spec = self.anchorscad.get(anchor_name)
+        if not spec:
+            raise IncorrectAnchorArgs(
+                f'Could not find {anchor_name!r} on {self.__class__.__name__}\n'
+                f'Available names are {self.anchor_names()!r}')
+            
         func = spec[0]
         try:
             return func(self, *args, **kwds)
         except TypeError as e:
             raise IncorrectAnchorArgs(
-                f'Attempted to call {anchor_name} on {self.__class__.__name__}'
+                f'Attempted to call {anchor_name!r} on {self.__class__.__name__}'
                 f' with args={args!r} kwds={kwds!r}') from e
     
     def name(self):
@@ -345,6 +539,45 @@ class Shape():
         for entry in cls.EXAMPLE_ANCHORS:
             entry[0](maker, entry[1])
         return maker
+    
+    def add_between(
+            self,
+            target_from, 
+            target_to,
+            lazy_named_shape,
+            shape_from,
+            shape_to,
+            shape_add_at=None,
+            align_axis=None,
+            align_plane=None,
+            target_maker=None):
+        '''Builds a shape of type cls between two nominated anchors.
+        Returns an AddBetween that allows the specification of the first and second 
+        anchors. The the length of the difference between he 2 anchors is optionally
+        passed to the shape class constructor as a named parameter.
+        Args:
+            target_from: at_spec() of the from anchor parameters.
+            target_to: at_spec() of the to anchor parameters.
+            lazy_named_shape: a lazy_shape() with the parameters to create the shape.
+            shape_from: at_spec() of the anchor to connect to target_from
+            shape_to: at_spec() of the anchor to connect to target_to
+            shape_add_at: at_spec() of an anchor point to offset the shape_from and shape_to
+            align_axis: the shape axis to align to the align_plane in the shape frame of reference,
+            align_plane: The plane to use for alignment of the align_axis in the target 
+                frame of reference.
+        '''
+        return add_between(
+            self,
+            target_from, 
+            target_to,
+            lazy_named_shape,
+            shape_from,
+            shape_to,
+            shape_add_at=shape_add_at,
+            align_axis=align_axis,
+            align_plane=align_plane,
+            target_maker=target_maker)
+
 
 @dataclass()
 class _Mode():
@@ -515,10 +748,7 @@ class Maker(Shape):
                 f'object of type {maker.__class__.__name__!r}.')
             
         local_frame = self.at(*args, **kwds) if args or kwds else l.IDENTITY
-        if pre:
-            local_frame = pre * local_frame
-        if post:
-            local_frame = local_frame * post
+        local_frame = apply_post_pre(local_frame, pre=pre, post=post)
         
         for entry in maker.entries.values():
             self._add_mode_shape_frame(entry.pre_mul(local_frame))
@@ -573,7 +803,7 @@ class Maker(Shape):
                 f'Available names are {self.anchor_names()}.')
         
         return entry.reference_frame() * entry.shape().at(*args, **kwds)
-            
+
     def name(self):
         return 'Maker({name!r})'.format(name=self.reference_shape.name())
     
@@ -650,6 +880,7 @@ class AnchorsBuilder():
     
     def build(self):
         return Anchors(name=self.name, level=self.level, anchors=frozendict(self.anchors))
+
 
 def shape(name=None, level=10):
     def decorator(clazz):
@@ -1063,6 +1294,7 @@ class Coordinates(CompositeShape):
         maker = CoordinatesCage().cage('origin').at('origin')
             
         t = l.translate([0, 0, -self.overlap])
+        
         maker .add_at(arrow.solid('x_arrow').colour(self.colour_x).at(
             'base', pre=t * l.rotZ(180)), 'x', pre=l.rotY(-90))
         maker .add_at(arrow.solid('y_arrow').colour(self.colour_y).at(
@@ -1106,6 +1338,7 @@ class AnnotatedCoordinates(CompositeShape):
     @anchor('The base of the stem of the object')
     def origin(self, *args, **kwds):
         return l.IDENTITY
+
     
 def get_shape_class(module, name):
     mv = getattr(module, name)

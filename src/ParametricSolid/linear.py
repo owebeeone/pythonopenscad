@@ -106,7 +106,6 @@ LIST_4_FLOAT = list_of(strict_float, len_min_max=(4, 4), fill_to_min=0.0)
 LIST_3_4_FLOAT = list_of(strict_float, len_min_max=(3, 4), fill_to_min=None)
 LIST_3_4X4_FLOAT = list_of(LIST_4_FLOAT, len_min_max=(3, 4))
 
-
 class GVector(object):
     '''A 3D (4x) vector.
     
@@ -327,6 +326,9 @@ Y_AXIS = GVector([0, 1, 0])
 # GVector for the z axis.
 Z_AXIS = GVector([0, 0, 1])
 
+# GVector for the z axis.
+ZERO_VEC = GVector([0, 0, 0])
+
 
 class GMatrix(object):
     '''A 4x4 matrix for 3D geometric transformations.
@@ -384,6 +386,8 @@ class GMatrix(object):
                 return np.matrix(v)
             elif shape == (3, 4):
                 return np.matrix(cls._add_last_row(v))
+            elif shape == (3, 3):
+                return np.matrix(cls._add_last_row(LIST_3_4X4_FLOAT(v)))
             else:
                 raise MatrixShapeError(
                     'Array supplied is not a 4x4 or 3x4, Shape is %s' %
@@ -479,6 +483,12 @@ class GMatrix(object):
 
     def copy(self):
         return GMatrix(self)
+    
+    def get_translation(self):
+        return GVector(self.m.T.A[3])
+    
+    def get_rotation(self):
+        return GMatrix(self.A[0:3,0:3])
 
     @property
     def I(self):
@@ -547,6 +557,9 @@ def rotZ(degrees=90, radians=None):
                               [sinr, cosr, 0, 0], 
                               [0, 0, 1, 0], 
                               [0, 0, 0, 1]]))
+ROTZ_90 = rotZ(90)
+ROTZ_180 = rotZ(180)
+ROTZ_270 = rotZ(-90)
 
 def rotX(degrees=90, radians=None):
     '''Returns a GMatrix that causes a rotation about X a given number of degrees.'''
@@ -558,6 +571,9 @@ def rotX(degrees=90, radians=None):
                               [0, cosr, -sinr, 0], 
                               [0, sinr, cosr, 0], 
                               [0, 0, 0, 1]]))
+ROTX_90 = rotX(90)
+ROTX_180 = rotX(180)
+ROTX_270 = rotX(-90)
     
 def rotY(degrees=90, radians=None):
     '''Returns a GMatrix that causes a rotation about Y a given number of degrees.'''
@@ -569,16 +585,21 @@ def rotY(degrees=90, radians=None):
                               [0, 1, 0, 0],
                               [-sinr, 0, cosr, 0], 
                               [0, 0, 0, 1]]))
+ROTY_90 = rotY(90)
+ROTY_180 = rotY(180)
+ROTY_270 = rotY(-90)
     
-def rotV(v, degrees=90, radians=None):
-    '''Returns a GMatrix that causes a rotation about an axis vector V a given number of degrees.'''
+
+def normalize(v):
+    '''Returns a normalalised v.'''
     if not isinstance(v, GVector):
         v = GVector(v)
-    if radians is None:
-        radians = np.pi * (degrees / 180.0)
-    cosr = clean(np.cos(radians))
-    sinr = clean(np.sin(radians))
-    u = v.N
+    return v.N
+
+def rotVSinCos(v, sinr, cosr):
+    '''Returns a GMatrix that causes a rotation about an axis vector V a given the sin and cos
+    of rotation angle.'''
+    u = normalize(v)
     ux = u.x
     uy = u.y
     uz = u.z
@@ -595,6 +616,14 @@ def rotV(v, degrees=90, radians=None):
          [uxy * lcosr + uz * sinr, cosr + uy2 * lcosr, uyz * lcosr - ux * sinr, 0],
          [uxz * lcosr - uy * sinr, uyz * lcosr + ux * sinr, cosr + uz2 * lcosr, 0],
          [0.0, 0, 0, 1]]))
+
+def rotV(v, degrees=90, radians=None):
+    '''Returns a GMatrix that causes a rotation about an axis vector V a given number of degrees.'''
+    if radians is None:
+        radians = np.pi * (degrees / 180.0)
+    cosr = clean(np.cos(radians))
+    sinr = clean(np.sin(radians))
+    return rotVSinCos(v, sinr, cosr)
 
 ROTV111_240=GMatrix([
     [0.0, 1.0, 0.0, 0.0],
@@ -641,16 +670,50 @@ def rot_to_V(from_v, to_v):
     if abs(sinr) < 1e-12:
         return IDENTITY.copy()
     cosr = from_vn.dot3D(to_vn)
-    angle = np.arctan2(sinr, cosr)
+    
+    return rotVSinCos(cross, sinr, cosr)
 
-    return rotV(cross, radians=angle)
+def rotAlign(preserve_axis, align_preserve_axis, plane_axis):
+    '''Returns a GMatrix that rotates around the preserve_axis in order to align
+    the align_preserve_axis with the plane described by plane_axis.
+    '''
+    preserve_axis = normalize(preserve_axis)
+    align_preserve_axis = normalize(align_preserve_axis)
+    plane_axis = normalize(plane_axis)
+    
+    # Ensure that align_pres_axis is orthogonal to preserve_axis
+    align_pres_axis = preserve_axis.cross3D(align_preserve_axis).cross3D(preserve_axis).N
+    
+    # Find the rotation to the plane for the preserve_axis.
+    to_plane = rotToPlane(preserve_axis, plane_axis)
+    
+    # Find the location that align_preserve_axis end up after the to_plane rotation. 
+    t1_o_align_pres_axis = to_plane * align_pres_axis
+    
+    # Find the rotation to make align_to_plane hit the plane as well.
+    align_to_plane = rotToPlane(t1_o_align_pres_axis, plane_axis)
+    
+    # Apply the transformations in order.
+    result = to_plane.I * align_to_plane * to_plane
+
+    return result
+
+def rotToPlane(v, plane_normal):
+    '''Find the transform that rotates v onto the plane described by plane_normal and going
+    through the origin.
+    '''
+    v = normalize(v)
+    plane_normal = normalize(plane_normal)
+    
+    dot = plane_normal.dot3D(v)
+    cross = plane_normal.cross3D(v)
+    angle = np.arctan2(cross.length(), dot)
+    return rotV(cross, radians=np.pi/2 - angle)
 
 def mirror(axis):
     '''Mirror at the origin about any plane. The axis provided is the normal to the mirror plane.
     '''
-    if not isinstance(axis, GVector):
-        axis = GVector(axis)
-    axis = axis.N
+    axis = normalize(axis)
     dotx = X_AXIS.dot3D(axis)
     # Use one of the predefined mirror matricies, We first have to choose one that is
     # not colinear so we don't break rotV with a zero length cross vector.

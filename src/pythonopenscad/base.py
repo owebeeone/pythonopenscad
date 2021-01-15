@@ -38,8 +38,8 @@ License along with this library; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
 '''
 
-import sys
 import copy
+import sys
 
 
 # Exceptions for dealing with argument checking.
@@ -1079,8 +1079,6 @@ class Sphere(PoscBase):
     OSC_API_SPEC = OpenScadApiSpecifier('sphere', (
         Arg('r', float, 1.0, 'radius of sphere. Ignores d if set.'),
         Arg('d', float, None, 'diameter of sphere.'),
-        Arg('center',  bool_strict, False,
-            'If True sets center at origin.'),
         FA_ARG,
         FS_ARG,
         FN_ARG),
