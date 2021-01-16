@@ -230,14 +230,37 @@ class Path():
         return (points, 
                 (tuple(tuple(range(indexes[i], indexes[i+1])) for i in range(len(start_indexes)))))
 
+    def transform_to_builder(self, m):
+        '''Returns a PathBuilder with the new transformed path.'''
+        builder = PathBuilder()
+        
+        for op in self.ops:
+            builder.add_op_with_params(op.transform(m))
+        return builder
+            
+    def transform(self, m):
+        return self.transform_to_builder(m).build()
+    
+def to_gvector(np_array):
+    if len(np_array) == 2:
+        return l.GVector([np_array[0], np_array[1], 0, 1])
+    else:
+        return l.GVector(np_array)
+        
 @dataclass()
 class PathBuilder():
     ops: list
     name_map: dict
     multi: bool=False
     
+    class OpBase:
+        def _as_non_defaults_dict(self):
+            return dict((k, getattr(self, k)) 
+                        for k in self.__annotations__.keys() 
+                            if not getattr(self, k) is None and k != 'prev_op')
+    
     @dataclass(frozen=True)
-    class _LineTo:
+    class _LineTo(OpBase):
         '''Line segment from current position.'''
         point: np.array
         prev_op: object
@@ -267,10 +290,15 @@ class PathBuilder():
             
         def position(self, t):
             return self.point + (t - 1) * self.direction(0)
+        
+        def transform(self, m):
+            params = self._as_non_defaults_dict()
+            params['point'] = (m * to_gvector(self.point)).A[0:len(self.point)]
+            return (self.__class__, params)
             
     
     @dataclass(frozen=True)
-    class _MoveTo:
+    class _MoveTo(OpBase):
         '''Move to position.'''
         point: np.array
         prev_op: object
@@ -299,9 +327,14 @@ class PathBuilder():
         def position(self, t):
             return self.point  # Move is associated only with the move point. 
 
+        def transform(self, m):
+            params = self._as_non_defaults_dict()
+            params['point'] = (m * to_gvector(self.point)).A[0:len(self.point)]
+            return (self.__class__, params)
+            
 
     @dataclass(frozen=True)
-    class _SplineTo:
+    class _SplineTo(OpBase):
         '''Cubic Bezier Spline to.'''
         points: np.array
         prev_op: object
@@ -348,6 +381,13 @@ class PathBuilder():
             elif t > 1:
                 return self.direction(1) * t + self.points[2]
             return self.spline.evaluate(t)
+        
+        def transform(self, m):
+            points = list((m * to_gvector(p)).A[0:len(p)] for p in self.points)
+            points = np.array(LIST_23X2_FLOAT(points))
+            params = self._as_non_defaults_dict()
+            params['points'] = points
+            return (self.__class__, params)
     
     def __init__(self, multi=False):
         self.ops = []
@@ -361,7 +401,12 @@ class PathBuilder():
             self.name_map[op.name] = op
         self.ops.append(op)
         return self
-        
+    
+    def add_op_with_params(self, op_parts):
+        params_dict = op_parts[1]
+        params_dict['prev_op'] = self.last_op()
+        return self.add_op((op_parts[0])(**params_dict))
+
     def last_op(self):
         return self.ops[-1] if self.ops else None
         

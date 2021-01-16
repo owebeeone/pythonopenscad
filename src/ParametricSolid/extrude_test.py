@@ -9,6 +9,7 @@ from unittest import TestCase
 
 import ParametricSolid.core as core
 import ParametricSolid.extrude as extrude
+import ParametricSolid.linear as l
 from ParametricSolid.test_tools import iterable_assert
 import numpy as np
 
@@ -211,6 +212,28 @@ class ExtrudeTest(TestCase):
                            [2.        , 0.        ],
                            [2.        , 1.        ],
                            [1.        , 2.        ]]), 
+                           ((1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12), 
+                            (13, 14, 15))))
+        
+        new_path = path.transform(l.rotZ(90))
+        
+        iterable_assert(self.assertAlmostEqual, new_path.polygons(TestMetaData()),
+                        (([[ 0.        ,  0.        ],
+                           [ 0.        ,  1.        ],
+                           [-0.12753619,  1.25326914],
+                           [-0.46679535,  1.47673525],
+                           [-0.95275334,  1.67713536],
+                           [-1.52038605,  1.86120651],
+                           [-2.10466933,  2.03568577],
+                           [-2.64057907,  2.20731016],
+                           [-3.06309113,  2.38281673],
+                           [-3.3071814 ,  2.56894253],
+                           [-3.30782573,  2.77242461],
+                           [-3.        ,  3.        ],
+                           [ 0.        ,  1.        ],
+                           [ 0.        ,  2.        ],
+                           [-1.        ,  2.        ],
+                           [-2.        ,  1.        ]]), 
                            ((1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12), 
                             (13, 14, 15))))
 
