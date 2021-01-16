@@ -123,14 +123,13 @@ class CoreTest(unittest.TestCase):
         self.write(redthing1, 'Colour')
         
     def testText(self):
-        t1 = Text('Hello')
+        t1 = Text('Hello', depth=4)
         self.write(
-            t1.solid('default_text').fn(20).at('default', 'rear').add(
+            t1.solid('default_text').fn(10).at('default', 'centre').add(
                 t1.solid('scaled_text').fn(20)
                 .at('default', 'rear', 
                     post=l.translate([0, 20, 0]) * l.scale([1, 1, 1/10]))
             ), 'Text')
-        
         
     def testCone(self):
         c1 = Cone(h=40, r_base=22, r_top=4)
@@ -140,7 +139,6 @@ class CoreTest(unittest.TestCase):
                .at('top', pre=l.translate([0, 0, -5]), post=l.rotX(180)),
             'surface', 20, 45)
         self.write(maker, 'Cone')
-        
         
     def testArrow(self):
         a1 = Arrow(l_stem=10)
@@ -187,7 +185,7 @@ class CoreTest(unittest.TestCase):
             at_spec('top'),
             at_spec('base'),
             align_axis=l.X_AXIS,
-            align_plane=l.Z_AXIS
+            align_plane=l.X_AXIS
             )
         
         print(maker)
@@ -199,10 +197,147 @@ class CoreTest(unittest.TestCase):
                      *outer_here.args_positional, **outer_here.args_named)
         
         self.write(maker, 'addBetween')
+        
+    
+    def testAddBetween2(self):
+        shape1 = Box([30, 40, 50])
+        #shape2 = Sphere(50)
+        shape2 = Box([50, 80, 60])
+        maker = shape1.solid('inner').transparent(True).at('centre'
+                     ).add(shape2.solid('outer').transparent(True).at('centre'))
+        
+        #outer_here = at_spec('outer', 'surface', [0, 0, 90])
+        outer_here = at_spec('outer', 'face_corner', 1, 1)
+        
+        source_maker = maker
+        target_from = at_spec('inner', 'face_edge', 0, 3, 0.25)
+        target_to = outer_here
+        lazy_named_shape = lazy_shape(Cone, 'h', other_args=args(r_base=5)).solid('in_between').colour([1, 0, 0])
+        shape_from = at_spec('top')
+        shape_to = at_spec('base')
+        shape_add_at = None
+        align_axis = l.X_AXIS
+        align_plane = l.X_AXIS
+        target_maker = None
+        
+            
+        # Get start and end points.
+        from_frame = target_from.apply(source_maker)
+        from_vec = from_frame.get_translation()
+        to_vec = target_to.apply(source_maker).get_translation()
+        
+        # Need the diff vector to align to.
+        diff_vector = from_vec - to_vec
+        
+        #### remove from here
+    #     source_maker.add(
+    #          Coordinates().solid('diff_vec-fI').projection(l.translate(diff_vector + to_vec).I))
+    #     source_maker.add(
+    #          Coordinates().solid('diff_vec-tI').projection(l.translate(from_vec - diff_vector).I))
+    #     source_maker.add(
+    #          Coordinates().solid('diff_vec-f').projection(l.translate(diff_vector + to_vec)))
+    #     source_maker.add(
+    #          Coordinates().solid('diff_vec-t').projection(l.translate(from_vec - diff_vector)))
+        #### remove to here
+        
+        # The length allows us to build the shape now.
+        length = diff_vector.length()
+        shape_obj = lazy_named_shape.shape.build(length)
+        
+        #### remove from here
+        source_maker.add(
+            shape_obj.solid('original').colour([0, 1, 1]).at())
+        #### remove to here
+        
+        # Get the new shape's alignment vector.
+        shape_from_frame = shape_from.apply(shape_obj)
+        shape_to_frame = shape_to.apply(shape_obj)
+        
+        # Get the frame of reference of the target point.
+        shape_add_at_frame = shape_add_at.apply(shape_obj) if shape_add_at else shape_from_frame
+        shape_add_at_frame_inv = shape_add_at_frame.I  ##???
+        
+        world_shape_to =  (shape_to_frame * shape_add_at_frame_inv)
+        world_shape_from = (shape_from_frame * shape_add_at_frame_inv)
+        
+        #### remove from here
+    #     source_maker.add(
+    #         Coordinates().solid('wf_from').projection(world_shape_from))
+    #     source_maker.add(
+    #         Coordinates().solid('wf_to').projection(world_shape_to))
+        #### remove to here
+        
+        align_vec = world_shape_from.get_translation() - world_shape_to.get_translation()
+        align_frame = l.rot_to_V(align_vec, diff_vector)
+         
+        if align_axis and align_plane:
+            
+    #         source_maker.add(
+    #             Coordinates().solid('shape_add_at_frame').projection(shape_add_at_frame.I))
+    #         source_maker.add(
+    #             Coordinates().solid('shape_add_at_frame*align_frame').projection((align_frame * shape_add_at_frame).I))
+            #align_axis_vec = shape_add_at_frame.get_rotation() * align_frame * align_axis
+
+            wdiff = diff_vector
+            align_axis_vec = align_frame * align_axis
+            
+
+            #align_axis_vec = align_frame * align_axis
+            
+            
+            align_plane_vec = from_frame.get_rotation() * align_plane
+            
+            axis_alignment = l.rotAlign(wdiff, align_axis_vec, align_plane_vec)
+            
+            self.plot_point(wdiff.N, 'wdiff')
+            self.plot_point([0, 0, 0], '000')
+            self.plot_point(align_axis_vec, 'align_axis_vec')
+            self.plot_point(align_plane_vec, 'align_plane_vec')
+            
+            align_frame = axis_alignment * align_frame
+            #align_frame = align_frame.I * axis_alignment * align_frame
+        
+        add_at_frame = l.translate(to_vec) * align_frame
+        #add_at_frame  = l.translate(to_vec) #### remove
+        #add_at_frame = l.IDENTITY #### remove
+        
+            
+        #### remove from here
+    #     source_maker.add(
+    #         Coordinates().solid('nwf_from').projection(add_at_frame.I))
+    #     source_maker.add(
+    #         Coordinates().solid('nwf_to').projection(add_at_frame * world_shape_to))
+        #### remove to here
+        
+        target_maker = target_maker if target_maker else source_maker
+        
+        named_shape = lazy_named_shape.to_named_shape(shape_obj)
+        
+        
+        target_maker.add_at(
+            named_shape.projection(shape_from_frame), pre=add_at_frame)
+        
+        #### remove from here
+        target_maker.add_at(Coordinates().solid('top_ib').at('origin'), 'in_between', 'top')
+        target_maker.add_at(Coordinates().solid('base_ib').at('origin'), 'in_between', 'base')
+        
+        
+        print(maker)
+         
+        for i in range(6):
+            maker.add_at(Text(str(i)).solid(('face_text', 'inner', i)).colour([0,1,0]).at(), 'face_centre', i)
+              
+        maker.add_at(Text('Here').solid('here_text').at(), 
+                     *outer_here.args_positional, **outer_here.args_named)
+        
+        self.render_points(maker)
+        self.write(maker, 'addBetween2')
+        
+
     
     def plot_point(self, v, name):
         colour = COLOURS[len(self.points) % len(COLOURS)]
-        self.points.append((v, name, colour))
+        self.points.append((l.GVector(v), name, colour))
         
     def render_points(self, maker):
         scale = 30

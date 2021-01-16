@@ -362,6 +362,8 @@ class LazyShape(ShapeNamer):
 
 @dataclass(frozen=True)
 class AtSpecifier:
+    '''An 'at' specifier contains the args to call an Shape at() function. This allows 
+    lazy evaluation of a Shape a() call.'''
     args_positional: tuple
     args_named: frozendict
     
@@ -369,6 +371,7 @@ class AtSpecifier:
         return shape_obj.at(*self.args_positional, **self.args_named)
 
 def at_spec(*args, **kwds):
+    '''Returns an AtSpecifier with the parameters sent to this function.'''
     return AtSpecifier(args, kwds)
 
 def add_between(
@@ -382,14 +385,25 @@ def add_between(
     align_axis=None,
     align_plane=None,
     target_maker=None):
-    
-    #### remove from here
-#     source_maker.add(
-#         Coordinates().solid('cc_from').projection(target_from.apply(source_maker).I))
-#     source_maker.add(
-#         Coordinates().solid('cc_to').projection(target_to.apply(source_maker).I))
-    #### remove to here
-    
+    '''Creates a shape with the provided lazy_named_shape and the first parameter being
+    the length of the vector between the frames resulting in evaluating the target_from and 
+    target_to. The shape's shape_from and shape_to AtSpecifiers are used as the align axis
+    of the the created shape. If specified, shape_add_at will be used to provide the 'shape_from'
+    actual location. Alignment of the axes perpendicular to the from-to axis can be done by
+    providing the align_axis and align_plane parameters.
+    Args:
+        source_maker: The Shape (Maker) that provides the target frames.
+        target_from: target_to: AtSpecifier for the from and to target frames.
+        lazy_named_shape: The factory of a named shape given a distance.
+        shape_from, shape_to: The frame (point only) that aligns with target frames.
+        shape_add_at: The frame actually used to add the object (with the alignment 
+            computed from shape_from, shape_to alignment with target_from: target. if 
+            not provided shape_from is used (essentially IDENITY).
+        align_axis, align_plane: The axis on the generated shape object that will be made
+            co-planar with the target object's align_plane axis. i.e. The plane defined by 
+            the target object's align_plane normal vector.
+    '''
+
     # Get start and end points.
     from_frame = target_from.apply(source_maker)
     from_vec = from_frame.get_translation()
@@ -398,25 +412,9 @@ def add_between(
     # Need the diff vector to align to.
     diff_vector = from_vec - to_vec
     
-    #### remove from here
-#     source_maker.add(
-#          Coordinates().solid('diff_vec-fI').projection(l.translate(diff_vector + to_vec).I))
-#     source_maker.add(
-#          Coordinates().solid('diff_vec-tI').projection(l.translate(from_vec - diff_vector).I))
-#     source_maker.add(
-#          Coordinates().solid('diff_vec-f').projection(l.translate(diff_vector + to_vec)))
-#     source_maker.add(
-#          Coordinates().solid('diff_vec-t').projection(l.translate(from_vec - diff_vector)))
-    #### remove to here
-    
     # The length allows us to build the shape now.
     length = diff_vector.length()
     shape_obj = lazy_named_shape.shape.build(length)
-    
-    #### remove from here
-    source_maker.add(
-        shape_obj.solid('original').colour([0, 1, 1]).at())
-    #### remove to here
     
     # Get the new shape's alignment vector.
     shape_from_frame = shape_from.apply(shape_obj)
@@ -424,64 +422,50 @@ def add_between(
     
     # Get the frame of reference of the target point.
     shape_add_at_frame = shape_add_at.apply(shape_obj) if shape_add_at else shape_from_frame
-    shape_add_at_frame_inv = shape_add_at_frame.I  ##???
+    shape_add_at_frame_inv = shape_add_at_frame.I
     
     world_shape_to =  (shape_to_frame * shape_add_at_frame_inv)
     world_shape_from = (shape_from_frame * shape_add_at_frame_inv)
     
-    #### remove from here
-#     source_maker.add(
-#         Coordinates().solid('wf_from').projection(world_shape_from))
-#     source_maker.add(
-#         Coordinates().solid('wf_to').projection(world_shape_to))
-    #### remove to here
-    
     align_vec = world_shape_from.get_translation() - world_shape_to.get_translation()
     align_frame = l.rot_to_V(align_vec, diff_vector)
-     
+    
+    # Axis alignment may be requested. The diff_vector will be the axis of rotation and the
+    # alignment is made from the given model axis to the axis plane on the target anchor.
     if align_axis and align_plane:
-        align_axis_vec = shape_add_at_frame.get_rotation() * align_axis
+        align_axis_vec = align_frame * align_axis
         align_plane_vec = from_frame.get_rotation() * align_plane
-        axis_alignment = l.rotAlign(from_frame.get_rotation() * diff_vector, align_axis_vec, align_plane_vec)
-        #align_frame = align_frame * axis_alignment
+        axis_alignment = l.rotAlign(diff_vector, align_axis_vec, align_plane_vec)
+        align_frame = axis_alignment * align_frame
     
     add_at_frame = l.translate(to_vec) * align_frame
-    #add_at_frame  = l.translate(to_vec) #### remove
-    #add_at_frame = l.IDENTITY #### remove
-    
-        
-    #### remove from here
-#     source_maker.add(
-#         Coordinates().solid('nwf_from').projection(add_at_frame.I))
-#     source_maker.add(
-#         Coordinates().solid('nwf_to').projection(add_at_frame * world_shape_to))
-    #### remove to here
     
     target_maker = target_maker if target_maker else source_maker
     
-    named_shape = lazy_named_shape.to_named_shape(shape_obj)
-    
+    named_shape = lazy_named_shape.to_named_shape(shape_obj)    
     
     target_maker.add_at(
         named_shape.projection(shape_from_frame), pre=add_at_frame)
-    
-    #### remove from here
-    target_maker.add_at(Coordinates().solid('top_ib').at('origin'), 'in_between', 'top')
-    target_maker.add_at(Coordinates().solid('base_ib').at('origin'), 'in_between', 'base')
-    
-#     target_maker.add_at(
-#         Coordinates().solid('cc').projection(shape_from_frame), pre=add_at_frame)
-    #### remove to here
-    
+
     return target_maker
     
 
 def lazy_shape(shape_type, *field_specifiers, other_args=args()):
+    '''Returns a 'LazyShape', a factory for a shape. The parameters provided
+    to the factory will be applied with 'other_args' to generate the final set
+    of parameters to the Shape constructor.
+    Args:
+        shape_type: A Shape class or a factory function.
+        field_specifiers: The field names what will be associated will be associated
+        in the LazyShape.build() function.
+        other_args: Other args passed to the shape_type constructor.
+    '''
     return LazyShape(shape_type, field_specifiers, other_args)
 
 
 class Shape(ShapeNamer, ShapeMaker):
-    
+    '''The base "shape" class for Anchorscad.
+    '''
     EXAMPLE_ANCHORS=()
     EXAMPLE_SHAPE_ARGS=args()
     
@@ -548,8 +532,8 @@ class Shape(ShapeNamer, ShapeMaker):
             shape_from,
             shape_to,
             shape_add_at=None,
-            align_axis=None,
-            align_plane=None,
+            align_axis=l.X_AXIS,
+            align_plane=l.X_AXIS,
             target_maker=None):
         '''Builds a shape of type cls between two nominated anchors.
         Returns an AddBetween that allows the specification of the first and second 
@@ -697,6 +681,9 @@ class ModeShapeFrame():
 
 @dataclass
 class Maker(Shape):
+    '''The builder of composite shapes. Provides the ability to anchor shapes at various other
+    frames (anchors) associated with Shapes already added.
+    '''
     reference_shape: ModeShapeFrame
     entries: dict
     
@@ -833,15 +820,18 @@ class Maker(Shape):
 
 @dataclass(frozen=True)
 class AnchorSpec():
+    '''Associated with @anchor functions.'''
     description: str
 
-        
+
 def anchor(description):
+    '''Decorator for anchor functions.'''
     def decorator(func):
         func.__anchor_spec__ = AnchorSpec(description)
         return func
     return decorator
 
+# Converter for a list or iterable to a vector that defaults missing values to 1.
 VECTOR3_FLOAT_DEFAULT_1 = l.list_of(
     np.float64, 
     len_min_max=(3, 3), 
@@ -897,6 +887,7 @@ def shape(name=None, level=10):
         clazz.anchorscad = builder.build()
         return clazz
     return decorator
+
 
 @shape('anchorscad/core/box')
 @dataclass
@@ -1039,6 +1030,7 @@ class Text(Shape):
     '''Generates 3D text.'''
     text: posc.str_strict=None
     size: float=10.0
+    depth: float=1.0
     font: posc.str_strict=None
     halign: posc.of_set('left', 'center', 'right')='left'
     valign: posc.of_set('top', 'center', 'baseline' 'bottom')='bottom'
@@ -1053,13 +1045,18 @@ class Text(Shape):
     EXAMPLE_SHAPE_ARGS=args('Text Example')
 
     def render(self, renderer):
-        params = fill_params(self, renderer, ('fn',))
-        renderer.add(renderer.model.Text(**params))
-        return renderer
+        params = fill_params(self, renderer, ('fn',), exclude=('depth',))
+        text_obj = renderer.model.Text(**params)
+        if self.depth == 1:
+            return renderer.add(text_obj)
+        
+        scale_obj = renderer.model.Scale([1, 1, self.depth])
+        scale_obj(text_obj)
+        return renderer.add(scale_obj)
     
     @anchor('The default position for this text. depth=(rear, centre, front)')
     def default(self, depth='centre'):
-        return l.translate([0, 0, TEXT_DEPTH_MAP[depth]])
+        return l.translate([0, 0, self.depth * TEXT_DEPTH_MAP[depth]])
     
 
 ANGLES_TYPE = l.list_of(l.strict_float, len_min_max=(3, 3), fill_to_min=0.0)
