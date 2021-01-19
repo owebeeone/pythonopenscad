@@ -26,7 +26,7 @@ class ExtrudeTest(TestCase):
         extents = b.extents()
         expects = [[0.0, 0.75], [-0.28, 1.0]]
         iterable_assert(self.assertAlmostEqual, b.extents(), [[0., -0.28], [ 0.75, 1]])
-        minima = b.cuve_maxima_minima_t()
+        minima = b.curve_maxima_minima_t()
         self.assertAlmostEqual(b.normal2d(minima[0][0])[1], 1, 5)
         
     def testPathGenerator(self):
@@ -125,6 +125,7 @@ class ExtrudeTest(TestCase):
 
     def testPreviousDirectionFirstAngle(self):
         builder = extrude.PathBuilder()
+
         builder.move([0, 0], 'start'
                      ).line([1, 0], 'line'
                      ).spline([[2.5, 4], [3, 3]], 'curve', cv_len=(0.5,), degrees=(90,))
@@ -215,6 +216,7 @@ class ExtrudeTest(TestCase):
                            ((1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12), 
                             (13, 14, 15))))
         
+        # Try rotating the path.
         new_path = path.transform(l.rotZ(90))
         
         iterable_assert(self.assertAlmostEqual, new_path.polygons(TestMetaData()),
@@ -236,6 +238,7 @@ class ExtrudeTest(TestCase):
                            [-2.        ,  1.        ]]), 
                            ((1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12), 
                             (13, 14, 15))))
+    
 
     def makeTestObject(self, scale=1):
         return extrude.LinearExtrude(
@@ -261,7 +264,30 @@ class ExtrudeTest(TestCase):
                          [ 0.,  0., -1.,  0.],
                          [ 0.,  1.,  0.,  0.],
                          [ 0.,  0.,  0.,  1.]])
+        
+    def test_find_a_b_c_from_point_tangent(self):
+        l, p, t = extrude.find_a_b_c_from_point_tangent([10, 0], [-20, 20])
+        expect_0 = l[0] * p[0] + l[1] * p[1] - l[2]
+        self.assertAlmostEqual(expect_0, 0)
+        k = 1
+        expect_0 = l[0] * (p[0] + k * t[0]) + l[1] * (p[1] + k * t[1]) - l[2]
+        self.assertAlmostEqual(expect_0, 0)
+        k = -1
+        expect_0 = l[0] * (p[0] + k * t[0]) + l[1] * (p[1] + k * t[1]) - l[2]
+        self.assertAlmostEqual(expect_0, 0)
+        
+    def test_solve_circle_tangent_point(self):
+        c, r = extrude.solve_circle_tangent_point([10, 0], [20, 20], [10, 10])
+        iterable_assert(self.assertAlmostEqual, c, [5, 5]) 
+        self.assertAlmostEqual(r, 7.0710678118654755)
+        
+        c, r = extrude.solve_circle_tangent_point([10, 0], [20, 20], [0, 10])
+        iterable_assert(self.assertAlmostEqual, c, [5, 5]) 
+        self.assertAlmostEqual(r, 7.0710678118654755)
 
+        c, r = extrude.solve_circle_tangent_point([10, 0], [10, 10], [0, 0])
+        iterable_assert(self.assertAlmostEqual, c, [5, 5]) 
+        self.assertAlmostEqual(r, 7.0710678118654755)
                 
 if __name__ == "__main__":
     #import sys;sys.argv = ['', 'Test.testName']

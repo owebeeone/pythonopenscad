@@ -4,7 +4,6 @@ Created on 7 Jan 2021
 @author: gianni
 '''
 
-from builtins import staticmethod
 from dataclasses import dataclass
 
 from frozendict import frozendict
@@ -29,6 +28,9 @@ class IncorrectAnchorArgsException(Exception):
 class UnknownOperationException(Exception):
     '''Requested anchor is not found...'''
 
+
+EPSILON=1e-12
+
 def strict_t_or_none(v, t):
     if v is None or v == 'None':
         return None
@@ -52,9 +54,13 @@ LIST_3_FLOAT = l.list_of(l.strict_float, len_min_max=(3, 3), fill_to_min=0.0)
 LIST_3X2_FLOAT = l.list_of(LIST_2_FLOAT, len_min_max=(3, 3), fill_to_min=None)
 LIST_23X2_FLOAT = l.list_of(LIST_2_FLOAT, len_min_max=(2, 3), fill_to_min=None)
 
+def _vlen(v):
+    return np.sqrt(np.sum(v**2))
+
 def _normalize(v):
     l = np.sqrt(np.sum(v**2))
-    return v / l
+    return v / _vlen(v)
+
 
 @dataclass(frozen=True)
 class CubicSpline():
@@ -131,7 +137,7 @@ class CubicSpline():
     # Solve for minima and maxima over t. There are two possible locations 
     # for each axis. The results for t outside of the bounds 0-1 are ignored
     # since the cubic spline is only interpolated in those bounds.
-    def cuve_maxima_minima_t(self, t_range=(0.0, 1.0)):
+    def curve_maxima_minima_t(self, t_range=(0.0, 1.0)):
         '''Returns a dict with an entry for each dimension containing a list of
         t for each minima or maxima found.'''
         # Splines are defined only for t in the range [0..1] however the curve may
@@ -163,7 +169,7 @@ class CubicSpline():
         return vr / l
     
     def extents(self):
-        roots = self.cuve_maxima_minima_t()
+        roots = self.curve_maxima_minima_t()
         
         minima_maxima = []
 
@@ -246,7 +252,192 @@ def to_gvector(np_array):
         return l.GVector([np_array[0], np_array[1], 0, 1])
     else:
         return l.GVector(np_array)
+    
+    
+# Solution derived from https://planetcalc.com/8116/
+def solve_circle_3_points(p1, p2, p3): 
+    '''Returns the centre and radius of a circle that passes the 3 given points or and empty
+    tuple if the points are colinear.'''
+    
+    p = np.array([p1, p2, p3])
+    
+    m = np.array([
+        np.concatenate((p[0] * 2, [1])),
+        np.concatenate((p[1] * 2, [1])),
+        np.concatenate((p[2] * 2, [1]))
+        ])
+
+    try:
+        mi = np.linalg.inv(m)
+    except np.linalg.LinAlgError:
+        return (None, None)
+    
+    v1 = -np.sum(p **2, axis=1)
+    
+    abc = np.matmul(mi, v1)
+    centre = -abc[0:2]
+    radius = np.sqrt(np.sum(centre **2) - abc[2])
+    
+    return (centre, radius)
+
+def find_a_b_c_from_point_tangent(p, t):
+    '''Given a point and direction of a line (t) compute the parameter (a, b, c) for the line:
+    described by ax + by = c. Returns [a, b, c], p (as an numpy array) and t but also  normalized 
+    (in both length and direction).
+    '''
+    p = np.array(p)
+    t = np.array(t)
+    tn = t / _vlen(t)
+     
+    a = tn[1]
+    b = -tn[0]
+    c = np.linalg.det([p, tn])
+    
+    l = np.array([a, b, c])
+    if a < 0:
+        l = -l
+    elif a == 0 and b < 0:
+        l = -l
         
+    return l, p, t
+
+def find_2d_line_intersection(l1, l2):
+    '''Finds the point of intersection of l1 and l2. l1 and l2 are 3x1 quantities
+    defined by [a, b, c] where ax + by = c defines the line.
+    [a, b] should be normalized (vector length = 1).
+    Returns the point of intersection, 0 if the lines are parallel or 1 if the lines are
+    identical.
+    Derived from the use of Cramer's rule.:
+    https://math.libretexts.org/Bookshelves/Precalculus/Book%3A_Precalculus_(OpenStax)/\
+    09%3A_Systems_of_Equations_and_Inequalities/9.08%3A_Solving_Systems_with_Cramer's_Rule
+    '''
+    m = np.array([l1[0:2], l2[0:2]])
+    d = np.linalg.det(m)
+    mT = np.transpose(m)
+    
+    if np.abs(d) < EPSILON:
+        # if the c values are the same then the normals are the same line meaning that
+        # the lines are colinear. If the c values are the same, then the lines are identical.
+        if np.abs(l1[2] - l2[2]) < EPSILON:
+            # lines are identical.
+            return ('identical')
+        else:
+            return ('parallel')
+    else:
+        cn = np.array([l1[2], l2[2]])
+        return np.array([np.linalg.det([cn, mT[1]]) / d, np.linalg.det([mT[0], cn]) / d])
+
+def solve_circle_tangent_point(p1, t1, p2):
+    '''Returns the (centre, radius) tuple of the circle whose tangent is p1, t1 second
+    point is p2.'''
+    # The centre must lie in the perpendicular to the tangent.
+    l1, p1, tn1 = find_a_b_c_from_point_tangent(p1, [-t1[1], t1[0]])
+    
+    # The second line is defined by keeping the centre equidistant from p1 and p2
+    # i.e.
+    # len(p1-C) == len(p2-c)
+    a = 2 * (p2[0] - p1[0])
+    b = 2 * (p2[1] - p1[1])
+    c = p2[0]**2 - p1[0]**2 + p2[1]**2 - p1[1]**2
+    
+    l2 = np.array([a, b, c])
+    l2 = l2 / (np.sign(a if a != 0 else b) * _vlen(l2[0:2]))
+    
+    centre = find_2d_line_intersection(l1, l2)
+    if isinstance(centre[0], str):
+        return (None, None)
+    
+    radius = np.sqrt(np.sum((centre - p1) ** 2))
+    return (centre, radius)
+
+def solve_circle_tangent_radius(p, t, r):
+    '''Finds the centre of the circle described by a tangent and a radius.
+    Returns (centre, radius)'''
+    p = np.array(p)
+    t = np.array(t)
+    tn = t / np.sqrt(np.sum(t **2))
+    centre = p + r * np.array(-tn[1, t[0]])
+    return (centre, r)
+
+
+def solve_circle_2_point_radius(p1, p2, r, left=True):
+    '''Finds the centre of the circle described by a tangent and a circle and a radius.
+    Returns (centre, radius)'''
+    p1 = np.array(p1)
+    p2 = np.array(p2)
+    pd = p2 - p1
+    leng = np.sqrt(np.sum(pd **2)) / 2
+    pdn = pd / (2 * leng)
+    if len * r:
+        return (None, None)
+    if np.abs(len - r) < EPSILON:
+        centre = (p1 + p2) / 2
+        return (centre, r)
+    opp_side = np.sqrt(r**2 - len **2)
+    if left:
+        dir = np.array([-pdn[1], pdn[0]]) #+90 degrees
+    else:
+        dir = np.array([pdn[1], -pdn[0]]) #-90 degrees
+    centre = (p1 + p2) / 2 + dir * opp_side
+    return (centre, r)
+
+@dataclass()
+class CircularArc:
+    start_angle: float  # Angles in radians
+    span_angle: float   # Angles in radians
+    radius: float
+    centre: np.array
+    
+    
+    def derivative(self, t):
+        '''Returns the derivative (direction of the curve at t).'''
+        angle = t * self.span_angle + self.start_angle
+        d = -1 if self.span_angle < 0 else 1
+        return d * np.array([np.cos(angle), -np.sin(angle)])
+    
+    def normal2d(self, t):
+        '''Returns the normal to the curve at t.'''
+        ddt = self.derivative(t)
+        return np.array([-ddt[1], ddt[0]])
+    
+    def extents(self):
+        sa = self.start_angle
+        ea = sa + self.span_angle
+        r = self.radius
+        sp = np.array([r * np.sin(sa), r * np.cos(sa) ])
+        sp = np.array([r * np.sin(ea), r * np.cos(ea) ])
+        
+#         delta = ep - sp
+#         next_loc = self.cur_loc + delta
+#         mod_angle = (abs(command.angle_range) % 360)
+#         large_arc = mod_angle > 180
+#         
+#         sweep = command.angle_range > 0
+#         if True:
+#             arc = svg.path.Arc(self.cur_loc, complex(r, r), 0, large_arc, sweep, next_loc)
+#             self.svg_current_path.append(arc)
+#         else:
+#             self.add_debug_path(self.cur_loc, next_loc)
+#         self.cur_loc = next_loc
+#         
+#         roots = self.curve_maxima_minima_t()
+#         
+#         minima_maxima = []
+# 
+#         start = self.p[0]
+#         end = self.p[3]
+#         for i in range(self.dimensions):
+#             v = [float(start[i]), float(end[i])]
+#             v.extend(tuple((self.evaluate(t)[i] for t in roots[i] if t >= 0 and t <= 1),))
+#             minima_maxima.append([np.min(v), np.max(v)])
+#     
+#         return np.transpose(minima_maxima)
+
+    def evaluate(self, t):
+        angle = t * self.span_angle + self.start_angle
+        return np.array([np.sin(angle), np.cos(angle)])
+  
+
 @dataclass()
 class PathBuilder():
     ops: list
@@ -388,6 +579,62 @@ class PathBuilder():
             params = self._as_non_defaults_dict()
             params['points'] = points
             return (self.__class__, params)
+    
+        
+    @dataclass(frozen=True)
+    class _ArcTo(OpBase):
+        '''Draw a circular arc.'''
+        end_point: np.array
+        centre: np.array
+        path_direction: bool
+        prev_op: object
+        name: str=None
+        meta_data: object=None
+            
+        def lastPosition(self):
+            return self.end_point
+            
+        def populate(self, path_builder, start_indexes, map_builder, meta_data):
+            if (self.meta_data):
+                meta_data = self.meta_data
+    
+            count = meta_data.fn
+            if not count:
+                count = 10
+                
+            
+            for i in range(1, count + 1):
+                t = float(i) / float(count)
+                point = self.spline.evaluate(t)
+                path_builder.append(point)
+                map_builder.append((self, t, count))
+    
+        def direction(self, t):
+            return -self.spline.derivative(t)
+        
+        def direction_normalized(self, t):
+            return _normalize(self.direction(t))
+        
+        def normal2d(self, t, dims=[0, 1]):
+            return self.spline.normal2d(t, dims)
+        
+        def extents(self):
+            return self.spline.extents()
+        
+        def position(self, t):
+            if t < 0:
+                return self.direction(0) * t + self.prev_op.lastPosition()
+            elif t > 1:
+                return self.direction(1) * t + self.points[2]
+            return self.spline.evaluate(t)
+        
+        def transform(self, m):
+            points = list((m * to_gvector(p)).A[0:len(p)] for p in self.points)
+            points = np.array(LIST_23X2_FLOAT(points))
+            params = self._as_non_defaults_dict()
+            params['points'] = points
+            return (self.__class__, params)
+    
     
     def __init__(self, multi=False):
         self.ops = []
