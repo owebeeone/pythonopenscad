@@ -58,7 +58,6 @@ def _vlen(v):
     return np.sqrt(np.sum(v**2))
 
 def _normalize(v):
-    l = np.sqrt(np.sum(v**2))
     return v / _vlen(v)
 
 
@@ -241,7 +240,7 @@ class Path():
         builder = PathBuilder()
         
         for op in self.ops:
-            builder.add_op_with_params(op.transform(m))
+            builder.add_op_with_params(op.transform(m), op.name)
         return builder
             
     def transform(self, m):
@@ -355,7 +354,7 @@ def solve_circle_tangent_radius(p, t, r):
     Returns (centre, radius)'''
     p = np.array(p)
     t = np.array(t)
-    tn = t / np.sqrt(np.sum(t **2))
+    tn = _normalize(t)
     centre = p + r * np.array(-tn[1, t[0]])
     return (centre, r)
 
@@ -388,7 +387,6 @@ class CircularArc:
     radius: float
     centre: np.array
     
-    
     def derivative(self, t):
         '''Returns the derivative (direction of the curve at t).'''
         angle = t * self.span_angle + self.start_angle
@@ -402,40 +400,28 @@ class CircularArc:
     
     def extents(self):
         sa = self.start_angle
-        ea = sa + self.span_angle
+        ea = sa + self.span_ang
         r = self.radius
-        sp = np.array([r * np.sin(sa), r * np.cos(sa) ])
-        sp = np.array([r * np.sin(ea), r * np.cos(ea) ])
+        result = [
+            np.array([r * np.sin(sa), r * np.cos(sa) ]) + self.centre,
+            np.array([r * np.sin(ea), r * np.cos(ea) ]) + self.centre]
         
-#         delta = ep - sp
-#         next_loc = self.cur_loc + delta
-#         mod_angle = (abs(command.angle_range) % 360)
-#         large_arc = mod_angle > 180
-#         
-#         sweep = command.angle_range > 0
-#         if True:
-#             arc = svg.path.Arc(self.cur_loc, complex(r, r), 0, large_arc, sweep, next_loc)
-#             self.svg_current_path.append(arc)
-#         else:
-#             self.add_debug_path(self.cur_loc, next_loc)
-#         self.cur_loc = next_loc
-#         
-#         roots = self.curve_maxima_minima_t()
-#         
-#         minima_maxima = []
-# 
-#         start = self.p[0]
-#         end = self.p[3]
-#         for i in range(self.dimensions):
-#             v = [float(start[i]), float(end[i])]
-#             v.extend(tuple((self.evaluate(t)[i] for t in roots[i] if t >= 0 and t <= 1),))
-#             minima_maxima.append([np.min(v), np.max(v)])
-#     
-#         return np.transpose(minima_maxima)
+        sai = sa * 2 / np.pi
+        eai = sa * 2 / np.pi
+        angle_dir = 1. if self.span_angle >= 0 else -1.
+        count = 1
+        while count < (eai - sai) * angle_dir and count < 4:
+            _, ai = np.modf(sai + count * angle_dir)
+            angle = ai * (np.pi / 2)
+            result.append(
+                np.array([r * np.sin(angle), r * np.cos(angle) ]) + self.centre)
+            ++count
+
+        return np.transpose(result)
 
     def evaluate(self, t):
         angle = t * self.span_angle + self.start_angle
-        return np.array([np.sin(angle), np.cos(angle)])
+        return np.array([np.sin(angle), np.cos(angle)]) * self.radius
   
 
 @dataclass()
@@ -590,6 +576,23 @@ class PathBuilder():
         prev_op: object
         name: str=None
         meta_data: object=None
+        
+        def __post_init__(self):
+            
+            start_point = self.prev_op.lastPosition()
+            r_start = start_point - self.centre
+            radius_start = _vlen(r_start)
+            r_end = self.end_point - self.centre
+            radius_end = _vlen(r_end)
+            assert np.abs(radius_start - radius_end) < EPSILON, (
+                'start and end point radius should be the same')
+            start_angle = np.arctan2(r_start[0] / radius_start, r_start[1] / radius_start)
+            end_angle = np.arctan2(r_end[0] / radius_start, r_end[1] / radius_start)
+            span_angle = end_angle - start_angle
+            if self.path_direction:
+                span_angle = span_angle - np.pi * 2
+            object.__setattr__(self, 'arcto', CircularArc(
+                start_angle, span_angle, radius_start, self.centre))
             
         def lastPosition(self):
             return self.end_point
@@ -602,37 +605,38 @@ class PathBuilder():
             if not count:
                 count = 10
                 
-            
             for i in range(1, count + 1):
                 t = float(i) / float(count)
-                point = self.spline.evaluate(t)
+                point = self.arcto.evaluate(t)
                 path_builder.append(point)
                 map_builder.append((self, t, count))
     
         def direction(self, t):
-            return -self.spline.derivative(t)
+            return -self.arcto.derivative(t)
         
         def direction_normalized(self, t):
             return _normalize(self.direction(t))
         
         def normal2d(self, t, dims=[0, 1]):
-            return self.spline.normal2d(t, dims)
+            return self.arcto.normal2d(t)
         
         def extents(self):
-            return self.spline.extents()
+            return self.arcto.extents()
         
         def position(self, t):
             if t < 0:
                 return self.direction(0) * t + self.prev_op.lastPosition()
             elif t > 1:
-                return self.direction(1) * t + self.points[2]
-            return self.spline.evaluate(t)
+                return self.direction(1) * t + self.end_point
+            return self.arcto.evaluate(t)
         
         def transform(self, m):
-            points = list((m * to_gvector(p)).A[0:len(p)] for p in self.points)
-            points = np.array(LIST_23X2_FLOAT(points))
-            params = self._as_non_defaults_dict()
-            params['points'] = points
+            end_point = (m * to_gvector(self.end_point)).A[0:len(self.end_point)]
+            centre = (m * to_gvector(self.centre)).A[0:len(self.centre)]
+            params = {
+                'end_point': end_point,
+                'centre': centre,
+                'path_direction': self.path_direction}
             return (self.__class__, params)
     
     
@@ -649,9 +653,11 @@ class PathBuilder():
         self.ops.append(op)
         return self
     
-    def add_op_with_params(self, op_parts):
+    def add_op_with_params(self, op_parts, op_name=None):
         params_dict = op_parts[1]
         params_dict['prev_op'] = self.last_op()
+        if op_name:
+            params_dict['name'] = op_name
         return self.add_op((op_parts[0])(**params_dict))
 
     def last_op(self):
@@ -660,11 +666,13 @@ class PathBuilder():
     def move(self, point, name=None):
         if not self.multi and self.ops:
             raise MoveNotAllowedException(f'Move is not allowed in non multi-path builder.')
-        return self.add_op(self._MoveTo(np.array(LIST_2_FLOAT(point)), self.last_op(), name))
+        return self.add_op(self._MoveTo(np.array(LIST_2_FLOAT(point)),
+                                        prev_op=self.last_op(), name=name))
                         
     def line(self, point, name=None):
         assert len(self.ops) > 0, "Cannot line to without starting point"
-        return self.add_op(self._LineTo(np.array(LIST_2_FLOAT(point)), self.ops[-1], name))
+        return self.add_op(self._LineTo(np.array(LIST_2_FLOAT(point)), 
+                                        prev_op=self.last_op(), name=name))
              
     def spline(self, points, name=None, metadata=None, 
                cv_len=(None, None), degrees=(0, 0), radians=(0, 0), rel_len=None):
@@ -694,16 +702,16 @@ class PathBuilder():
                 raise InvalidSplineParametersException(
                     'Only 2 control points provided so the direction of the previous operation'
                     ' will be used but a size (in cv_len. This needs a control vector size.')
-            if self.ops[-1].direction_normalized(1.0) is None:
+            if self.last_op().direction_normalized(1.0) is None:
                 raise InvalidSplineParametersException(
                     'Only 2 control points provided so the direction of the previous operation'
                     ' will be used but the previous operation (move) does not provide direction.')
-            cv0 = self.ops[-1].lastPosition()
-            cv1 = self.ops[-1].direction_normalized(1.0) * cv_len[0] + cv0
+            cv0 = self.last_op().lastPosition()
+            cv1 = self.last_op().direction_normalized(1.0) * cv_len[0] + cv0
             cv2 = points[0]
             cv3 = points[1]
         else:
-            cv0 = self.ops[-1].lastPosition()
+            cv0 = self.last_op().lastPosition()
             cv1 = points[0]
             cv2 = points[1]
             cv3 = points[2]
@@ -714,7 +722,45 @@ class PathBuilder():
         cv2 = self.squeeze_and_rot(cv3, cv2, cv_len[1], degrees[1], radians[1])
         
         points = np.array(LIST_3X2_FLOAT([cv1, cv2, cv3]))
-        return self.add_op(self._SplineTo(points, self.ops[-1], name, metadata))
+        return self.add_op(
+            self._SplineTo(points, prev_op=self.last_op(), name=name, meta_data=metadata))
+    
+    def arc_points(self, middle, last, name=None, metadata=None):
+        '''Defines a circular arc starting at the previous operator's end point
+        and passing through middle and ending at last.'''
+        start = self.last_op().lastPosition()
+        centre, radius = solve_circle_3_points(start, middle, last)
+        n_points = np.array([start - centre, middle - centre, last - centre]) / radius
+        start_angle = np.arctan2(n_points[0][0], n_points[0][1])
+        middle_delta = np.arctan2(n_points[0][0], n_points[0][1]) - start_angle
+        end_delta = np.arctan2(n_points[0][0], n_points[0][1]) - start_angle
+        path_direction = end_delta < middle_delta
+        
+        return self.add_op(self._ArcTo(last, centre, path_direction, name, metadata))
+    
+    def arc_tangent_point(self, last, degrees=0, radians=None, direction=None, 
+                          name=None, metadata=None):
+        '''Defines a circular arc starting at the previous operator's end point
+        and ending at last. The tangent  .'''
+        start = self.last_op().lastPosition()
+        if direction is None:
+            direction = self.last_op().direction_normalized(1.0)
+        
+        direction = (
+            l.rotZ(degrees=degrees, radians=radians) * to_gvector(direction)).A[0:len(direction)]
+        centre, radius = solve_circle_tangent_point(start, direction, last)
+        n_points = np.array([start - centre, last - centre]) / radius
+        start_angle = np.arctan2(n_points[0][0], n_points[0][1])
+        end_delta = np.arctan2(n_points[0][0], n_points[0][1]) - start_angle
+        
+        rotz = [[n_points[0][1], n_points[0][0]], [-n_points[0][0], n_points[0][1]]]
+        rot_dir = np.matmul(rotz, direction)
+        
+        path_direction = rot_dir[0] < 0
+        
+        return self.add_op(self._ArcTo(
+            last, centre, path_direction, 
+            prev_op=self.last_op(), name=name, meta_data=metadata))
     
     def squeeze_and_rot(self, point, control, cv_len, degrees, radians):
         if cv_len is None and not degrees and not radians:
