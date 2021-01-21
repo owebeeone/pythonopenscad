@@ -823,11 +823,12 @@ class ExtrudedShape(core.Shape):
         
     def eval_z_vector(self, h):
         return l.GVector([0, 0, h])
+    
 
 @core.shape('linear_extrude')
 @dataclass
 class LinearExtrude(ExtrudedShape):
-    '''Generates an extrusion of a given Path.'''
+    '''Generates a linear extrusion of a given Path.'''
     path: Path
     h: float=100
     twist: float=0.0
@@ -951,6 +952,94 @@ class LinearExtrude(ExtrudedShape):
         # Descaling the matrix so the co-ordinates don't skew.
         result = result.descale()
         return result
+
+
+@core.shape('arc_extrude')
+@dataclass
+class ArcExtrude(ExtrudedShape):
+    '''Generates a circular/arc extrusion of a given Path.'''
+    path: Path
+    degrees: float=360
+    radians: float=None
+    convexity: int=10
+    fn: int=None
+    fa: float=None
+    fs: float=None
+
+    
+    SCALE=0.8
+    
+    EXAMPLE_SHAPE_ARGS=core.args(
+        PathBuilder()
+            .move([0, 0])
+            .line([100 * SCALE, 0], 'linear')
+            .arc_tangent_point([20 * SCALE, 100 * SCALE], name='curve', degrees=90)
+            .line([0, 100 * SCALE], 'linear2')
+            .line([0, 0], 'linear3')
+            .build(),
+        h=40,
+        fn=30,
+        twist=90,
+        scale=(1, 0.3)
+        )
+
+    EXAMPLE_ANCHORS=(
+                core.surface_args('edge', 'linear', 0.5),
+                core.surface_args('linear2', 0.5, 10),
+                core.surface_args('linear2', 0, 40),
+                core.surface_args('linear2', 1, 40),
+                core.surface_args('linear3', 0.5, 20),
+                core.surface_args('curve', 0, 40),
+                core.surface_args('curve', 0.1, rh=0.9),
+                core.surface_args('curve', 0.2, 40),
+                core.surface_args('curve', 0.3, 40),
+                core.surface_args('curve', 0.4, 40),
+                core.surface_args('curve', 0.5, 40),
+                core.surface_args('curve', 0.6, 40),
+                core.surface_args('curve', 0.7, 40),
+                core.surface_args('curve', 0.8, 40),
+                core.surface_args('curve', 0.9, 40),
+                core.surface_args('curve', 1, 40),
+                core.surface_args('linear2', 0.1, rh=0.9),
+                core.surface_args('linear2', 0.5, rh=0.9),
+                core.surface_args('linear2', 1.0, rh=0.9),
+                )
+
+    def render(self, renderer):
+        polygon = renderer.model.Polygon(*self.path.polygons(renderer.get_current_attributes()))
+        params = core.fill_params(
+            self, renderer, tuple(core.ARGS_XLATION_TABLE.keys()), exclude=('path', 'degrees', 'radians'))
+        angle = self.degrees
+        if self.radians:
+            angle = self.radians * 180 / np.pi
+        params['angle'] = angle
+        
+        return renderer.add(renderer.model.rotate_extrude(**params)(polygon))
+
+    def to_3d_from_2d(self, vec_2d, angle=0.):
+        return l.rotZ(angle) * l.rotX(90) * l.GVector([vec_2d[0], vec_2d[1], 0])
+    
+    def _z_radians_scale_align(self, rel_h, twist_vector):
+        xelipse_max = self.scale[0] * rel_h + (1 - rel_h)
+        yelipse_max = self.scale[1] * rel_h + (1 - rel_h)
+        eliplse_angle = np.arctan2(xelipse_max * twist_vector.y, yelipse_max * twist_vector.x)
+        circle_angle = np.arctan2(twist_vector.y, twist_vector.x)
+        return eliplse_angle - circle_angle
+        
+    
+    @core.anchor('Anchor to the path edge and surface.')
+    def edge(self, path_node_name, t=0, angle=0):
+        '''Anchors to the edge and surface of the linear extrusion.
+        Args:
+            path_node_name: The path node name to attach to.
+            t: 0 to 1 being the beginning and end of the segment. Numbers out of 0-1
+               range will depart the path linearly.
+            angle: The angle along the extrusion.
+        '''
+        op = self.path.name_map.get(path_node_name)
+        pos = self.to_3d_from_2d(op.position(t), angle)
+
+        return l.translate(pos)
     
 
 if __name__ == "__main__":

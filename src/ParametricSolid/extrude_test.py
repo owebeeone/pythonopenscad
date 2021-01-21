@@ -297,7 +297,7 @@ class ExtrudeTest(TestCase):
         iterable_assert(self.assertAlmostEqual, c, [5, 5]) 
         self.assertAlmostEqual(r, 7.0710678118654755)
         
-    def makeArcTestObject(self, scale=1):
+    def makeArcLinearTestObject(self, scale=1):
         return extrude.LinearExtrude(
             extrude.PathBuilder()
                 .move([0, 0])
@@ -313,9 +313,31 @@ class ExtrudeTest(TestCase):
             scale=(1, 1)
             )
         
-    def testArcLinearExtrude(self):
+    def testArcLinearTestObject(self):
         le = self.makeArcTestObject()
         self.write(le, 'ArcLinear')
+        iterable_assert(self.assertAlmostEqual, le.at('linear', 0.5).A, 
+                        [[ 1.,  0.,  0., 50.],
+                         [ 0.,  0., -1.,  0.],
+                         [ 0.,  1.,  0.,  0.],
+                         [ 0.,  0.,  0.,  1.]])
+        
+    def makeArcArcExtrudeTestObject(self, scale=1):
+        return extrude.ArcExtrude(
+            extrude.PathBuilder()
+                .move([0, 0])
+                .line([100 * scale, 0], 'linear')
+                .arc_tangent_point([20 * scale, 100 * scale],
+                         name='arc', degrees=90)
+                .line([0, 100 * scale], 'linear2')
+                .line([0, 0], 'linear3')
+                .build(),
+            degrees = 90
+            )
+        
+    def testArcArcExtrudeTestObject(self):
+        le = self.makeArcArcExtrudeTestObject()
+        self.write(le, 'ArcRotate')
         iterable_assert(self.assertAlmostEqual, le.at('linear', 0.5).A, 
                         [[ 1.,  0.,  0., 50.],
                          [ 0.,  0., -1.,  0.],
