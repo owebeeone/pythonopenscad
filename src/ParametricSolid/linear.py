@@ -553,10 +553,15 @@ def rotZ(degrees=90, radians=None):
         radians = np.pi * (degrees / 180.0)
     cosr = clean(np.cos(radians))
     sinr = clean(np.sin(radians))
+    return rotZSinCos(sinr, cosr)
+
+def rotZSinCos(sinr, cosr):
+    '''Returns a GMatrix that causes a rotation about Z for the given sin/cos pair.'''
     return GMatrix(np.matrix([[cosr, -sinr, 0.0, 0], 
                               [sinr, cosr, 0, 0], 
                               [0, 0, 1, 0], 
                               [0, 0, 0, 1]]))
+ROTZ_90 = rotZ(90)
 ROTZ_90 = rotZ(90)
 ROTZ_180 = rotZ(180)
 ROTZ_270 = rotZ(-90)
@@ -567,6 +572,9 @@ def rotX(degrees=90, radians=None):
         radians = np.pi * (degrees / 180.0)
     cosr = clean(np.cos(radians))
     sinr = clean(np.sin(radians))
+    return rotXSinCos(sinr, cosr)
+    
+def rotXSinCos(sinr, cosr):
     return GMatrix(np.matrix([[1.0, 0, 0, 0], 
                               [0, cosr, -sinr, 0], 
                               [0, sinr, cosr, 0], 
@@ -581,6 +589,9 @@ def rotY(degrees=90, radians=None):
         radians = np.pi * (degrees / 180.0)
     cosr = clean(np.cos(radians))
     sinr = clean(np.sin(radians))
+    return rotYSinCos(sinr, cosr)
+    
+def rotYSinCos(sinr, cosr):
     return GMatrix(np.matrix([[cosr, 0.0, sinr, 0], 
                               [0, 1, 0, 0],
                               [-sinr, 0, cosr, 0], 

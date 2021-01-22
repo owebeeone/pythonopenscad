@@ -456,7 +456,7 @@ class PathBuilder():
         def direction_normalized(self, t):
             return _normalize(self.direction(t))
         
-        def normal2d(self, dims=[0, 1]):
+        def normal2d(self, t, dims=[0, 1]):
             return _normal_of_2d(self.prev_op.lastPosition(), self.point, dims)
         
         def extents(self):
@@ -864,12 +864,12 @@ class LinearExtrude(ExtrudedShape):
                 core.surface_args('curve', 0.2, 40),
                 core.surface_args('curve', 0.3, 40),
                 core.surface_args('curve', 0.4, 40),
-                core.surface_args('curve', 0.5, 40),
-                core.surface_args('curve', 0.6, 40),
-                core.surface_args('curve', 0.7, 40),
-                core.surface_args('curve', 0.8, 40),
-                core.surface_args('curve', 0.9, 40),
-                core.surface_args('curve', 1, 40),
+                core.surface_args('curve', 0.5, 40, None, True, True),
+                core.surface_args('curve', 0.6, 40, None, True, True),
+                core.surface_args('curve', 0.7, 40, None, True, True),
+                core.surface_args('curve', 0.8, 40, None, True, True),
+                core.surface_args('curve', 0.9, 40, None, True, True),
+                core.surface_args('curve', 1, 40, None, True, True),
                 core.surface_args('linear2', 0.1, rh=0.9),
                 core.surface_args('linear2', 0.5, rh=0.9),
                 core.surface_args('linear2', 1.0, rh=0.9),
@@ -956,7 +956,7 @@ class LinearExtrude(ExtrudedShape):
 
 @core.shape('arc_extrude')
 @dataclass
-class ArcExtrude(ExtrudedShape):
+class RotateExtrude(ExtrudedShape):
     '''Generates a circular/arc extrusion of a given Path.'''
     path: Path
     degrees: float=360
@@ -977,10 +977,8 @@ class ArcExtrude(ExtrudedShape):
             .line([0, 100 * SCALE], 'linear2')
             .line([0, 0], 'linear3')
             .build(),
-        h=40,
-        fn=30,
-        twist=90,
-        scale=(1, 0.3)
+        degrees=120,
+        fn=80,
         )
 
     EXAMPLE_ANCHORS=(
@@ -989,8 +987,8 @@ class ArcExtrude(ExtrudedShape):
                 core.surface_args('linear2', 0, 40),
                 core.surface_args('linear2', 1, 40),
                 core.surface_args('linear3', 0.5, 20),
-                core.surface_args('curve', 0, 40),
-                core.surface_args('curve', 0.1, rh=0.9),
+                core.surface_args('curve', 0, 45),
+                core.surface_args('curve', 0.1, 0.9),
                 core.surface_args('curve', 0.2, 40),
                 core.surface_args('curve', 0.3, 40),
                 core.surface_args('curve', 0.4, 40),
@@ -999,10 +997,10 @@ class ArcExtrude(ExtrudedShape):
                 core.surface_args('curve', 0.7, 40),
                 core.surface_args('curve', 0.8, 40),
                 core.surface_args('curve', 0.9, 40),
-                core.surface_args('curve', 1, 40),
-                core.surface_args('linear2', 0.1, rh=0.9),
-                core.surface_args('linear2', 0.5, rh=0.9),
-                core.surface_args('linear2', 1.0, rh=0.9),
+                core.surface_args('curve', 1, 70),
+                core.surface_args('linear2', 0.1, 0.9),
+                core.surface_args('linear2', 0.5, 0.9),
+                core.surface_args('linear2', 1.0, 0.9),
                 )
 
     def render(self, renderer):
@@ -1016,8 +1014,9 @@ class ArcExtrude(ExtrudedShape):
         
         return renderer.add(renderer.model.rotate_extrude(**params)(polygon))
 
-    def to_3d_from_2d(self, vec_2d, angle=0.):
-        return l.rotZ(angle) * l.rotX(90) * l.GVector([vec_2d[0], vec_2d[1], 0])
+    def to_3d_from_2d(self, vec_2d, angle=0., degrees=0, radians=None):
+        return l.rotZ(
+            degrees=degrees, radians=radians) * l.rotX(90) * l.GVector([vec_2d[0], vec_2d[1], 0])
     
     def _z_radians_scale_align(self, rel_h, twist_vector):
         xelipse_max = self.scale[0] * rel_h + (1 - rel_h)
@@ -1028,18 +1027,27 @@ class ArcExtrude(ExtrudedShape):
         
     
     @core.anchor('Anchor to the path edge and surface.')
-    def edge(self, path_node_name, t=0, angle=0):
-        '''Anchors to the edge and surface of the linear extrusion.
+    def edge(self, path_node_name, t=0, degrees=0, radians=None):
+        '''Anchors to the edge and surface of the circular extrusion.
         Args:
             path_node_name: The path node name to attach to.
             t: 0 to 1 being the beginning and end of the segment. Numbers out of 0-1
                range will depart the path linearly.
-            angle: The angle along the extrusion.
+            degrees: The angle along the extrusion.
         '''
         op = self.path.name_map.get(path_node_name)
-        pos = self.to_3d_from_2d(op.position(t), angle)
+        normal = op.normal2d(t)
+        pos = op.position(t)
 
-        return l.translate(pos)
+        return (
+            l.IDENTITY
+                     * l.rotZ(degrees=degrees, radians=radians)
+                     * l.ROTX_90
+                     * l.translate([pos[0], pos[1], 0])
+                     * l.ROTY_90
+                     * l.rotXSinCos(normal[0], normal[1]) 
+                     * l.ROTX_90
+                     * l.IDENTITY)
     
 
 if __name__ == "__main__":
