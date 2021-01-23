@@ -1192,6 +1192,29 @@ class CompositeShape(Shape):
     @anchor('Access to inner elements of this composite shape.')
     def within(self, *args, **kwds):
         return self.maker.at(*args, **kwds)
+    
+    def has_anchor(self, name):
+        return name in self.anchorscad.anchors or self.maker.has_anchor(name)
+    
+    def anchor_names(self):
+        return tuple(self.anchorscad.anchors.keys()) + self.maker.anchor_names()
+    
+    def at(self, anchor_name, *args, **kwds):
+        spec = self.anchorscad.get(anchor_name)
+        if spec:
+            func = spec[0]
+            try:
+                return func(self, *args, **kwds)
+            except TypeError as e:
+                raise IncorrectAnchorArgs(
+                    f'Attempted to call {anchor_name!r} on {self.__class__.__name__}'
+                    f' with args={args!r} kwds={kwds!r}') from e
+        if self.maker.has_anchor(anchor_name):
+            return self.maker.at(anchor_name, *args, **kwds)
+        else:
+            raise IncorrectAnchorArgs(
+                f'Could not find {anchor_name!r} on {self.__class__.__name__}\n'
+                f'Available names are {self.anchor_names()!r}')
 
 
 @shape('anchorscad/core/arrow')
@@ -1212,7 +1235,7 @@ class Arrow(CompositeShape):
     EXAMPLE_ANCHORS=(
         surface_args('base'),
         surface_args('top'),
-        surface_args('within', 'stem', 'top'))
+        surface_args('stem', 'top'))
     EXAMPLE_SHAPE_ARGS=args(
         r_stem_top=4, r_stem_base=6, l_stem=35, l_head=20, r_head_base=10, fn=30)
     
