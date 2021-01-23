@@ -861,9 +861,10 @@ class LinearExtrude(ExtrudedShape):
             .line([0, 100 * SCALE], 'linear2')
             .line([0, 0], 'linear3')
             .build(),
-        h=40,
+        h=80,
         fn=30,
-        twist=90,
+        twist=45,
+        slices=40,
         scale=(1, 0.3)
         )
 
@@ -872,7 +873,7 @@ class LinearExtrude(ExtrudedShape):
                 core.surface_args('linear2', 0.5, 10),
                 core.surface_args('linear2', 0, 40),
                 core.surface_args('linear2', 1, 40),
-                core.surface_args('linear3', 0.5, 20),
+                core.surface_args('linear3', 0.5, 20, None, True, True),
                 core.surface_args('curve', 0, 40),
                 core.surface_args('curve', 0.1, rh=0.9),
                 core.surface_args('curve', 0.2, 40),
@@ -885,7 +886,7 @@ class LinearExtrude(ExtrudedShape):
                 core.surface_args('curve', 0.9, 40, None, True, True),
                 core.surface_args('curve', 1, 40, None, True, True),
                 core.surface_args('linear2', 0.1, rh=0.9),
-                core.surface_args('linear2', 0.5, rh=0.9),
+                core.surface_args('linear2', 0.5, 0.9, True, True),
                 core.surface_args('linear2', 1.0, rh=0.9),
                 )
 
