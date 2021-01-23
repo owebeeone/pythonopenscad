@@ -850,7 +850,7 @@ class LinearExtrude(ExtrudedShape):
     scale: float=(1.0, 1.0)  # (x, y)
     fn: int=None
     
-    SCALE=0.8
+    SCALE=2
     
     EXAMPLE_SHAPE_ARGS=core.args(
         PathBuilder()

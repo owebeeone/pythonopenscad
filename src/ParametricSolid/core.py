@@ -57,8 +57,10 @@ def args_to_str(args):
 
 def surface_anchor_renderer(maker, anchor_args):
     '''Helper to crate example anchor coordinates on surface of objects.'''
-    maker.add_at(AnnotatedCoordinates().solid(args_to_str(anchor_args)).at('origin'),
-                 *anchor_args[0], **anchor_args[1])
+    label = args_to_str(anchor_args)
+    maker.add_at(
+        AnnotatedCoordinates(label=label)
+            .solid(label).at('origin'), *anchor_args[0], **anchor_args[1])
     
     
 def inner_anchor_renderer(maker, anchor_args):
@@ -936,7 +938,7 @@ class Box(Shape):
             surface_args('face_edge', 2, 2, 0.1),
             surface_args('face_edge', 2, 2, -0.5),
              inner_args('centre'),)
-    EXAMPLE_SHAPE_ARGS=args([20, 30, 40])
+    EXAMPLE_SHAPE_ARGS=args([100, 120, 140])
     
     def __init__(self, size=[1, 1, 1]):
         self.size = l.GVector(VECTOR3_FLOAT_DEFAULT_1(size))
@@ -1344,6 +1346,9 @@ class AnnotatedCoordinates(CompositeShape):
     label: str=None
     label_pos_ratio: l.GVector=l.GVector([0.5, 0.5, 0.5])
     
+    EXAMPLE_SHAPE_ARGS=args(label='This is label')
+    
+    
     def __post_init__(self):
         
         maker = self.coordinates.solid('coords').at('origin')
@@ -1353,7 +1358,14 @@ class AnnotatedCoordinates(CompositeShape):
                 maker.add_at(txt.solid(k).at('default', 'centre'), 
                              'within', f'{k}_arrow', 'top', 
                              *self.coord_label_at[0], **self.coord_label_at[1])
-                
+        if self.label:
+            txt = Text(self.label, 
+                       halign='left', 
+                       size=self.text_stem_size_ratio * self.coordinates.l_stem)
+            xform = l.translate(
+                [-10 * self.text_stem_size_ratio, -5 * -self.text_stem_size_ratio, 0]) * l.rotZ(-45)
+            maker.add(txt.solid('label').colour([0, 1, 0.5]).at('default', 'centre', post=xform))
+
         self.maker = maker
     
     @anchor('The base of the stem of the object')
