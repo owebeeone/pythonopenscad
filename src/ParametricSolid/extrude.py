@@ -23,10 +23,13 @@ class InvalidSplineParametersException(Exception):
     '''PathBuiler.spine requires 3 control points or 2 points and a length.'''
     
 class IncorrectAnchorArgsException(Exception):
-    '''Unable to interpret args..'''
+    '''Unable to interpret args.'''
     
 class UnknownOperationException(Exception):
-    '''Requested anchor is not found...'''
+    '''Requested anchor is not found.'''
+    
+class UnableToFitCircleWithGivenParameters(Exception):
+    '''There was no solution to the requested arc. Try a spline.'''
 
 
 EPSILON=1e-12
@@ -421,7 +424,7 @@ class CircularArc:
 
     def evaluate(self, t):
         angle = t * self.span_angle + self.start_angle
-        return np.array([np.sin(angle), np.cos(angle)]) * self.radius
+        return np.array([np.sin(angle), np.cos(angle)]) * self.radius + self.centre
   
 
 @dataclass()
@@ -590,7 +593,10 @@ class PathBuilder():
             end_angle = np.arctan2(r_end[0] / radius_start, r_end[1] / radius_start)
             span_angle = end_angle - start_angle
             if self.path_direction:
-                span_angle = span_angle - np.pi * 2
+                if span_angle < 0:
+                    span_angle = span_angle + 2 * np.pi
+                else:
+                    span_angle = span_angle - 2 * np.pi
             object.__setattr__(self, 'arcto', CircularArc(
                 start_angle, span_angle, radius_start, self.centre))
             
@@ -734,7 +740,10 @@ class PathBuilder():
         start_angle = np.arctan2(n_points[0][0], n_points[0][1])
         middle_delta = np.arctan2(n_points[0][0], n_points[0][1]) - start_angle
         end_delta = np.arctan2(n_points[0][0], n_points[0][1]) - start_angle
-        path_direction = end_delta < middle_delta
+
+        angle_dir = -1 if end_delta < 0 else  1
+        
+        path_direction = angle_dir > 0
         
         return self.add_op(self._ArcTo(last, centre, path_direction, name, metadata))
     
@@ -745,18 +754,23 @@ class PathBuilder():
         start = self.last_op().lastPosition()
         if direction is None:
             direction = self.last_op().direction_normalized(1.0)
+        else:
+            direction = _normalize(direction)
         
         direction = (
             l.rotZ(degrees=degrees, radians=radians) * to_gvector(direction)).A[0:len(direction)]
         centre, radius = solve_circle_tangent_point(start, direction, last)
+        if centre is None:
+            # This degenerates to a line.
+            return self.line(last, name=name)
         n_points = np.array([start - centre, last - centre]) / radius
         start_angle = np.arctan2(n_points[0][0], n_points[0][1])
-        end_delta = np.arctan2(n_points[0][0], n_points[0][1]) - start_angle
+        end_delta = np.arctan2(n_points[1][0], n_points[1][1]) - start_angle
         
-        rotz = [[n_points[0][1], n_points[0][0]], [-n_points[0][0], n_points[0][1]]]
-        rot_dir = np.matmul(rotz, direction)
+        angle_dir = -1 if end_delta < 0 else  1
         
-        path_direction = rot_dir[0] < 0
+        arc_dir = np.array([-np.cos(start_angle), np.sin(start_angle)]) * angle_dir
+        path_direction = np.sum(np.sum(arc_dir * direction)) > 0
         
         return self.add_op(self._ArcTo(
             last, centre, path_direction, 
@@ -792,7 +806,7 @@ class ExtrudedShape(core.Shape):
         return name in self.anchorscad.anchors or name in self.path.name_map
     
     def anchor_names(self):
-        return tuple(set(self.anchorscad.anchors.keys()) + tuple(self.path.name_map.keys()))
+        return tuple(self.anchorscad.anchors.keys()) + tuple(self.path.name_map.keys())
     
     def at(self, anchor_name, *args, **kwds):
         spec = self.anchorscad.get(anchor_name)
@@ -967,13 +981,13 @@ class RotateExtrude(ExtrudedShape):
     fs: float=None
 
     
-    SCALE=0.8
+    SCALE=1
     
     EXAMPLE_SHAPE_ARGS=core.args(
         PathBuilder()
             .move([0, 0])
-            .line([100 * SCALE, 0], 'linear')
-            .arc_tangent_point([20 * SCALE, 100 * SCALE], name='curve', degrees=90)
+            .line([110 * SCALE, 0], 'linear')
+            .arc_tangent_point([10 * SCALE, 100 * SCALE], name='curve', degrees=120)
             .line([0, 100 * SCALE], 'linear2')
             .line([0, 0], 'linear3')
             .build(),
@@ -988,7 +1002,7 @@ class RotateExtrude(ExtrudedShape):
                 core.surface_args('linear2', 1, 40),
                 core.surface_args('linear3', 0.5, 20),
                 core.surface_args('curve', 0, 45),
-                core.surface_args('curve', 0.1, 0.9),
+                core.surface_args('curve', 0.1, 40),
                 core.surface_args('curve', 0.2, 40),
                 core.surface_args('curve', 0.3, 40),
                 core.surface_args('curve', 0.4, 40),
@@ -1026,28 +1040,24 @@ class RotateExtrude(ExtrudedShape):
         return eliplse_angle - circle_angle
         
     
-    @core.anchor('Anchor to the path edge and surface.')
+    @core.anchor('Anchor to the path edge projected to surface.')
     def edge(self, path_node_name, t=0, degrees=0, radians=None):
-        '''Anchors to the edge and surface of the circular extrusion.
+        '''Anchors to the edge projected to the surface of the rotated extrusion.
         Args:
             path_node_name: The path node name to attach to.
             t: 0 to 1 being the beginning and end of the segment. Numbers out of 0-1
                range will depart the path linearly.
-            degrees: The angle along the extrusion.
+            degrees or radians: The angle along the rotated extrusion.
         '''
         op = self.path.name_map.get(path_node_name)
         normal = op.normal2d(t)
         pos = op.position(t)
 
-        return (
-            l.IDENTITY
-                     * l.rotZ(degrees=degrees, radians=radians)
-                     * l.ROTX_90
+        return (l.rotZ(degrees=degrees, radians=radians)
+                     * l.ROTX_90  # Projection from 2D Path to 3D space
                      * l.translate([pos[0], pos[1], 0])
-                     * l.ROTY_90
-                     * l.rotXSinCos(normal[0], normal[1]) 
-                     * l.ROTX_90
-                     * l.IDENTITY)
+                     * l.ROTY_90  
+                     * l.rotXSinCos(normal[1], -normal[0]))
     
 
 if __name__ == "__main__":

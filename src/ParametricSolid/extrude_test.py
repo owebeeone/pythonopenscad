@@ -314,7 +314,7 @@ class ExtrudeTest(TestCase):
             )
         
     def testArcLinearTestObject(self):
-        le = self.makeArcTestObject()
+        le = self.makeArcLinearTestObject()
         self.write(le, 'ArcLinear')
         iterable_assert(self.assertAlmostEqual, le.at('linear', 0.5).A, 
                         [[ 1.,  0.,  0., 50.],
@@ -322,8 +322,9 @@ class ExtrudeTest(TestCase):
                          [ 0.,  1.,  0.,  0.],
                          [ 0.,  0.,  0.,  1.]])
         
+        
     def makeArcArcExtrudeTestObject(self, scale=1):
-        return extrude.ArcExtrude(
+        return extrude.RotateExtrude(
             extrude.PathBuilder()
                 .move([0, 0])
                 .line([100 * scale, 0], 'linear')
@@ -339,10 +340,38 @@ class ExtrudeTest(TestCase):
         le = self.makeArcArcExtrudeTestObject()
         self.write(le, 'ArcRotate')
         iterable_assert(self.assertAlmostEqual, le.at('linear', 0.5).A, 
-                        [[ 1.,  0.,  0., 50.],
+                        [[ 0.,  1.,  0., 50.],
+                         [ 1.,  0.,  0.,  0.],
                          [ 0.,  0., -1.,  0.],
-                         [ 0.,  1.,  0.,  0.],
                          [ 0.,  0.,  0.,  1.]])
+        
+        
+    def testArcTangentPoint(self):
+        SCALE=0.8
+        
+        path = (extrude.PathBuilder()
+            .move([0, 0])
+            .line([100 * SCALE, 0], 'linear')
+            .arc_tangent_point([0 * SCALE, 100 * SCALE], name='curve', degrees=90)
+            .line([0, 100 * SCALE], 'linear2')
+            .line([0, 0], 'linear3')
+            .build())
+        
+        iterable_assert(self.assertAlmostEqual, path.polygons(TestMetaData()),
+                        ([[ 0.        ,  0.        ],
+                           [80.        ,  0.        ],
+                           [79.01506725, 12.5147572 ],
+                           [76.0845213 , 24.72135955],
+                           [71.28052194, 36.31923998],
+                           [64.72135955, 47.02282018],
+                           [56.56854249, 56.56854249],
+                           [47.02282018, 64.72135955],
+                           [36.31923998, 71.28052194],
+                           [24.72135955, 76.0845213 ],
+                           [12.5147572 , 79.01506725],
+                           [ 0.        , 80.        ],
+                           [ 0.        , 80.        ],
+                           [ 0.        ,  0.        ]],))
     
 if __name__ == "__main__":
     #import sys;sys.argv = ['', 'Test.testName']

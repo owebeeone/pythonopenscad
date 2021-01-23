@@ -12,6 +12,7 @@ import pathlib
 import re
 import sys
 import textwrap
+import traceback 
 
 from frozendict import frozendict
 
@@ -1405,6 +1406,7 @@ def render_exmaples(module, render_options, consumer):
                     consumer(poscobj, clz, e)
                 except BaseException as ex:
                     sys.stderr.write(f'Error while rendering {clz.__name__}:\n{ex}\n')
+                    traceback.print_exception(*sys.exc_info()) 
     return shape_count, example_count
 
 

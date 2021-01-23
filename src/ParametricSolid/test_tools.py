@@ -35,7 +35,8 @@ def _iterable_assert(expect_fun, va, vb, depth=()):
     
     if both_true:
         try:
-            assert len(va) == len(vb)
+            assert len(va) == len(vb), (
+                f'Lengths different depth={depth} len(va)={len(va)} != len(vb)={len(vb)}')
             for i, evab in enumerate(zip(va, vb)):
                 eva, evb = evab
                 _iterable_assert(expect_fun, eva, evb, depth + (i,))
