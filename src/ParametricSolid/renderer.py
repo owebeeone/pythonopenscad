@@ -118,7 +118,7 @@ class Container():
             else:
                 return [], []
                 
-            return [head_copies[0][0]], [head_copies[0][0]]
+            return [head_copies[0][0]], [head_copies[1][0]]
         else:
             return solids, holes
     
@@ -173,7 +173,8 @@ class Context():
         self.stack.append(entry)
         
         if reference_frame:
-            container.add_head(self.model.Multmatrix(reference_frame.m.A))
+            if reference_frame != l.IDENTITY:
+                container.add_head(self.model.Multmatrix(reference_frame.m.A))
             
         if diff_attrs.colour:
             container.add_head(self.model.Color(c=diff_attrs.colour.value))

@@ -3,7 +3,6 @@
 '''
 
 import argparse
-from builtins import isinstance
 import copy
 from dataclasses import dataclass
 import fnmatch
@@ -280,19 +279,33 @@ class NamedShapeBase(object):
 
 class NamedShape(NamedShapeBase):
     
-    def at(self, *args, post: l.GMatrix=None, pre: l.GMatrix=None, **kwds):
+    def at(self, *pargs, post: l.GMatrix=None, pre: l.GMatrix=None, args=None, **kwds):
         '''Creates a shape containing the nominated shape at the reference frame given.
         *args, **kwds: Parameters for the shape given. If none is provided then IDENTITY is used.
         pre: The pre multiplied transform.
         post: The post multiplied transform,
         '''
         
-        if not args and not kwds:
+        if (pargs or kwds) and args:
+            raise IllegalParameterException(
+                f'Recieved positional args and kwds when parameter "args" is also provided.')
+        
+        alter_pre = None
+        alter_post = None
+        if args:
+            pargs = args[0]
+            kwds = args[1]
+            alter_pre = kwds.pop('pre', None)
+            alter_post = kwds.pop('post', None)
+        
+        if not pargs and not kwds:
             reference_frame = l.IDENTITY
         else:
-            reference_frame = self.shape.at(*args, **kwds)
+            reference_frame = self.shape.at(*pargs, **kwds)
         
         reference_frame = apply_post_pre(reference_frame, pre=pre, post=post)
+        if alter_pre or alter_post:
+            reference_frame = apply_post_pre(reference_frame, pre=alter_pre, post=alter_post)
         
         return self.projection(reference_frame)
         
@@ -315,6 +328,9 @@ class ShapeNamer:
     
     def cage(self, name):
         return self.named_shape(name, ModeShapeFrame.CAGE)
+    
+    def composite(self, name):
+        return self.named_shape(name, ModeShapeFrame.COMPOSITE)
 
 
 class ShapeMaker:
@@ -329,6 +345,9 @@ class ShapeMaker:
     
     def as_cage(self, name, reference_frame):
         return self.as_maker(name, ModeShapeFrame.CAGE, reference_frame)
+    
+    def as_composite(self, name, reference_frame):
+        return self.as_maker(name, ModeShapeFrame.COMPOSITE, reference_frame)
 
 
 class LazyNamedShape(NamedShapeBase):
@@ -524,7 +543,13 @@ class Shape(ShapeNamer, ShapeMaker):
         maker = cls(*cls.EXAMPLE_SHAPE_ARGS[0], **cls.EXAMPLE_SHAPE_ARGS[1]
             ).solid('example').projection(l.IDENTITY)
         for entry in cls.EXAMPLE_ANCHORS:
-            entry[0](maker, entry[1])
+            try:
+                entry[0](maker, entry[1])
+            except TypeError:
+                sys.stderr.write(f'Error while rendering example for {cls.__name__}:\n{entry!r}\n')
+                traceback.print_exception(*sys.exc_info()) 
+                
+                entry[0](maker, entry[1]) #remove
         return maker
     
     def add_between(
@@ -730,15 +755,32 @@ class Maker(Shape):
         
         return self
     
-    def add_at(self, maker, *args, pre=None, post=None, **kwds):
-        
+    def add_at(self, maker, *pargs, pre=None, post=None, args=None, **kwds):
+        '''Adds another maker at the anchor of the provided parameters.
+        If args is provided, this is a packed set of args from core.args.
+        '''
         if not isinstance(maker, Maker):
             raise IllegalParameterException(
                 f'Expected a parameter of type {self.__class__.__name__!r} but received an '
                 f'object of type {maker.__class__.__name__!r}.')
             
-        local_frame = self.at(*args, **kwds) if args or kwds else l.IDENTITY
+        if (pargs or kwds) and args:
+            raise IllegalParameterException(
+                f'Recieved positional args and kwds when parameter "args" is also provided.')
+        
+        
+        alter_pre = None
+        alter_post = None
+        if args:
+            pargs = args[0]
+            kwds = args[1]
+            alter_pre = kwds.pop('pre', None)
+            alter_post = kwds.pop('post', None)
+            
+        local_frame = self.at(*pargs, **kwds) if pargs or kwds else l.IDENTITY
         local_frame = apply_post_pre(local_frame, pre=pre, post=post)
+        if alter_pre or alter_post:
+            local_frame = apply_post_pre(local_frame, pre=alter_pre, post=alter_post)
         
         for entry in maker.entries.values():
             self._add_mode_shape_frame(entry.pre_mul(local_frame))
@@ -1049,7 +1091,10 @@ class Text(Shape):
 
     def render(self, renderer):
         params = fill_params(self, renderer, ('fn',), exclude=('depth',))
-        text_obj = renderer.model.Text(**params)
+        text_obj = renderer.model.Translate([0, 0, -0.5])(
+             renderer.model.Linear_Extrude(1)(
+                 renderer.model.Text(**params)))
+        #text_obj = renderer.model.Text(**params)
         if self.depth == 1:
             return renderer.add(text_obj)
         
@@ -1177,6 +1222,14 @@ class Cone(Shape):
         else:
             m = l.ROTV111_120
         return l.rotZ(degrees=degrees, radians=radians) * l.translate([x, 0, h]) * m
+
+
+def Cylinder(h=1, r=1, **kwds):
+    '''Creates a Cone that has the same top and base radius. (a cylinder)'''
+    kwds['h'] = h
+    kwds['r_base'] = r
+    kwds['r_top'] = r
+    return Cone(**kwds)
 
 
 class CompositeShape(Shape):
