@@ -248,7 +248,7 @@ class ExtrudeTest(TestCase):
                             (13, 14, 15))))
     
 
-    def makeTestObject(self, scale=1):
+    def makeTestObject_s1(self, scale=1):
         return extrude.LinearExtrude(
             extrude.PathBuilder()
                 .move([0, 0])
@@ -263,7 +263,22 @@ class ExtrudeTest(TestCase):
             twist=90,
             scale=(1, 0.3)
             )
-    
+        
+    def makeTestObject(self, scale=1):
+        return extrude.LinearExtrude(
+            extrude.PathBuilder()
+                .move([0, 0])
+                .line([100 * scale, 0], 'linear')
+                .spline([[0,  100 * scale], [0, 100 * scale]],
+                         name='curve', cv_len=(0.5,0.4), degrees=(100,), rel_len=0.8)
+                .line([0, 1 * scale], 'linear2')
+                .line([0, 0], 'linear3')
+                .build(),
+            h=40,
+            fn=30,
+            twist=90,
+            scale=(1, 0.3)
+            )
 
     def testLinearExtrude(self):
         le = self.makeTestObject()
@@ -372,7 +387,50 @@ class ExtrudeTest(TestCase):
                            [ 0.        , 80.        ],
                            [ 0.        , 80.        ],
                            [ 0.        ,  0.        ]],))
+        
+    
+    def testArcTangentPoint_2(self):
+        r_bevel = 5
+        r_sphere = 15
+        sin_t = r_bevel / (r_sphere + r_bevel)
+        cos_t = np.sqrt(1 - sin_t ** 2)
+        p1 = [cos_t * r_sphere, -sin_t * r_sphere]
+        p2 = [cos_t * (r_sphere + r_bevel), 0]
+        
+        path = (extrude.PathBuilder()
+            .move([0, 0])
+            .line([0, -r_sphere], 'edge1')
+            .arc_tangent_point(p1, degrees=90, name='sphere')
+            .arc_tangent_point(p2, degrees=0, name='bevel')
+            .line([0, 0], 'edge2')
+            .build())
+        
+        iterable_assert(self.assertAlmostEqual, path.polygons(TestMetaData()),
+                        ([[ 0.00000000e+00,  0.00000000e+00],
+                           [ 0.00000000e+00, -1.50000000e+01],
+                           [ 1.97145374e+00, -1.48698813e+01],
+                           [ 3.90870442e+00, -1.44817827e+01],
+                           [ 5.77814237e+00, -1.38424373e+01],
+                           [ 7.54733440e+00, -1.29629373e+01],
+                           [ 9.18558654e+00, -1.18585412e+01],
+                           [ 1.06644765e+01, -1.05484094e+01],
+                           [ 1.19583467e+01, -9.05527162e+00],
+                           [ 1.30447497e+01, -7.40503245e+00],
+                           [ 1.39048372e+01, -5.62632221e+00],
+                           [ 1.45236875e+01, -3.75000000e+00],
+                           [ 1.47299710e+01, -3.12455926e+00],
+                           [ 1.50166668e+01, -2.53165585e+00],
+                           [ 1.53788012e+01, -1.98157613e+00],
+                           [ 1.58100912e+01, -1.48386352e+00],
+                           [ 1.63030546e+01, -1.04715292e+00],
+                           [ 1.68491386e+01, -6.79020900e-01],
+                           [ 1.74388693e+01, -3.85854229e-01],
+                           [ 1.80620153e+01, -1.72739105e-01],
+                           [ 1.87077655e+01, -4.33728971e-02],
+                           [ 1.93649167e+01,  2.66453526e-15],
+                           [ 0.00000000e+00,  0.00000000e+00]],))
     
 if __name__ == "__main__":
-    #import sys;sys.argv = ['', 'Test.testName']
+    #import sys
+    #sys.argv = ['', 'ExtrudeTest.testArcTangentPoint_2']
     unittest.main()
