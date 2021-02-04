@@ -490,6 +490,7 @@ class Shape(ShapeNamer, ShapeMaker):
     '''
     EXAMPLE_ANCHORS=()
     EXAMPLE_SHAPE_ARGS=args()
+    EXAMPLES_EXTENDED=dict()
     
     def __init__(self):
         pass
@@ -536,20 +537,34 @@ class Shape(ShapeNamer, ShapeMaker):
     @classmethod
     def examples(cls):
         '''Returns a list of available examples.'''
-        return ('default',)
+        non_str_keys = tuple(
+            repr(s) for s in cls.EXAMPLES_EXTENDED.keys() if not isinstance(s, str))
+        assert not non_str_keys, (f'Shpae examples in "{cls.__name__}" contains non string keys: '
+                                  f'{non_str_keys}. Recast these to strings.')
+        assert not 'default' in cls.EXAMPLES_EXTENDED, (f'Shpae examples in "{cls.__name__}" '
+                                                        f'must not contain key "default".')
+        return ('default',) + tuple(cls.EXAMPLES_EXTENDED.keys())
     
     @classmethod
     def example(cls, name='default'):
-        maker = cls(*cls.EXAMPLE_SHAPE_ARGS[0], **cls.EXAMPLE_SHAPE_ARGS[1]
-            ).solid('example').projection(l.IDENTITY)
-        for entry in cls.EXAMPLE_ANCHORS:
-            try:
+        if name == 'default':
+            shape_args = cls.EXAMPLE_SHAPE_ARGS
+            anchors = cls.EXAMPLE_ANCHORS
+        else:
+            shape_args, anchors = cls.EXAMPLES_EXTENDED[name]
+
+        try:
+            entry = f'{cls.__name__}(*{shape_args[0]!r}, **{shape_args[1]!r})'
+            maker = cls(*shape_args[0], **shape_args[1]).solid('example').projection(l.IDENTITY)            
+            
+            for entry in anchors:
                 entry[0](maker, entry[1])
-            except TypeError:
-                sys.stderr.write(f'Error while rendering example for {cls.__name__}:\n{entry!r}\n')
-                traceback.print_exception(*sys.exc_info()) 
-                
-                entry[0](maker, entry[1]) #remove
+        except BaseException:
+            traceback.print_exception(*sys.exc_info()) 
+            sys.stderr.write(
+                f'Error while rendering example for {cls.__name__}:\n{entry!r}\n')
+            raise
+        
         return maker
     
     def add_between(

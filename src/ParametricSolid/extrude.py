@@ -394,12 +394,12 @@ class CircularArc:
         '''Returns the derivative (direction of the curve at t).'''
         angle = t * self.span_angle + self.start_angle
         d = -1 if self.span_angle < 0 else 1
-        return d * np.array([np.cos(angle), -np.sin(angle)])
+        return d * np.array([np.sin(angle), -np.cos(angle)])
     
     def normal2d(self, t):
         '''Returns the normal to the curve at t.'''
         ddt = self.derivative(t)
-        return np.array([-ddt[1], ddt[0]])
+        return np.array([ddt[1], -ddt[0]])
     
     def extents(self):
         sa = self.start_angle
@@ -424,7 +424,7 @@ class CircularArc:
 
     def evaluate(self, t):
         angle = t * self.span_angle + self.start_angle
-        return np.array([np.sin(angle), np.cos(angle)]) * self.radius + self.centre
+        return np.array([np.cos(angle), np.sin(angle)]) * self.radius + self.centre
   
 
 @dataclass()
@@ -589,14 +589,11 @@ class PathBuilder():
             radius_end = _vlen(r_end)
             assert np.abs(radius_start - radius_end) < EPSILON, (
                 'start and end point radius should be the same')
-            start_angle = np.arctan2(r_start[0] / radius_start, r_start[1] / radius_start)
-            end_angle = np.arctan2(r_end[0] / radius_start, r_end[1] / radius_start)
+            start_angle = np.arctan2(r_start[1] / radius_start, r_start[0] / radius_start)
+            end_angle = np.arctan2(r_end[1] / radius_start, r_end[0] / radius_start)
             span_angle = end_angle - start_angle
             if self.path_direction:
-                if span_angle < 0:
-                    span_angle = span_angle + 2 * np.pi
-                else:
-                    span_angle = span_angle - 2 * np.pi
+                span_angle = -span_angle
             object.__setattr__(self, 'arcto', CircularArc(
                 start_angle, span_angle, radius_start, self.centre))
             
@@ -618,7 +615,7 @@ class PathBuilder():
                 map_builder.append((self, t, count))
     
         def direction(self, t):
-            return -self.arcto.derivative(t)
+            return self.arcto.derivative(t)
         
         def direction_normalized(self, t):
             return _normalize(self.direction(t))
@@ -741,7 +738,7 @@ class PathBuilder():
         middle_delta = np.arctan2(n_points[0][0], n_points[0][1]) - start_angle
         end_delta = np.arctan2(n_points[0][0], n_points[0][1]) - start_angle
 
-        angle_dir = -1 if end_delta < 0 else  1
+        angle_dir = -1 if end_delta > 0 else  1
         
         path_direction = angle_dir > 0
         
@@ -757,20 +754,20 @@ class PathBuilder():
         else:
             direction = _normalize(direction)
         
-        direction = (
-            l.rotZ(degrees=degrees, radians=radians) * to_gvector(direction)).A[0:len(direction)]
+        t_dir = (
+            l.rotZ(degrees=degrees, radians=radians) * to_gvector(direction))
+        direction = t_dir.A[0:len(direction)]
         centre, radius = solve_circle_tangent_point(start, direction, last)
         if centre is None:
             # This degenerates to a line.
             return self.line(last, name=name)
         n_points = np.array([start - centre, last - centre]) / radius
-        start_angle = np.arctan2(n_points[0][0], n_points[0][1])
-        end_delta = np.arctan2(n_points[1][0], n_points[1][1]) - start_angle
+        start_angle = np.arctan2(n_points[0][1], n_points[0][0])
+        end_angle = np.arctan2(n_points[1][1], n_points[1][0])
+        end_delta = end_angle - start_angle
+        c_dir = l.GVector([-np.sin(start_angle), np.cos(start_angle), 0])
         
-        angle_dir = -1 if end_delta < 0 else  1
-        
-        arc_dir = np.array([-np.cos(start_angle), np.sin(start_angle)]) * angle_dir
-        path_direction = np.sum(np.sum(arc_dir * direction)) > 0
+        path_direction = t_dir.dot3D(c_dir) < 0
         
         return self.add_op(self._ArcTo(
             last, centre, path_direction, 
@@ -982,7 +979,7 @@ class RotateExtrude(ExtrudedShape):
     fs: float=None
 
     
-    SCALE=1
+    SCALE=1.0
     
     EXAMPLE_SHAPE_ARGS=core.args(
         PathBuilder()
