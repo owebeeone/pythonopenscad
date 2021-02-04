@@ -782,7 +782,7 @@ class PathBuilder():
         gpoint = l.GVector(LIST_3_FLOAT(point))
         gcontrol = l.GVector(LIST_3_FLOAT(control))
         g_rel = (gcontrol - gpoint)
-        if not cv_len is None:
+        if not cv_len is None and g_rel.length() > EPSILON:
             g_rel = g_rel.N * cv_len
 
         if radians:
@@ -1060,6 +1060,9 @@ class RotateExtrude(ExtrudedShape):
                      * l.ROTY_90  
                      * l.rotXSinCos(normal[1], -normal[0]))
     
+    @core.anchor('Centre of the extrusion arc.')
+    def centre(self):
+        return l.IDENTITY
 
 if __name__ == "__main__":
     core.anchorscad_main(False)

@@ -18,8 +18,8 @@ class HoleTester(core.CompositeShape):
     '''A test model for screws.'''
     
     dia: float  # Screw hole diameter
-    size_range: tuple=(0.1 / 2, 0.24 / 2)
-    count: int=8
+    size_range: tuple=(0.05 / 2, 0.3 / 2)
+    count: int=10
     block_size: tuple=(1, 1, 1.5)
     outer_dia_delta: float=4
     outer_stem_height: float=5
@@ -29,7 +29,7 @@ class HoleTester(core.CompositeShape):
     fs: float=None
     
     
-    EXAMPLE_SHAPE_ARGS=core.args(3, fn=32)
+    EXAMPLE_SHAPE_ARGS=core.args(2, fn=32)
         
     def __post_init__(self):
         
