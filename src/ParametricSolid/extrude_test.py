@@ -429,8 +429,81 @@ class ExtrudeTest(TestCase):
                            [ 1.87077655e+01, -4.33728971e-02],
                            [ 1.93649167e+01,  2.66453526e-15],
                            [ 0.00000000e+00,  0.00000000e+00]],))
-    
+        
+    def testArcTangentPoint_3(self):
+        r_bevel = 10
+        
+        path = (extrude.PathBuilder()
+            .move([0, 0])
+            .line([0, -r_bevel], 'edge1')
+            .arc_tangent_point([r_bevel, 0], degrees=180, name='bevel')
+            .line([0, 0], 'edge2')
+            .build())
+        
+        iterable_assert(self.assertAlmostEqual, path.polygons(TestMetaData()),
+                        ([[  0.        ,   0.        ],
+                           [  0.        , -10.        ],
+                           [  0.12311659,  -8.43565535],
+                           [  0.48943484,  -6.90983006],
+                           [  1.08993476,  -5.460095  ],
+                           [  1.90983006,  -4.12214748],
+                           [  2.92893219,  -2.92893219],
+                           [  4.12214748,  -1.90983006],
+                           [  5.460095  ,  -1.08993476],
+                           [  6.90983006,  -0.48943484],
+                           [  8.43565535,  -0.12311659],
+                           [ 10.        ,   0.        ],
+                           [  0.        ,   0.        ]],))
+        
+    def testArcTangentPoint_4(self):
+        r = 10
+        
+        path = (extrude.PathBuilder()
+            .move([0, 0])
+            .line([0, r], 'edge1')
+            .arc_tangent_point([0, -r], degrees=-90, name='arc')
+            .line([0, 0], 'edge2')
+            .build())
+        
+        iterable_assert(self.assertAlmostEqual, path.polygons(TestMetaData()),
+                        ([[ 0.00000000e+00,  0.00000000e+00],
+                           [ 0.00000000e+00,  1.00000000e+01],
+                           [ 3.09016994e+00,  9.51056516e+00],
+                           [ 5.87785252e+00,  8.09016994e+00],
+                           [ 8.09016994e+00,  5.87785252e+00],
+                           [ 9.51056516e+00,  3.09016994e+00],
+                           [ 1.00000000e+01,  0.00000000e+00],
+                           [ 9.51056516e+00, -3.09016994e+00],
+                           [ 8.09016994e+00, -5.87785252e+00],
+                           [ 5.87785252e+00, -8.09016994e+00],
+                           [ 3.09016994e+00, -9.51056516e+00],
+                           [ 6.12323400e-16, -1.00000000e+01],
+                           [ 0.00000000e+00,  0.00000000e+00]],))
+        
+    def testArcTangentPoint_5(self):
+        r = 10
+        
+        path = (extrude.PathBuilder()
+            .move([0, 0])
+            .line([0, r], 'edge1')
+            .arc_tangent_point([0, -r], degrees=90, name='arc')
+            .line([0, 0], 'edge2')
+            .build())
+        
+        iterable_assert(self.assertAlmostEqual, path.polygons(TestMetaData()),
+                        ([[ 0.00000000e+00,  0.00000000e+00],
+                           [ 0.00000000e+00,  1.00000000e+01],
+                           [-3.09016994e+00,  9.51056516e+00],
+                           [-5.87785252e+00,  8.09016994e+00],
+                           [-8.09016994e+00,  5.87785252e+00],
+                           [-9.51056516e+00,  3.09016994e+00],
+                           [-1.00000000e+01,  1.22464680e-15],
+                           [-9.51056516e+00, -3.09016994e+00],
+                           [-8.09016994e+00, -5.87785252e+00],
+                           [-5.87785252e+00, -8.09016994e+00],
+                           [-3.09016994e+00, -9.51056516e+00],
+                           [-1.83697020e-15, -1.00000000e+01],
+                           [ 0.00000000e+00,  0.00000000e+00]],))
+                        
 if __name__ == "__main__":
-    #import sys
-    #sys.argv = ['', 'ExtrudeTest.testArcTangentPoint_2']
     unittest.main()

@@ -393,8 +393,9 @@ class CircularArc:
     def derivative(self, t):
         '''Returns the derivative (direction of the curve at t).'''
         angle = t * self.span_angle + self.start_angle
-        d = -1 if self.span_angle < 0 else 1
-        return d * np.array([np.sin(angle), -np.cos(angle)])
+        # Derivative direction depends on sense of angle.
+        d = 1 if self.span_angle < 0 else -1
+        return np.array([np.sin(angle), -np.cos(angle)]) * d
     
     def normal2d(self, t):
         '''Returns the normal to the curve at t.'''
@@ -594,6 +595,7 @@ class PathBuilder():
             span_angle = end_angle - start_angle
             if self.path_direction:
                 span_angle = -span_angle
+                    
             object.__setattr__(self, 'arcto', CircularArc(
                 start_angle, span_angle, radius_start, self.centre))
             
@@ -767,7 +769,7 @@ class PathBuilder():
         end_delta = end_angle - start_angle
         c_dir = l.GVector([-np.sin(start_angle), np.cos(start_angle), 0])
         
-        path_direction = t_dir.dot3D(c_dir) < 0
+        path_direction = (t_dir.dot3D(c_dir) < 0) == (end_delta > 0)
         
         return self.add_op(self._ArcTo(
             last, centre, path_direction, 
@@ -1015,6 +1017,22 @@ class RotateExtrude(ExtrudedShape):
                 core.surface_args('linear2', 0.5, 0.9),
                 core.surface_args('linear2', 1.0, 0.9),
                 )
+    
+    EXAMPLES_EXTENDED={
+        'example2': core.ExampleParams(
+            shape_args=core.args(
+                PathBuilder()
+                    .move([0, 0])
+                    .line([110 * SCALE, 0], 'linear')
+                    .arc_tangent_point([10 * SCALE, 100 * SCALE], name='curve', degrees=150)
+                    .line([0, 100 * SCALE], 'linear2')
+                    .line([0, 0], 'linear3')
+                    .build(),
+                degrees=120,
+                fn=80,
+                ),
+            anchors=(core.surface_args('linear', 0.5),))
+        }
 
     def render(self, renderer):
         polygon = renderer.model.Polygon(*self.path.polygons(renderer.get_current_attributes()))
@@ -1037,8 +1055,7 @@ class RotateExtrude(ExtrudedShape):
         eliplse_angle = np.arctan2(xelipse_max * twist_vector.y, yelipse_max * twist_vector.x)
         circle_angle = np.arctan2(twist_vector.y, twist_vector.x)
         return eliplse_angle - circle_angle
-        
-    
+
     @core.anchor('Anchor to the path edge projected to surface.')
     def edge(self, path_node_name, t=0, degrees=0, radians=None):
         '''Anchors to the edge projected to the surface of the rotated extrusion.

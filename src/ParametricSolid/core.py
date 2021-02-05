@@ -485,6 +485,12 @@ def lazy_shape(shape_type, *field_specifiers, other_args=args()):
     return LazyShape(shape_type, field_specifiers, other_args)
 
 
+@dataclass()
+class ExampleParams():
+    shape_args: tuple=()
+    anchors: tuple=()
+    
+
 class Shape(ShapeNamer, ShapeMaker):
     '''The base "shape" class for Anchorscad.
     '''
@@ -548,16 +554,19 @@ class Shape(ShapeNamer, ShapeMaker):
     @classmethod
     def example(cls, name='default'):
         if name == 'default':
-            shape_args = cls.EXAMPLE_SHAPE_ARGS
-            anchors = cls.EXAMPLE_ANCHORS
+            example_params = ExampleParams(cls.EXAMPLE_SHAPE_ARGS, cls.EXAMPLE_ANCHORS)
         else:
-            shape_args, anchors = cls.EXAMPLES_EXTENDED[name]
+            example_params = cls.EXAMPLES_EXTENDED[name]
 
         try:
-            entry = f'{cls.__name__}(*{shape_args[0]!r}, **{shape_args[1]!r})'
-            maker = cls(*shape_args[0], **shape_args[1]).solid('example').projection(l.IDENTITY)            
+            entry = (f'{cls.__name__}'
+                    f'(*{example_params.shape_args[0]!r}, **{example_params.shape_args[1]!r})')
+            maker = cls(
+                *example_params.shape_args[0], 
+                **example_params.shape_args[1]
+                ).solid('example').projection(l.IDENTITY)            
             
-            for entry in anchors:
+            for entry in example_params.anchors:
                 entry[0](maker, entry[1])
         except BaseException:
             traceback.print_exception(*sys.exc_info()) 
