@@ -504,6 +504,303 @@ class ExtrudeTest(TestCase):
                            [-3.09016994e+00, -9.51056516e+00],
                            [-1.83697020e-15, -1.00000000e+01],
                            [ 0.00000000e+00,  0.00000000e+00]],))
+        
+
+    def testArcTangentPoint_6(self):
+        r_bevel = 3
+        
+        path = (extrude.PathBuilder()
+            .move([0, 0])
+            .line([r_bevel, 0], 'edge1')
+            .arc_tangent_point([0, r_bevel], degrees=180, name='bevel')
+            .line([0, 0], 'edge2')
+            .build())
+        
+        iterable_assert(self.assertAlmostEqual, path.polygons(TestMetaData()),
+                        ([[0.        , 0.        ],
+                           [3.        , 0.        ],
+                           [2.5306966 , 0.03693498],
+                           [2.07294902, 0.14683045],
+                           [1.6380285 , 0.32698043],
+                           [1.23664424, 0.57294902],
+                           [0.87867966, 0.87867966],
+                           [0.57294902, 1.23664424],
+                           [0.32698043, 1.6380285 ],
+                           [0.14683045, 2.07294902],
+                           [0.03693498, 2.5306966 ],
+                           [0.        , 3.        ],
+                           [0.        , 0.        ]],))
+        
+    def makePathQ1Q3(self, angle):
+        p = 10
+        return (extrude.PathBuilder()
+            .move([0, 0])
+            .line([-p, p], 'edge1')
+            .arc_tangent_point([-p, -p], degrees=angle, name='arc')
+            .line([0, 0], 'edge2')
+            .build())
+
+    def testArcTangentPoint_7(self):
+        path = self.makePathQ1Q3(-90)
+        
+        iterable_assert(self.assertAlmostEqual, path.polygons(TestMetaData()),
+                        ([[  0.        ,   0.        ],
+                           [-10.        ,  10.        ],
+                           [ -4.37016024,  13.44997024],
+                           [  2.21231742,  13.96802247],
+                           [  8.31253876,  11.44122806],
+                           [ 12.60073511,   6.42039522],
+                           [ 14.14213562,   0.        ],
+                           [ 12.60073511,  -6.42039522],
+                           [  8.31253876, -11.44122806],
+                           [  2.21231742, -13.96802247],
+                           [ -4.37016024, -13.44997024],
+                           [-10.        , -10.        ],
+                           [  0.        ,   0.        ]],))    
+        
+    def testArcTangentPoint_8(self):
+        path = self.makePathQ1Q3(90)
+        
+        iterable_assert(self.assertAlmostEqual, path.polygons(TestMetaData()),
+                        ([[ 0.00000000e+00,  0.00000000e+00],
+                           [-1.00000000e+01,  1.00000000e+01],
+                           [-1.14412281e+01,  8.31253876e+00],
+                           [-1.26007351e+01,  6.42039522e+00],
+                           [-1.34499702e+01,  4.37016024e+00],
+                           [-1.39680225e+01,  2.21231742e+00],
+                           [-1.41421356e+01,  1.73191211e-15],
+                           [-1.39680225e+01, -2.21231742e+00],
+                           [-1.34499702e+01, -4.37016024e+00],
+                           [-1.26007351e+01, -6.42039522e+00],
+                           [-1.14412281e+01, -8.31253876e+00],
+                           [-1.00000000e+01, -1.00000000e+01],
+                           [ 0.00000000e+00,  0.00000000e+00]],))      
+
+        
+    def makeArcPointsPath(self, start_angle, middle_angle, end_angle):
+        r = 10
+        offset = np.array([5, 5])
+        angles = np.array([start_angle, middle_angle, end_angle]) / 180 * np.pi
+        points_t = np.array([np.cos(angles), np.sin(angles)]) * r
+        points = np.transpose(points_t)
+        return (extrude.PathBuilder()
+            .move(offset)
+            .line(points[0] + offset, 'edge1')
+            .arc_points(points[1] + offset, points[2] + offset, name='arc')
+            .line(offset, 'edge2')
+            .build())
+        
+    def testArcPoints_1(self):
+        path = self.makeArcPointsPath(10, 20, 30)
+        
+        iterable_assert(self.assertAlmostEqual, path.polygons(TestMetaData()),
+                        ([[ 5.        ,  5.        ],
+                           [14.84807753,  6.73648178],
+                           [14.78147601,  7.07911691],
+                           [14.70295726,  7.41921896],
+                           [14.61261696,  7.75637356],
+                           [14.51056516,  8.09016994],
+                           [14.39692621,  8.42020143],
+                           [14.27183855,  8.74606593],
+                           [14.13545458,  9.06736643],
+                           [13.98794046,  9.38371147],
+                           [13.82947593,  9.69471563],
+                           [13.66025404, 10.        ],
+                           [ 5.        ,  5.        ]],))  
+        
+    def testArcPoints_2(self):
+        path = self.makeArcPointsPath(10, 35, 30)
+        
+        iterable_assert(self.assertAlmostEqual, path.polygons(TestMetaData()),
+                        ([[ 5.        ,  5.        ],
+                           [14.84807753,  6.73648178],
+                           [14.13545458,  0.93263357],
+                           [10.29919264, -3.48048096],
+                           [ 4.65100503, -4.99390827],
+                           [-0.87785252, -3.09016994],
+                           [-4.39692621,  1.57979857],
+                           [-4.70295726,  7.41921896],
+                           [-1.69130606, 12.43144825],
+                           [ 3.60826899, 14.90268069],
+                           [ 9.38371147, 13.98794046],
+                           [13.66025404, 10.        ],
+                           [ 5.        ,  5.        ]],))  
+
+    def testArcPoints_3(self):
+        test_angles = ((190, 170, 90), (190, 185, 90))
+        for angles in test_angles:
+            path = self.makeArcPointsPath(*angles)
+            
+            iterable_assert(self.assertAlmostEqual, path.polygons(TestMetaData()),
+                            ([[ 5.00000000e+00,  5.00000000e+00],
+                               [-4.84807753e+00,  3.26351822e+00],
+                               [-5.00000000e+00,  5.00000000e+00],
+                               [-4.84807753e+00,  6.73648178e+00],
+                               [-4.39692621e+00,  8.42020143e+00],
+                               [-3.66025404e+00,  1.00000000e+01],
+                               [-2.66044443e+00,  1.14278761e+01],
+                               [-1.42787610e+00,  1.26604444e+01],
+                               [-8.88178420e-16,  1.36602540e+01],
+                               [ 1.57979857e+00,  1.43969262e+01],
+                               [ 3.26351822e+00,  1.48480775e+01],
+                               [ 5.00000000e+00,  1.50000000e+01],
+                               [ 5.00000000e+00,  5.00000000e+00]],))  
+        
+
+    def testArcPoints_4(self):
+        test_angles = ((190, 170, 270), (190, 185, 270))
+        for angles in test_angles:
+            path = self.makeArcPointsPath(*angles)
+            
+            iterable_assert(self.assertAlmostEqual, path.polygons(TestMetaData()),
+                            ([[ 5.        ,  5.        ],
+                               [-4.84807753,  3.26351822],
+                               [-4.51056516,  8.09016994],
+                               [-1.9465837 , 12.193398  ],
+                               [ 2.24362644, 14.61261696],
+                               [ 7.07911691, 14.78147601],
+                               [11.4278761 , 12.66044443],
+                               [14.27183855,  8.74606593],
+                               [14.94521895,  3.95471537],
+                               [13.29037573, -0.59192903],
+                               [ 9.69471563, -3.82947593],
+                               [ 5.        , -5.        ],
+                               [ 5.        ,  5.        ]],))  
+            
+    
+    def makeArcPointsRadius(self, start_angle, end_angle, r, is_left=False):
+        offset = np.array([5, 5])
+        angles = np.array([start_angle, end_angle]) / 180 * np.pi
+        points_t = np.array([np.cos(angles), np.sin(angles)]) * (r / 2)
+        points = np.transpose(points_t)
+        return (extrude.PathBuilder()
+            .move(offset)
+            .line(points[0] + offset, 'edge1')
+            .arc_points_radius(points[1] + offset, r, name='arc', is_left=is_left)
+            .line(offset, 'edge2')
+            .build())
+
+    
+    def testArcPointsRadius_1(self):
+        path = self.makeArcPointsRadius(0, 90, 10, False)
+            
+        iterable_assert(self.assertAlmostEqual, path.polygons(TestMetaData()),
+                        ([[ 5.        ,  5.        ],
+                           [10.        ,  5.        ],
+                           [15.43068778,  4.20139037],
+                           [20.46476957,  6.38957857],
+                           [23.58546912, 10.90526029],
+                           [23.85251507, 16.38785397],
+                           [21.18544609, 21.18544609],
+                           [16.38785397, 23.85251507],
+                           [10.90526029, 23.58546912],
+                           [ 6.38957857, 20.46476957],
+                           [ 4.20139037, 15.43068778],
+                           [ 5.        , 10.        ],
+                           [ 5.        ,  5.        ]],))  
+        
+    def testArcPointsRadius_2(self):
+        path = self.makeArcPointsRadius(0, 90, 10, True)
+            
+        iterable_assert(self.assertAlmostEqual, path.polygons(TestMetaData()),
+                        ([[ 5.        ,  5.        ],
+                           [10.        ,  5.        ],
+                           [10.79860963, -0.43068778],
+                           [ 8.61042143, -5.46476957],
+                           [ 4.09473971, -8.58546912],
+                           [-1.38785397, -8.85251507],
+                           [-6.18544609, -6.18544609],
+                           [-8.85251507, -1.38785397],
+                           [-8.58546912,  4.09473971],
+                           [-5.46476957,  8.61042143],
+                           [-0.43068778, 10.79860963],
+                           [ 5.        , 10.        ],
+                           [ 5.        ,  5.        ]],)) 
+            
+    def makePathWithSweep(self, sweep_angle, angle):
+        p = 10
+        r = p * np.sqrt(2)
+        return (extrude.PathBuilder()
+            .move([0, 0])
+            .line([-p, p], 'edge1')
+            .arc_tangent_radius_sweep(
+                r,
+                sweep_angle_degrees=sweep_angle, 
+                degrees=angle, 
+                name='arc')
+            .line([0, 0], 'edge2')
+            .build())
+        
+    def testArcTangentSweep_1(self):
+        path = self.makePathWithSweep(-270, -90)
+            
+        iterable_assert(self.assertAlmostEqual, path.polygons(TestMetaData()),
+                        ([[  0.        ,   0.        ],
+                           [-10.        ,  10.        ],
+                           [ -4.37016024,  13.44997024],
+                           [  2.21231742,  13.96802247],
+                           [  8.31253876,  11.44122806],
+                           [ 12.60073511,   6.42039522],
+                           [ 14.14213562,   0.        ],
+                           [ 12.60073511,  -6.42039522],
+                           [  8.31253876, -11.44122806],
+                           [  2.21231742, -13.96802247],
+                           [ -4.37016024, -13.44997024],
+                           [-10.        , -10.        ],
+                           [  0.        ,   0.        ]],)) 
+            
+    
+    def testArcTangentSweep_2(self):
+        path = self.makePathWithSweep(270, -90)
+            
+        iterable_assert(self.assertAlmostEqual, path.polygons(TestMetaData()),
+                        ([[ 0.00000000e+00,  0.00000000e+00],
+                           [-1.00000000e+01,  1.00000000e+01],
+                           [-1.34499702e+01,  4.37016024e+00],
+                           [-1.39680225e+01, -2.21231742e+00],
+                           [-1.14412281e+01, -8.31253876e+00],
+                           [-6.42039522e+00, -1.26007351e+01],
+                           [-8.21511329e-16, -1.41421356e+01],
+                           [ 6.42039522e+00, -1.26007351e+01],
+                           [ 1.14412281e+01, -8.31253876e+00],
+                           [ 1.39680225e+01, -2.21231742e+00],
+                           [ 1.34499702e+01,  4.37016024e+00],
+                           [ 1.00000000e+01,  1.00000000e+01],
+                           [ 0.00000000e+00,  0.00000000e+00]],)) 
+        
+    def makePathWithCentreSweep(self, sweep_angle):
+        p = 10
+        r = p * np.sqrt(2)
+        return (extrude.PathBuilder()
+            .move([0, 0])
+            .line([-p, p], 'edge1')
+            .arc_centre_sweep(
+                [0, 0],
+                sweep_angle_degrees=sweep_angle, 
+                name='arc')
+            .line([0, 0], 'edge2')
+            .build())
+        
+    def testArcCentreSweep_1(self):
+        path = self.makePathWithCentreSweep(-270)
+            
+        iterable_assert(self.assertAlmostEqual, path.polygons(TestMetaData()),
+                        ([[  0.        ,   0.        ],
+                           [-10.        ,  10.        ],
+                           [ -4.37016024,  13.44997024],
+                           [  2.21231742,  13.96802247],
+                           [  8.31253876,  11.44122806],
+                           [ 12.60073511,   6.42039522],
+                           [ 14.14213562,   0.        ],
+                           [ 12.60073511,  -6.42039522],
+                           [  8.31253876, -11.44122806],
+                           [  2.21231742, -13.96802247],
+                           [ -4.37016024, -13.44997024],
+                           [-10.        , -10.        ],
+                           [  0.        ,   0.        ]],)) 
+            
+
+            
                         
 if __name__ == "__main__":
     unittest.main()

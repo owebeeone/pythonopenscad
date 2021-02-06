@@ -352,30 +352,31 @@ def solve_circle_tangent_point(p1, t1, p2):
     radius = np.sqrt(np.sum((centre - p1) ** 2))
     return (centre, radius)
 
-def solve_circle_tangent_radius(p, t, r):
-    '''Finds the centre of the circle described by a tangent and a radius.
+def solve_circle_tangent_radius(p, t, r, side=True):
+    '''Finds the centre of the circle described by tangent, radius and side of line.
     Returns (centre, radius)'''
     p = np.array(p)
     t = np.array(t)
     tn = _normalize(t)
-    centre = p + r * np.array(-tn[1, t[0]])
+    r_side = r if side else -r
+    centre = p + r_side * np.array([-tn[1], t[0]])
     return (centre, r)
 
-
-def solve_circle_2_point_radius(p1, p2, r, left=True):
-    '''Finds the centre of the circle described by a tangent and a circle and a radius.
+def solve_circle_points_radius(p1, p2, r, left=True):
+    '''Finds the centre of the circle described by a start and end points, radius and placement
+    of centre.
     Returns (centre, radius)'''
     p1 = np.array(p1)
     p2 = np.array(p2)
     pd = p2 - p1
-    leng = np.sqrt(np.sum(pd **2)) / 2
+    leng = _vlen(pd) / 2
     pdn = pd / (2 * leng)
-    if len * r:
+    if leng > r:
         return (None, None)
-    if np.abs(len - r) < EPSILON:
+    if np.abs(leng - r) < EPSILON:
         centre = (p1 + p2) / 2
         return (centre, r)
-    opp_side = np.sqrt(r**2 - len **2)
+    opp_side = np.sqrt(r**2 - leng **2)
     if left:
         dir = np.array([-pdn[1], pdn[0]]) #+90 degrees
     else:
@@ -386,15 +387,15 @@ def solve_circle_2_point_radius(p1, p2, r, left=True):
 @dataclass()
 class CircularArc:
     start_angle: float  # Angles in radians
-    span_angle: float   # Angles in radians
+    sweep_angle: float   # Angles in radians
     radius: float
     centre: np.array
     
     def derivative(self, t):
         '''Returns the derivative (direction of the curve at t).'''
-        angle = t * self.span_angle + self.start_angle
+        angle = t * self.sweep_angle + self.start_angle
         # Derivative direction depends on sense of angle.
-        d = 1 if self.span_angle < 0 else -1
+        d = 1 if self.sweep_angle < 0 else -1
         return np.array([np.sin(angle), -np.cos(angle)]) * d
     
     def normal2d(self, t):
@@ -412,7 +413,7 @@ class CircularArc:
         
         sai = sa * 2 / np.pi
         eai = sa * 2 / np.pi
-        angle_dir = 1. if self.span_angle >= 0 else -1.
+        angle_dir = 1. if self.sweep_angle >= 0 else -1.
         count = 1
         while count < (eai - sai) * angle_dir and count < 4:
             _, ai = np.modf(sai + count * angle_dir)
@@ -424,7 +425,7 @@ class CircularArc:
         return np.transpose(result)
 
     def evaluate(self, t):
-        angle = t * self.span_angle + self.start_angle
+        angle = t * self.sweep_angle + self.start_angle
         return np.array([np.cos(angle), np.sin(angle)]) * self.radius + self.centre
   
 
@@ -589,15 +590,30 @@ class PathBuilder():
             r_end = self.end_point - self.centre
             radius_end = _vlen(r_end)
             assert np.abs(radius_start - radius_end) < EPSILON, (
-                'start and end point radius should be the same')
-            start_angle = np.arctan2(r_start[1] / radius_start, r_start[0] / radius_start)
-            end_angle = np.arctan2(r_end[1] / radius_start, r_end[0] / radius_start)
-            span_angle = end_angle - start_angle
+                f'start and end point radius should be the same. {radius_start} != {radius_end}')
+            s_normal = r_start / radius_start
+            e_normal = r_end / radius_start
+            cos_s = s_normal[0]
+            sin_s = s_normal[1]
+            start_angle = np.arctan2(sin_s, cos_s)
+            
+            cos_e = e_normal[0]
+            sin_e = e_normal[1]
+            end_angle = np.arctan2(sin_e, cos_e)
+           
+            end_delta = end_angle - start_angle
+ 
             if self.path_direction:
-                span_angle = -span_angle
+                # Should be clockwise.
+                if end_delta < 0:
+                    end_delta = 2 * np.pi + end_delta
+            else:
+                # Should be anti-clockwise
+                if end_delta > 0:
+                    end_delta = -2 * np.pi + end_delta
                     
             object.__setattr__(self, 'arcto', CircularArc(
-                start_angle, span_angle, radius_start, self.centre))
+                start_angle, end_delta, radius_start, self.centre))
             
         def lastPosition(self):
             return self.end_point
@@ -729,6 +745,93 @@ class PathBuilder():
         points = np.array(LIST_3X2_FLOAT([cv1, cv2, cv3]))
         return self.add_op(
             self._SplineTo(points, prev_op=self.last_op(), name=name, meta_data=metadata))
+        
+    def arc_tangent_radius_sweep(self,
+                                 radius,
+                                 sweep_angle_degrees=0,
+                                 sweep_angle_radians=None,
+                                 side=False, 
+                                 degrees=0, 
+                                 radians=None, 
+                                 direction=None, 
+                                 name=None, metadata=None):
+        '''Defines a circular arc starting at the previous operator's end point
+        with the given direction and sweeping the given sweep angle.'''
+        start = self.last_op().lastPosition()
+        if direction is None:
+            direction = self.last_op().direction_normalized(1.0)
+        else:
+            direction = _normalize(direction)
+        
+        t_dir = (
+            l.rotZ(degrees=degrees, radians=radians) * to_gvector(direction))
+        direction = t_dir.A[0:len(direction)]
+        centre, _ = solve_circle_tangent_radius(start, direction, radius, side)
+
+        n_start = (start - centre) / radius
+        cos_s = n_start[0]
+        sin_s = n_start[1]
+        
+        if sweep_angle_radians is None:
+            sweep_angle_radians = sweep_angle_degrees * np.pi / 180
+            
+        sin_sweep = np.sin(sweep_angle_radians)
+        cos_sweep = np.cos(sweep_angle_radians)
+        
+        cos_e = cos_s * cos_sweep - sin_s * sin_sweep
+        sin_e = sin_s * cos_sweep + sin_sweep * cos_s
+        last = np.array([cos_e * radius + centre[0], sin_e * radius + centre[1]])
+        
+        path_direction = sweep_angle_degrees >= 0
+        
+        return self.add_op(self._ArcTo(
+            last, centre, path_direction, 
+            prev_op=self.last_op(), name=name, meta_data=metadata))
+        
+    
+    def arc_centre_sweep(self,
+                         centre, 
+                         sweep_angle_degrees=0,
+                         sweep_angle_radians=None,
+                         name=None,
+                        metadata=None):
+        '''Defines a circular arc starting at the previous operator's end point
+        and sweeping the given angle about the given centre.'''
+        start = self.last_op().lastPosition()
+        
+        centre = np.array(centre)
+        t_start = start - centre
+        radius = _vlen(t_start)
+        n_start = t_start / radius
+        cos_s = n_start[0]
+        sin_s = n_start[1]
+        
+        if sweep_angle_radians is None:
+            sweep_angle_radians = sweep_angle_degrees * np.pi / 180
+            
+        sin_sweep = np.sin(sweep_angle_radians)
+        cos_sweep = np.cos(sweep_angle_radians)
+        
+        cos_e = cos_s * cos_sweep - sin_s * sin_sweep
+        sin_e = sin_s * cos_sweep + sin_sweep * cos_s
+        last = np.array([cos_e * radius + centre[0], sin_e * radius + centre[1]])
+        
+        path_direction = sweep_angle_degrees >= 0
+
+        return self.add_op(self._ArcTo(
+            last, centre, path_direction, prev_op=self.last_op(), name=name, meta_data=metadata))
+        
+        
+    def arc_points_radius(self, last, radius, is_left=True, name=None, metadata=None):
+        '''Defines a circular arc starting at the previous operator's end point
+        and ending at last with the given radius.'''
+        start = self.last_op().lastPosition()
+        centre, _ = solve_circle_points_radius(start, last, radius, is_left)
+        if centre is None:
+            raise UnableToFitCircleWithGivenParameters(
+                f'Unable to fit circle, radius={radius}, start={start} last={last}.')
+        return self.add_op(self._ArcTo(
+            last, centre, not is_left, prev_op=self.last_op(), name=name, meta_data=metadata))
     
     def arc_points(self, middle, last, name=None, metadata=None):
         '''Defines a circular arc starting at the previous operator's end point
@@ -736,15 +839,34 @@ class PathBuilder():
         start = self.last_op().lastPosition()
         centre, radius = solve_circle_3_points(start, middle, last)
         n_points = np.array([start - centre, middle - centre, last - centre]) / radius
-        start_angle = np.arctan2(n_points[0][0], n_points[0][1])
-        middle_delta = np.arctan2(n_points[0][0], n_points[0][1]) - start_angle
-        end_delta = np.arctan2(n_points[0][0], n_points[0][1]) - start_angle
-
-        angle_dir = -1 if end_delta > 0 else  1
+        start_angle = np.arctan2(n_points[0][1], n_points[0][0])
+        middle_angle = np.arctan2(n_points[1][1], n_points[1][0])
+        end_angle = np.arctan2(n_points[2][1], n_points[2][0])
         
-        path_direction = angle_dir > 0
+        middle_delta = middle_angle - start_angle
+        end_delta = end_angle - start_angle
         
-        return self.add_op(self._ArcTo(last, centre, path_direction, name, metadata))
+        # The direction should mean that the middle position traversed before last position.
+        path_direction = True
+        if middle_delta < 0:
+            if end_delta < 0:
+                if middle_delta < end_delta:
+                    path_direction = False
+            else: 
+                end_delta = -2 * np.pi + end_delta      
+                if middle_delta > end_delta:
+                    path_direction = False
+        else:
+            if end_delta > 0:
+                if middle_delta > end_delta:
+                    path_direction = False
+            else: 
+                end_delta = 2 * np.pi + end_delta     
+                if middle_delta > end_delta:
+                    path_direction = False
+        
+        return self.add_op(self._ArcTo(
+            last, centre, path_direction, prev_op=self.last_op(), name=name, meta_data=metadata))
     
     def arc_tangent_point(self, last, degrees=0, radians=None, direction=None, 
                           name=None, metadata=None):
@@ -763,13 +885,12 @@ class PathBuilder():
         if centre is None:
             # This degenerates to a line.
             return self.line(last, name=name)
-        n_points = np.array([start - centre, last - centre]) / radius
-        start_angle = np.arctan2(n_points[0][1], n_points[0][0])
-        end_angle = np.arctan2(n_points[1][1], n_points[1][0])
-        end_delta = end_angle - start_angle
-        c_dir = l.GVector([-np.sin(start_angle), np.cos(start_angle), 0])
+        n_start = (start - centre) / radius
+        cos_s = n_start[0]
+        sin_s = n_start[1]
+        c_dir = l.GVector([-sin_s, cos_s, 0])
         
-        path_direction = (t_dir.dot3D(c_dir) < 0) == (end_delta > 0)
+        path_direction = (t_dir.dot3D(c_dir) > 0)
         
         return self.add_op(self._ArcTo(
             last, centre, path_direction, 
