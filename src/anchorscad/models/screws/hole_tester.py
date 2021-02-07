@@ -15,7 +15,8 @@ import numpy as np
 @core.shape('anchorscad/models/screws/hole_tester')
 @dataclass
 class HoleTester(core.CompositeShape):
-    '''A test model for screws.'''
+    '''A test model for screws. This creates a model with multiple holes with
+    different sizes to allow for testing of screw interference with actual printed models.'''
     
     dia: float  # Screw hole diameter
     size_range: tuple=(0.05 / 2, 0.3 / 2)
