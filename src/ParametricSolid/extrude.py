@@ -11,6 +11,7 @@ from frozendict import frozendict
 import ParametricSolid.core as core
 import ParametricSolid.linear as l
 import numpy as np
+import pyclipper as pc
 
 
 class DuplicateNameException(Exception):
@@ -192,6 +193,13 @@ def _normal_of_2d(v1, v2, dims=[0, 1]):
     l = np.sqrt(np.sum(vr * vr))
     return vr / l
 
+@dataclass(frozen=True)
+class OffsetType:
+    offset_type: int
+    
+OFFSET_ROUND=OffsetType(pc.JT_ROUND)
+OFFSET_MITER=OffsetType(pc.JT_MITER)
+OFFSET_SQUARE=OffsetType(pc.JT_SQUARE)
     
 @dataclass(frozen=True)
 class Path():
@@ -248,6 +256,26 @@ class Path():
             
     def transform(self, m):
         return self.transform_to_builder(m).build()
+
+
+def make_offset_polygon2d(path, size, offset_type, meta_data, offset_meta_data=None):
+    if not offset_meta_data:
+        offset_meta_data = meta_data
+    points, start_indexes, _ = path.build(meta_data)
+    
+    start_indexes = start_indexes + [len(points),]
+    pco = pc.PyclipperOffset()
+    scaled_size = pc.scale_to_clipper(size)
+    pco.ArcTolerance = np.abs(scaled_size) * (1 -  np.cos(np.pi / offset_meta_data.fn))
+    for i in range(len(start_indexes) - 1):
+        pco.AddPath(
+            pc.scale_to_clipper(points[start_indexes[i]:start_indexes[i+1]]), 
+            offset_type.offset_type,
+            pc.ET_CLOSEDPOLYGON)
+    result = pco.Execute(scaled_size)
+    
+    return pc.scale_from_clipper(result)
+
     
 def to_gvector(np_array):
     if len(np_array) == 2:
@@ -401,7 +429,7 @@ class CircularArc:
     def normal2d(self, t):
         '''Returns the normal to the curve at t.'''
         ddt = self.derivative(t)
-        return np.array([ddt[1], -ddt[0]])
+        return np.array([-ddt[1], ddt[0]])
     
     def extents(self):
         sa = self.start_angle
@@ -532,7 +560,7 @@ class PathBuilder():
             return self.points[2]
             
         def populate(self, path_builder, start_indexes, map_builder, meta_data):
-            if (self.meta_data):
+            if self.meta_data and self.meta_data.fn:
                 meta_data = self.meta_data
     
             count = meta_data.fn
@@ -619,7 +647,7 @@ class PathBuilder():
             return self.end_point
             
         def populate(self, path_builder, start_indexes, map_builder, meta_data):
-            if (self.meta_data):
+            if self.meta_data and self.meta_data.fn:
                 meta_data = self.meta_data
     
             count = meta_data.fn
@@ -871,7 +899,9 @@ class PathBuilder():
     def arc_tangent_point(self, last, degrees=0, radians=None, direction=None, 
                           name=None, metadata=None):
         '''Defines a circular arc starting at the previous operator's end point
-        and ending at last. The tangent  .'''
+        and ending at last. The tangent (vector given by the direction parameter or
+        if not provided by the last segment's direction vector) may be optionally
+        rotated by the given angle (degrees or radians).'''
         start = self.last_op().lastPosition()
         if direction is None:
             direction = self.last_op().direction_normalized(1.0)
@@ -1009,9 +1039,53 @@ class LinearExtrude(ExtrudedShape):
                 core.surface_args('linear2', 0.5, 0.9, True, True),
                 core.surface_args('linear2', 1.0, rh=0.9),
                 )
+        
+    EXAMPLES_EXTENDED={
+        'example2': core.ExampleParams(
+            shape_args=core.args(
+                PathBuilder()
+                    .move([0, 0])
+                    .line([50 * SCALE, 0], 'linear1')
+                    .line([50 * SCALE, 50 * SCALE], 'linear2')
+                    .line([0, 50 * SCALE], 'linear3')
+                    .line([0, 0], 'linear4')
+                    .build(),
+                h=50,
+                ),
+            anchors=(
+                core.surface_args('linear1', 0, 0),
+                core.surface_args('linear1', 0.5, 25 * SCALE),
+                core.surface_args('linear2', 0, 0),
+                core.surface_args('linear2', 1, 0),
+                )),
+        'example3': core.ExampleParams(
+            shape_args=core.args(
+                PathBuilder()
+                    .move([0, 0])
+                    .line([50 * SCALE, 0], 'linear1')
+                    .arc_tangent_point([0, 50 * SCALE], name='curve', degrees=90)
+                    .line([0, 0], 'linear4')
+                    .build(),
+                h=50,
+                fn=80
+                ),
+            anchors=(
+                core.surface_args('linear1', 0, 0),
+                core.surface_args('linear1', 0.5, 25 * SCALE),
+                core.surface_args('curve', 0, 0),
+                core.surface_args('curve', 0.6, 0),
+                core.surface_args('curve', 1, 0),
+                core.surface_args('curve', 0, 50),
+                core.surface_args('curve', 0.6, 50),
+                core.surface_args('curve', 1, 50),
+                core.surface_args('linear4', 0, 0),
+                core.surface_args('linear4', 1, 0),
+                ))
+        }
 
     def render(self, renderer):
-        polygon = renderer.model.Polygon(*self.path.polygons(renderer.get_current_attributes()))
+        polygon = renderer.model.Polygon(*self.path.polygons(
+            self if self.fn else renderer.get_current_attributes()))
         params = core.fill_params(
             self, renderer, ('fn',), exclude=('path',), xlation_table={'h': 'height'})
         return renderer.add(renderer.model.linear_extrude(**params)(polygon))
@@ -1144,18 +1218,26 @@ class RotateExtrude(ExtrudedShape):
                 PathBuilder()
                     .move([0, 0])
                     .line([110 * SCALE, 0], 'linear')
-                    .arc_tangent_point([10 * SCALE, 100 * SCALE], name='curve', degrees=150)
+                    .line([25 * SCALE, 25 * SCALE], 'linear1')
+                    .arc_tangent_point([10 * SCALE, 100 * SCALE], name='curve', degrees=-40)
                     .line([0, 100 * SCALE], 'linear2')
                     .line([0, 0], 'linear3')
                     .build(),
                 degrees=120,
                 fn=80,
                 ),
-            anchors=(core.surface_args('linear', 0.5),))
+            anchors=(
+                core.surface_args('linear', 0.5),
+                core.surface_args('linear', 1),
+                core.surface_args('linear1', 0.5),
+                core.surface_args('linear1', 1),
+                core.surface_args('curve', 0.2),
+                core.surface_args('curve', 1),))
         }
 
     def render(self, renderer):
-        polygon = renderer.model.Polygon(*self.path.polygons(renderer.get_current_attributes()))
+        polygon = renderer.model.Polygon(*self.path.polygons(
+            self if self.fn else renderer.get_current_attributes()))
         params = core.fill_params(
             self, renderer, tuple(core.ARGS_XLATION_TABLE.keys()), exclude=('path', 'degrees', 'radians'))
         angle = self.degrees

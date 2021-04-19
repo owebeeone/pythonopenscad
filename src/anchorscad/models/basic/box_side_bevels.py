@@ -9,13 +9,14 @@ from dataclasses import dataclass
 from numpy.core.defchararray import center
 
 import ParametricSolid.core as core
+import ParametricSolid.extrude as e
 import ParametricSolid.linear as l
 import numpy as np
 
 
 @core.shape('anchorscad/models/basic/box_side_bevels')
 @dataclass
-class BoxSideBevels(core.CompositeShape):
+class BoxSideBevelsX(core.CompositeShape):
     '''
     Creates a box with bevels on 4 size (flat top and bottom).
     '''
@@ -43,7 +44,7 @@ class BoxSideBevels(core.CompositeShape):
         maker.add(core.Box(inner_size).cage('hull').at('centre'))
         
         params = core.non_defaults_dict(self, include=('fn', 'fa', 'fs'))
-        round = core.Cone(h=self.size[2], r_base=self.bevel_radius, r_top=self.bevel_radius, **params)
+        round = core.Cylinder(h=self.size[2], r=self.bevel_radius, **params)
         faces = ((0, 1), (2, 1), (3, 3), (5, 1))
         for f, e in faces:
             maker.add_at(round.solid(f).at('centre'), 'hull', 'face_edge', f, e, post=l.ROTY_90)
@@ -57,6 +58,55 @@ class BoxSideBevels(core.CompositeShape):
             maker.add(core.Box(new_size).solid(('box', i)).at('centre'))
         
         self.maker = maker
+        
+
+@core.shape('anchorscad/models/basic/box_side_bevels')
+@dataclass
+class BoxSideBevels(core.CompositeShape):
+    '''
+    Creates a box with bevels on 4 size (flat top and bottom) using extrusion.
+    '''
+    size: tuple=(30., 20., 10.)
+    bevel_radius: float=2.0
+    fn: int=None
+    fa: float=None
+    fs: float=None
+
+
+    EXAMPLE_SHAPE_ARGS=core.args([100., 80., 40.], bevel_radius=8, fn=20)
+    EXAMPLE_ANCHORS=tuple(
+        (core.surface_args('face_corner', f, c)) for f in (0, 3) for c in range(4)
+        ) + tuple(core.surface_args('face_edge', f, c) for f in (1, 3) for c in range(4)
+        ) + tuple(core.surface_args('face_centre', f) for f in (0, 3)
+        ) + (
+            core.surface_args('face_edge', 2, 2, 0.1),
+            core.surface_args('face_edge', 2, 2, -0.5),
+             core.inner_args('centre'),)
+
+    def __post_init__(self):
+        maker = core.Box(self.size).cage('shell').at('centre')
+        
+        r = self.bevel_radius
+        sx = self.size[0]
+        sy = self.size[1]
+        sz = self.size[2]
+        path = (e.PathBuilder()
+                .move([r, 0])
+                .line([sx - r, 0], 'face_0')
+                .arc_tangent_point([sx, r], name='edge_0_5', metadata=self)
+                .line([sx, sy - r], 'face_5')
+                .arc_tangent_point([sx - r, sy], name='edge_5_3', metadata=self)
+                .line([r, sy], 'face_3')
+                .arc_tangent_point([0, sy - r], name='edge_3_2', metadata=self)
+                .line([0, r], 'face_2')
+                .arc_tangent_point([r, 0], name='edge_3_0', metadata=self)
+                .build())
+        
+        maker.add_at(
+            e.LinearExtrude(path, h=sz).solid('hull').at('face_0', 0.5, 0),
+            'face_edge', 0, 0)
+        self.maker = maker
+
 
 @core.shape('anchorscad/models/basic/box_shell')
 @dataclass

@@ -1059,13 +1059,28 @@ def non_defaults_dict(dataclas_obj, include=None, exclude=()):
     if not (include is None or isinstance(include, tuple) or isinstance(include, dict)):
         raise IllegalParameterException(
             f'Expected parameter \'include\' to be a tuple but is a {include.__class__.__name__}')
-    if not (exclude is None or isinstance(exclude, tuple) or isinstance(include, dict)):
+    if not (exclude is None or isinstance(exclude, tuple) or isinstance(exclude, dict)):
         raise IllegalParameterException(
             f'Expected parameter \'exclude\' to be a tuple but is a {exclude.__class__.__name__}')
     return dict((k, getattr(dataclas_obj, k)) 
                 for k in dataclas_obj.__annotations__.keys() 
                 if (not k in exclude) and (
                     include is None or k in include) and not getattr(dataclas_obj, k) is None)
+    
+
+def values_dict(targetclas, dataclas_obj, exclude=()):
+    '''Retrieves all values from the dataclas_obj that appear in the targetclas class.'''
+    if not (exclude is None or isinstance(exclude, tuple) or isinstance(exclude, dict)):
+        raise IllegalParameterException(
+            f'Expected parameter \'exclude\' to be a tuple but is a {exclude.__class__.__name__}')
+    return dict((k, getattr(dataclas_obj, k)) 
+                for k in targetclas.__annotations__.keys() if (not k in exclude))
+    
+def create_from(targetclas, dataclas_obj, exclude=()):
+    '''Creates a targetclas with all constructor parameters of the same name.
+    Both targetclas and dataclas_obj__class__ should be annotated with @dataclass.
+    '''
+    return targetclas(**values_dict(targetclas, dataclas_obj, exclude))
     
 ARGS_XLATION_TABLE={'fn': '_fn', 'fa': '_fa', 'fs': '_fs'}
 def translate_names(out_dict, xlation_table=ARGS_XLATION_TABLE):

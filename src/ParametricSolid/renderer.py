@@ -117,8 +117,9 @@ class Container():
                 head_copies[0][1].append(*solids)
             else:
                 return [], []
-                
-            return [head_copies[0][0]], [head_copies[1][0]]
+
+            return ([head_copies[0][0]] if head_copies[0] else [], 
+                    [head_copies[1][0]] if head_copies[1] else [])
         else:
             return solids, holes
     

@@ -664,6 +664,15 @@ def translate(v):
         v = GVector(v)
     return GMatrix(np.matrix(
         [[1., 0, 0, v.x], [0, 1, 0, v.y], [0, 0, 1, v.z], [0, 0, 0, 1]]))
+    
+def tranX(v):
+    return translate([v, 0, 0])
+
+def tranY(v):
+    return translate([0, v, 0])
+
+def tranZ(v):
+    return translate([0, 0, v])
 
 def rot_to_V(from_v, to_v):
     '''Computes the rotation so that transformation from from_v becomes parallel to to_v'''
