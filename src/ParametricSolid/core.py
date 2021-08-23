@@ -624,7 +624,7 @@ class SolidMode(_Mode):
     def __init__(self):
         super().__init__('solid')
         
-    def pick_renderer(self, renderer):
+    def pick_rendererx(self, renderer):
         return renderer.solid()
     
 
@@ -633,7 +633,7 @@ class HoleMode(_Mode):
     def __init__(self):
         super().__init__('hole')
         
-    def pick_renderer(self, renderer):
+    def pick_rendererx(self, renderer):
         return renderer.hole()
     
     
@@ -642,7 +642,7 @@ class CompositeMode(_Mode):
     def __init__(self):
         super().__init__('composite')
         
-    def pick_renderer(self, renderer):
+    def pick_rendererx(self, renderer):
         return renderer.hole()
     
 
@@ -651,7 +651,7 @@ class CageMode(_Mode):
     def __init__(self):
         super().__init__('cage')
         
-    def pick_renderer(self, renderer):
+    def pick_rendererx(self, renderer):
         return renderer.null()
     
 class Renderer:
@@ -880,7 +880,7 @@ class Maker(Shape):
     def render(self, renderer):
         for v in self.entries.values():
             renderer.push(
-                v.mode, v.reference_frame(), v.attributes)
+                v.mode, v.reference_frame(), v.attributes, v.shapeframe.name)
             try:
                 v.shape().render(renderer)
             finally:

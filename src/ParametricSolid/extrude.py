@@ -754,7 +754,8 @@ class PathBuilder():
                                  degrees=0, 
                                  radians=None, 
                                  direction=None, 
-                                 name=None, metadata=None):
+                                 name=None,
+                                 metadata=None):
         '''Defines a circular arc starting at the previous operator's end point
         with the given direction and sweeping the given sweep angle.'''
         start = self.last_op().lastPosition()
@@ -794,7 +795,7 @@ class PathBuilder():
                          sweep_angle_degrees=0,
                          sweep_angle_radians=None,
                          name=None,
-                        metadata=None):
+                         metadata=None):
         '''Defines a circular arc starting at the previous operator's end point
         and sweeping the given angle about the given centre.'''
         start = self.last_op().lastPosition()
@@ -822,7 +823,7 @@ class PathBuilder():
             last, centre, path_direction, prev_op=self.last_op(), name=name, meta_data=metadata))
         
         
-    def arc_points_radius(self, last, radius, is_left=True, name=None, metadata=None):
+    def arc_points_radius(self, last, radius, is_left=True, direction=None, name=None, metadata=None):
         '''Defines a circular arc starting at the previous operator's end point
         and ending at last with the given radius.'''
         start = self.last_op().lastPosition()
@@ -830,10 +831,12 @@ class PathBuilder():
         if centre is None:
             raise UnableToFitCircleWithGivenParameters(
                 f'Unable to fit circle, radius={radius}, start={start} last={last}.')
+        if direction == None:
+            direction = not is_left
         return self.add_op(self._ArcTo(
-            last, centre, not is_left, prev_op=self.last_op(), name=name, meta_data=metadata))
+            last, centre, direction, prev_op=self.last_op(), name=name, meta_data=metadata))
     
-    def arc_points(self, middle, last, name=None, metadata=None):
+    def arc_points(self, middle, last, name=None, direction=None, metadata=None):
         '''Defines a circular arc starting at the previous operator's end point
         and passing through middle and ending at last.'''
         start = self.last_op().lastPosition()
@@ -848,7 +851,9 @@ class PathBuilder():
         
         # The direction should mean that the middle position traversed before last position.
         path_direction = True
-        if middle_delta < 0:
+        if not direction is None:
+            path_direction = direction
+        elif middle_delta < 0:
             if end_delta < 0:
                 if middle_delta < end_delta:
                     path_direction = False

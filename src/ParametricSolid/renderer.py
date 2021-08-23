@@ -26,8 +26,9 @@ SOLID_CONTAINER=2
 HOLE_CONTAINER=3
 
 class Container():
-    def __init__(self, model):
+    def __init__(self, model, shape_name):
         self.model = model
+        self.shape_name = shape_name
         self.containers = {}
         
     def _get_or_create_container(self, container_id):
@@ -40,17 +41,25 @@ class Container():
         
     def _get_container(self, container_id):
         return self.containers.get(container_id, None)
+    
+    def _apply_name(self, obj):
+        if self.shape_name:
+            for o in obj:
+                o.setMetadataName(self.shape_name)
 
     def add_solid(self, *obj):
         container = self._get_or_create_container(SOLID_CONTAINER)
+        self._apply_name(obj)
         container.extend(obj)
         
     def add_hole(self, *obj):
         container = self._get_or_create_container(HOLE_CONTAINER)
+        self._apply_name(obj)
         container.extend(obj)
         
     def add_head(self, *obj):
         container = self._get_or_create_container(HEAD_CONTAINER)
+        self._apply_name(obj)
         container.extend(obj)
         
     def _combine_solids_and_holes(self):
@@ -59,13 +68,15 @@ class Container():
         
         if holes:
             if not solids:
-                solid_obj = self.model.Union()
+                solid_obj = self.createNamedUnion('_combine_solids_and_holes')
             elif len(solids) == 1:
                 solid_obj = solids[0]
             else:
-                solid_obj = self.model.Union()(*solids)
-                
-            return [self.model.Difference()(solid_obj, *holes)]
+                solid_obj = self.createNamedUnion('_combine_solids_and_holes')(*solids)
+            
+            result = self.model.Difference()(solid_obj, *holes)
+            result.setMetadataName('_combine_solids_and_holes')
+            return [result]
         
         # No holes.
         if solids:
@@ -118,14 +129,21 @@ class Container():
             else:
                 return [], []
                 
-            return [head_copies[0][0]], [head_copies[1][0]]
+            return [
+                    head_copies[0][0] if head_copies[0] else self.createNamedUnion('build_composite')],  [
+                    head_copies[1][0] if head_copies[1] else self.createNamedUnion('build_composite')]
         else:
             return solids, holes
+        
+    def createNamedUnion(self, name):
+        result = self.model.Union()
+        result.setMetadataName('_combine_solids_and_holes')
+        return result
     
     def get_or_create_first_head(self):
         heads = self._get_or_create_container(HEAD_CONTAINER)
         if not heads:
-            head = self.model.Union()
+            head = self.createNamedUnion('get_or_create_first_head')
             self.add_head(head)
         return heads[0]
     
@@ -162,8 +180,9 @@ class Context():
     def push(self, 
              mode: core.ModeShapeFrame, 
              reference_frame: l.GMatrix, 
-             attributes: core.ModelAttributes):
-        container = Container(model=self.model)
+             attributes: core.ModelAttributes,
+             shape_name: str=None):
+        container = Container(model=self.model, shape_name=shape_name)
         last_attrs = self.get_last_attributes()
         merged_attrs = last_attrs.merge(attributes)
         diff_attrs = last_attrs.diff(merged_attrs)
@@ -201,9 +220,9 @@ class Context():
         else:
             objs = last.container.build_combine()
             if not objs:
-                return self.model.Union()
+                return self.createNamedUnion('pop')
             if len(objs) > 1:
-                return self.model.Union().append(*objs)
+                return self.createNamedUnion('pop').append(*objs)
             return objs[0]
             
 
@@ -228,7 +247,7 @@ class Renderer():
         self.context = Context(self)
         self.result = None
         # Push an item on the stack that will collect the final objects.
-        self.context.push(core.ModeShapeFrame.SOLID, initial_frame, initial_attrs)
+        self.context.push(core.ModeShapeFrame.SOLID, initial_frame, initial_attrs, None)
         
     def close(self):
         count = len(self.context.stack)
@@ -239,8 +258,8 @@ class Renderer():
         self.context = Context(self) # Prepare for the next object just in case.
         return self.result
 
-    def push(self, mode, reference_frame, attributes):
-        self.context.push(mode, reference_frame, attributes)
+    def push(self, mode, reference_frame, attributes, shape_name):
+        self.context.push(mode, reference_frame, attributes, shape_name)
 
     def pop(self):
         self.context.pop()

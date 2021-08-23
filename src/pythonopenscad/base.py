@@ -287,7 +287,7 @@ def str_strict(value):
     Throws:
         InvalidValueForStr if the provided value is not a str.
     '''
-    if not isinstance(value, str):
+    if not isinstance(value, str) and not isinstance(value, bytes) :
         raise InvalidValueForStr(
             'expected a string value but got "%r" of type %s' %
             (value, value.__class__.__name__))
@@ -360,6 +360,18 @@ class OpenScadApiSpecifier(object):
                                                   for arg in self.args))
         return 'No arguments allowed.'
 
+class PoscMetadataBase(object):
+    '''Provides medatadata properties.'''
+    
+    def getMetadataName(self):
+        if not hasattr(self, '_metabase_name'):
+            return ''
+        return self._metabase_name
+
+    def setMetadataName(self, value):
+        self._metabase_name = value
+        return self
+    
 
 class OscModifier(object):
     '''Defines an OpenScad modifier'''
@@ -379,7 +391,7 @@ BASE_MODIFIERS = (DISABLE, SHOW_ONLY, DEBUG, TRANSPARENT)
 BASE_MODIFIERS_SET = set(BASE_MODIFIERS)
 
 
-class PoscModifiers(object):
+class PoscModifiers(PoscMetadataBase):
     '''Functions to add/remove OpenScad modifiers.
 
     The add_modifier and remove_modifier functions can be chained as they return self.
@@ -507,7 +519,7 @@ class CodeDumper(object):
                  indent_multiple=2,
                  writer=None,
                  str_quotes='"',
-                 block_ends=(' {', '}', ';'),
+                 block_ends=(' {', '}', ';', '//'),
                  target_max_column=100):
         '''
         Args:
@@ -591,7 +603,8 @@ class CodeDumper(object):
                        params_list,
                        mod_prefix='',
                        mod_suffix='',
-                       suffix=';'):
+                       suffix=';',
+                       comment=None):
         '''Dumps a function like lines (may wrap).
 
         Args:
@@ -600,6 +613,8 @@ class CodeDumper(object):
             params_list: list of parameters (no commas separating them)
             suffix: A string at the end
         '''
+        if comment:
+            self.add_line(''.join([self.current_indent_string, comment]))
         strings = [self.current_indent_string, mod_prefix, function_name, '(']
         strings.append(', '.join(params_list))
         strings.append(')')
@@ -634,7 +649,7 @@ class CodeDumperForPython(CodeDumper):
     '''
     def __init__(self, *args, **kwds):
         kwds.setdefault('str_quotes', "'")
-        kwds.setdefault('block_ends', (' (', '),', ','))
+        kwds.setdefault('block_ends', (' (', '),', ',', '#'))
         super().__init__(*args, **kwds)
         self.is_last = True
 
@@ -754,7 +769,12 @@ class PoscBase(PoscModifiers):
         function_name = self.OSC_API_SPEC.openscad_name
         params_list = self.collect_args(code_dumper)
         mod_prefix, mod_suffix = code_dumper.get_modifiers_prefix_suffix(self)
-        code_dumper.write_function(function_name, params_list, mod_prefix, mod_suffix, suffix)
+        comment = None
+        metadataName = self.getMetadataName()
+        if metadataName:
+            comment = code_dumper.block_ends[3] + ' ' + metadataName
+        code_dumper.write_function(
+            function_name, params_list, mod_prefix, mod_suffix, suffix, comment)
         if self.has_children():
             code_dumper.push_increase_indent()
             left = len(self.children())
