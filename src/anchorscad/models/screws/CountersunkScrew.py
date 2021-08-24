@@ -142,6 +142,7 @@ class CountersunkScrew(core.CompositeShape):
             .line([-shaft_dims.tapping_d / 2.0, tap_y], 'tapping_edge')  
             .line([-shaft_dims.thru_d / 2.0, taper_y], 'taper_edge')    
             .line([-shaft_dims.thru_d / 2.0, head_bot_y], 'head_bot')   
+            .line([-head_dims.head_bot_d / 2.0, head_bot_y], 'head_bot_base')   
             .line([-head_dims.head_top_d / 2.0, head_mid_y], 'head_mid') 
             .line([-head_dims.head_top_d / 2.0, head_top_y], 'head_top') 
             .line([0, head_top_y], 'top_edge')  
@@ -167,6 +168,22 @@ class CountersunkScrew(core.CompositeShape):
             head_protrusion_height=0.0,
             head_mid_depth=self.head_sink_factor * shaft_dims.tapping_d,
             head_countersink_depth=self.head_depth_factor * shaft_dims.tapping_d / 2)
+
+
+@core.shape('anchorscad/models/screws/CountersunkScrew')
+@dataclass
+class FlatSunkScrew(CountersunkScrew):
+
+    def createHeadDims(self, shaft_dims):
+        '''Creates a default set of flat sunk screw set of head dimensions.'''
+        head_dia = (self.head_depth_factor + 1) * shaft_dims.tapping_d
+        return HeadDimensions(
+            head_top_d=head_dia,
+            head_bot_d=head_dia,
+            head_protrusion_height=0.0,
+            head_mid_depth=self.head_sink_factor * shaft_dims.tapping_d,
+            head_countersink_depth=self.head_depth_factor * shaft_dims.tapping_d / 2)
+
 
 if __name__ == "__main__":
     core.anchorscad_main(False)

@@ -225,7 +225,12 @@ class Context():
                 return self.createNamedUnion('pop').append(*objs)
             return objs[0]
             
-
+        
+    def createNamedUnion(self, name):
+        result = self.model.Union()
+        result.setMetadataName('_combine_solids_and_holes')
+        return result
+    
     def get_last_attributes(self):
         if self.stack:
             attrs = self.stack[-1].attributes
