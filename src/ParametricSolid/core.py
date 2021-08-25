@@ -487,8 +487,11 @@ def lazy_shape(shape_type, *field_specifiers, other_args=args()):
 
 @dataclass()
 class ExampleParams():
-    shape_args: tuple=()
+    shape_args: tuple=args()
     anchors: tuple=()
+    
+    def args_str(self):
+        return f'(*{self.shape_args[0]!r}, **{self.shape_args[1]!r})'
     
 
 class Shape(ShapeNamer, ShapeMaker):
@@ -559,19 +562,18 @@ class Shape(ShapeNamer, ShapeMaker):
             example_params = cls.EXAMPLES_EXTENDED[name]
 
         try:
-            entry = (f'{cls.__name__}'
-                    f'(*{example_params.shape_args[0]!r}, **{example_params.shape_args[1]!r})')
+            entryname = (f'{cls.__name__}' + example_params.args_str())
             maker = cls(
                 *example_params.shape_args[0], 
                 **example_params.shape_args[1]
-                ).solid('example').projection(l.IDENTITY)            
+                ).solid(name).projection(l.IDENTITY)            
             
             for entry in example_params.anchors:
                 entry[0](maker, entry[1])
         except BaseException:
             traceback.print_exception(*sys.exc_info()) 
             sys.stderr.write(
-                f'Error while rendering example for {cls.__name__}:\n{entry!r}\n')
+                f'Error while rendering example for {cls.__name__}:\n{name!r}\n')
             raise
         
         return maker

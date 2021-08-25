@@ -772,7 +772,7 @@ class PoscBase(PoscModifiers):
         comment = None
         metadataName = self.getMetadataName()
         if metadataName:
-            comment = code_dumper.block_ends[3] + ' ' + metadataName
+            comment = code_dumper.block_ends[3] + ' ' + repr(metadataName)
         code_dumper.write_function(
             function_name, params_list, mod_prefix, mod_suffix, suffix, comment)
         if self.has_children():

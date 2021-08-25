@@ -1043,6 +1043,8 @@ class LinearExtrude(ExtrudedShape):
         if not rh is None:
             h = rh * self.h
         op = self.path.name_map.get(path_node_name)
+        if not op:
+            raise UnknownOperationException(f'Could not find {path_node_name}')
         pos = self.to_3d_from_2d(op.position(t), h)
         normal_t = 0 if t < 0 else 1 if t > 1 else t 
         twist_vector = self.to_3d_from_2d(op.position(normal_t), 0)

@@ -22,7 +22,8 @@ class PipeCrossBracket(core.CompositeShape):
     
     radius1: float=24.6 / 2
     #radius2: float=24.6 / 2
-    radius2: float=19.2 / 2
+    radius2: float=19.31 / 2
+    padding: float=0.15
     clearance: float=12.0
     thickness: float=6.5
     screw_depth: float=7.0
@@ -42,15 +43,23 @@ class PipeCrossBracket(core.CompositeShape):
     screw1_len: float=19.0
     lock_screw_offsets: tuple=(0.27, 0.5, 0.73)
     lock_screw_edge_offset_factor: float=0.2
+    tie_width: float= 5.5
+    tie_height: float=2.5
+    tie_wing_size: float=1
     fn: int=37
     
+    EXAMPLES_EXTENDED={'small': core.ExampleParams(
+                            core.args(radius2=19.31 / 2,
+                                      padding=0.5)), 
+                       'large': core.ExampleParams(
+                            core.args(radius2=24.6 / 2,
+                                      padding=0.25))}
     
     NOEXAMPLE_ANCHORS=(
                 core.surface_args('bbox', 'face_corner', 0, 0),
                 core.surface_args('base', 'face_corner', 3, 1),)
     
     def __post_init__(self):
-        
         size_x = self.clearance * 2 + self.thickness * 2 + self.radius1 * 2.0
         size_y = self.thickness + self.radius2 * 2.0
         size_z = size_x
@@ -69,24 +78,25 @@ class PipeCrossBracket(core.CompositeShape):
         outer_radius = self.radius2 + self.thickness
         outer_hole_x = hole_x - self.thickness
         rhs_outer_hole_x = outer_radius * 2.0 + outer_hole_x
+        centre_height = self.padding + self.radius2
     
         path = (extrude.PathBuilder()
             .move([hole_x, 0])
             .line([0, 0], 'edge0')
             .line([0, self.screw_depth], 'edge1')
             .line([outer_hole_x, self.screw_depth], 'edge2')
-            .line([outer_hole_x, self.radius2], 'edge3')
+            .line([outer_hole_x, centre_height], 'edge3')
             .arc_points_radius(
-                [rhs_outer_hole_x, self.radius2], 
+                [rhs_outer_hole_x, centre_height], 
                 self.radius2 + self.thickness, name='edge4', metadata=self)
             .line([rhs_outer_hole_x, self.screw_depth], 'edge5')
             .line([size_x, self.screw_depth], 'edge6')
             .line([size_x, 0], 'edge7')
             .line([size_x - hole_x, 0], 'edge8')
             .line([size_x / 2 + self.radius2, 0], 'edge9')
-            .line([size_x / 2 + self.radius2, self.radius2], 'edge10')
+            .line([size_x / 2 + self.radius2, centre_height], 'edge10')
             .arc_points_radius(
-                [hole_x, self.radius2], 
+                [hole_x, centre_height], 
                 self.radius2, direction=True, name='edge11', metadata=self)
             .line([hole_x, 0], 'edge12')
             
@@ -113,14 +123,15 @@ class PipeCrossBracket(core.CompositeShape):
             .line([clip_wedge_start, -wedge_hole_y], 'edge3')
             .line([clip_wedge_end, -wedge_hole_y - self.clip_wedge_height], 'edge4')
             .line([clip_wedge_end, -wedge_bottom_y], 'edge5')
-            .line([-self.clip_thickness, -wedge_bottom_y], 'edge6')
+            .line([0, -wedge_bottom_y], 'edge6')
+            .line([-self.clip_thickness, -wedge_bottom_y], 'edge6b')
             .line([-self.clip_thickness, self.screw_depth], 'edge7')
             .line([0, self.screw_depth], 'edge8')
             .line([0, 0], 'edge9')
             .build())
         
-        tag_shape = extrude.LinearExtrude(
-            tag_path, self.clip_height + self.clip_height_hole_room)
+        tag_extrude_height = self.clip_height + self.clip_height_hole_room
+        tag_shape = extrude.LinearExtrude(tag_path, tag_extrude_height)
         
         # Wedge for reinforcement of tag
         wedge_path = (extrude.PathBuilder()
@@ -242,6 +253,74 @@ class PipeCrossBracket(core.CompositeShape):
                 f'lock_screw_opp_{i + 1}').at('screw_cage', 'top'),
                          'bracket', 'edge5', edge5_factor, 
                          post=l.translate([0, y_offs, 0]) * l.rotX(180))
+        
+        # Tie grooves/slots
+        
+        tie_mid = self.tie_width / 2.0
+        wing_point_x = self.tie_wing_size + tie_mid
+        wing_point_y = self.tie_height / 2.0
+        tie_height = self.tie_height
+        
+        tie_path = (extrude.PathBuilder()
+            .move([0, 0])
+            .line([-tie_mid, 0], 'base_l')
+            .line([-wing_point_x, wing_point_y], 'wing_l_lower')
+            .line([-tie_mid, tie_height], 'wing_l_upper')
+            .line([0, tie_height], 'top_l')
+            .line([tie_mid, tie_height], 'top_r')
+            .line([wing_point_x, wing_point_y], 'wing_r_upper')
+            .line([tie_mid, 0], 'winr_r_lower')
+            .line([0, 0], 'base_r')
+            .build())
+        
+        tie_shape = extrude.LinearExtrude(tie_path, self.radius1 * 2)
+        
+        tie_arc_radius = self.radius1 * 2.
+        tie_arc_angle = 100
+        tie_arc_path = tie_path.transform(
+            l.translate([-tie_arc_radius, 0, 0]) * l.ROTZ_90)
+        tie_round_shape = extrude.RotateExtrude(
+            tie_arc_path, degrees=tie_arc_angle, fn=self.fn)
+        
+        tie_edge_offset = 6
+        
+        maker.add_at(tie_round_shape.hole('arc_tie_l').at('base_l', 0, tie_arc_angle / 2), 
+                     'bracket', 'edge11', 0.5, tie_edge_offset,
+                     post=l.translate([0, 0, 1]))
+        maker.add_at(tie_round_shape.hole('arc_tie_r').at('base_l', 0, tie_arc_angle / 2), 
+                     'bracket', 'edge11', 0.5, shape.h - tie_edge_offset,
+                     post=l.translate([0, 0, 1]))
+        
+        tie_shape_type = tie_shape.hole
+        tie_maker_l = tie_shape_type('tie_hole').at(
+            'base_l', 0, self.radius1, 
+            post=l.translate([-tie_edge_offset, 0, wing_point_y]) * l.rotX(-45))
+        
+        tie_maker_r = tie_shape_type('tie_hole').at(
+            'base_l', 0, self.radius1, 
+            post=l.translate([tie_edge_offset, 0, wing_point_y]) * l.rotX(-45))
+            
+        locations = (
+            (tie_maker_l, ('face_edge', 3, 0, 0)),
+            (tie_maker_r, ('face_edge', 3, 3, 1)),
+            (tie_maker_r, ('face_edge', 3, 1, 0)),
+            (tie_maker_r, ('face_edge', 3, 2, 0)),
+            (tie_maker_l, ('face_edge', 3, 2, 1)),
+            )
+        
+        for m, loc in locations:
+            maker.add_at(m.composite(loc).at(), 'base', *loc)
+            
+        maker.add_at(tie_maker_r.composite(('tag', 'edge6', 1)).at(), 
+                     'tag', 'edge6', 1, tag_shape.h) 
+        maker.add_at(tie_maker_r.composite(('tag', 'edge6', 0)).at(), 
+                     'tag', 'edge6', 1, 0, post=l.ROTX_90) 
+        
+        maker.add_at(tie_maker_r.composite(('tag', 'edge7', 1)).at(), 
+                     'tag', 'edge7', 1, post=l.ROTX_90 * l.ROTV111_240) 
+        maker.add_at(tie_maker_l.composite(('tag', 'edge7', 0)).at(), 
+                     'tag', 'edge7', 0, post=l.ROTX_270 * l.ROTV111_240) 
+#         maker.add_at(tie_maker_r.solid(('face_edge', 3, 0, 1)).at(), 'base', 'face_edge', 3, 0, 1)
         
         self.maker = maker
         

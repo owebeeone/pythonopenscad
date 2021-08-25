@@ -16,7 +16,7 @@ class ShaftDimensions(object):
     tapping_d: float
     
 SHAFT_MAP = {
-    'M2.6' : ShaftDimensions(2.6, 2.8, 2.63)
+    'M2.6' : ShaftDimensions(2.6, 2.8, 2.61)
     }
 
 
