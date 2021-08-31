@@ -46,6 +46,10 @@ class PipeCrossBracket(core.CompositeShape):
     tie_width: float= 5.5
     tie_height: float=2.5
     tie_wing_size: float=1
+    tie_edge_offset: float=6
+    gen_alternate_shape: bool=False
+    alternate_depth: float=20.0
+    alternate_hole_expansion_r=0.4  # Allow clearance for free motion.
     fn: int=37
     
     EXAMPLES_EXTENDED={'small': core.ExampleParams(
@@ -53,7 +57,12 @@ class PipeCrossBracket(core.CompositeShape):
                                       padding=0.5)), 
                        'large': core.ExampleParams(
                             core.args(radius2=24.6 / 2,
-                                      padding=0.25))}
+                                      padding=0.25)),  
+                       'alternate': core.ExampleParams(
+                             core.args(radius2=19.31 / 2,
+                                       padding=0.5,
+                                       tie_edge_offset=6,
+                                       gen_alternate_shape=True))}
     
     NOEXAMPLE_ANCHORS=(
                 core.surface_args('bbox', 'face_corner', 0, 0),
@@ -70,7 +79,11 @@ class PipeCrossBracket(core.CompositeShape):
             'face_corner', 0, 0)
         
         base_bbox = core.Box([size_x, self.screw_depth, size_z])
-        maker.add_at(base_bbox.cage('base').at('face_corner', 0, 0))
+        
+        base_type = (core.ModeShapeFrame.SOLID 
+                      if self.gen_alternate_shape 
+                      else core.ModeShapeFrame.CAGE)
+        maker.add_at(base_bbox.named_shape('base', base_type).at('face_corner', 0, 0))
         maker.add_at(base_bbox.cage('base_insert').at('face_centre', 0),
                      'base', 'face_centre', 0, post=l.rotZ(-90) * l.rotY(180))
         
@@ -99,13 +112,60 @@ class PipeCrossBracket(core.CompositeShape):
                 [hole_x, centre_height], 
                 self.radius2, direction=True, name='edge11', metadata=self)
             .line([hole_x, 0], 'edge12')
-            
             .build())
         
         shape = extrude.LinearExtrude(path, dimens[2])
+        shape_type = (core.ModeShapeFrame.CAGE 
+                      if self.gen_alternate_shape 
+                      else core.ModeShapeFrame.SOLID)
         
-        maker.add_at(shape.solid('bracket').at('edge0', 1.0),
+        maker.add_at(shape.named_shape('bracket', shape_type).at('edge0', 1.0),
             'face_corner', 0, 0, post=l.rotY(180))
+        
+        # Add alternate shape component
+        
+        if self.gen_alternate_shape:
+            tie_clearance = self.tie_width / 2 + self.tie_wing_size + self.tie_edge_offset
+            alt_size = [outer_radius * 2 + tie_clearance, 
+                        outer_radius * 2,
+                        self.alternate_depth]
+            alt_shape = core.Box(alt_size)
+            maker.add_at(alt_shape.solid('alt_box').at('face_edge', 1, 1),
+                         'base', 'face_edge', 3, 2, post=l.ROTY_180)
+            
+            alt_hole_cage = core.Box(
+                [alt_shape.size[1], 
+                 alt_shape.size[1], 
+                 alt_shape.size[2] + self.screw_depth])
+            
+            maker.add_at(alt_hole_cage.cage('alt_hole_cage').at('face_edge', 4, 3),
+                         'alt_box', 'face_edge', 4, 3)
+            
+            alt_hole = core.Cone(h=alt_hole_cage.size[2] + 0.01, 
+                                 r_base=self.radius2 + self.alternate_hole_expansion_r,
+                                 r_top=self.radius2 + self.alternate_hole_expansion_r,
+                                 fn=self.fn)
+            maker.add_at(alt_hole.hole('alt_hole').at('centre'),
+                         'alt_hole_cage', 'centre')
+            
+            
+            # Generate alt lock screw holes
+            alt_lock_screw = FlatSunkScrew(
+                shaft_overall_length=self.thickness + 1,
+                shaft_thru_length=self.thickness / 5,
+                size_name=self.screw1_size_name,
+                include_thru_shaft=False,
+                include_tap_shaft=False,
+                as_solid=False,
+                fn=self.fn)
+            
+            for f in [0, 2, 3]:
+                maker.add_at(
+                    alt_lock_screw.composite(('alt_lock_screw', f))
+                        .at('screw_cage', 'top'),
+                    'alt_hole_cage', 'face_centre', f)
+        
+        # Generate tag fastener.
         
         wedge_hole_y = self.screw_depth_hole_delta + self.screw_depth
         nipple_top_y = wedge_hole_y - self.nipple_height
@@ -226,33 +286,34 @@ class PipeCrossBracket(core.CompositeShape):
                      'base', 'face_corner', 2, 3, post=l.translate(
                          [0, 0, 0]))
         
-        
-        lock_screw = FlatSunkScrew(
-            shaft_overall_length=self.thickness + 1,
-            shaft_thru_length=self.thickness / 5,
-            size_name=self.screw1_size_name,
-            include_thru_shaft=False,
-            include_tap_shaft=False,
-            as_solid=False,
-            fn=self.fn)
-        
-        edge3_factor = 1.0 - self.lock_screw_edge_offset_factor
-        edge5_factor = self.lock_screw_edge_offset_factor
-        
-        for i, f in enumerate(self.lock_screw_offsets):
-        
-            y_offs = f * dimens[2]
-        
-            maker.add_at(lock_screw.composite(
-                f'lock_screw_{i + 1}').at('screw_cage', 'top'),
-                         'bracket', 'edge3', edge3_factor, 
-                         post=l.translate([0, y_offs, 0]) * l.rotX(180))
+        if not self.gen_alternate_shape:
+            # Generate lock screw holes
+            lock_screw = FlatSunkScrew(
+                shaft_overall_length=self.thickness + 1,
+                shaft_thru_length=self.thickness / 5,
+                size_name=self.screw1_size_name,
+                include_thru_shaft=False,
+                include_tap_shaft=False,
+                as_solid=False,
+                fn=self.fn)
             
+            edge3_factor = 1.0 - self.lock_screw_edge_offset_factor
+            edge5_factor = self.lock_screw_edge_offset_factor
             
-            maker.add_at(lock_screw.composite(
-                f'lock_screw_opp_{i + 1}').at('screw_cage', 'top'),
-                         'bracket', 'edge5', edge5_factor, 
-                         post=l.translate([0, y_offs, 0]) * l.rotX(180))
+            for i, f in enumerate(self.lock_screw_offsets):
+            
+                y_offs = f * dimens[2]
+            
+                maker.add_at(lock_screw.composite(
+                    f'lock_screw_{i + 1}').at('screw_cage', 'top'),
+                             'bracket', 'edge3', edge3_factor, 
+                             post=l.translate([0, y_offs, 0]) * l.rotX(180))
+                
+                
+                maker.add_at(lock_screw.composite(
+                    f'lock_screw_opp_{i + 1}').at('screw_cage', 'top'),
+                             'bracket', 'edge5', edge5_factor, 
+                             post=l.translate([0, y_offs, 0]) * l.rotX(180))
         
         # Tie grooves/slots
         
@@ -282,7 +343,7 @@ class PipeCrossBracket(core.CompositeShape):
         tie_round_shape = extrude.RotateExtrude(
             tie_arc_path, degrees=tie_arc_angle, fn=self.fn)
         
-        tie_edge_offset = 6
+        tie_edge_offset = self.tie_edge_offset
         
         maker.add_at(tie_round_shape.hole('arc_tie_l').at('base_l', 0, tie_arc_angle / 2), 
                      'bracket', 'edge11', 0.5, tie_edge_offset,

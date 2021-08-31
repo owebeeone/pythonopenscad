@@ -1041,7 +1041,7 @@ class LinearExtrude(ExtrudedShape):
             align_twist: Align the anchor for the twist factor.
         '''
         if not rh is None:
-            h = rh * self.h
+            h = h + rh * self.h
         op = self.path.name_map.get(path_node_name)
         if not op:
             raise UnknownOperationException(f'Could not find {path_node_name}')

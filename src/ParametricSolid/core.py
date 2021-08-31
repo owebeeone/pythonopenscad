@@ -217,7 +217,16 @@ def apply_post_pre(reference_frame, post: l.GMatrix=None, pre: l.GMatrix=None):
     if post:
         reference_frame = reference_frame * post
     return reference_frame
-            
+
+def apply_at_args(
+        shape, *pargs, 
+        pre=None, post=None, alter_pre=None, alter_post=None, **kwds):
+    local_frame = shape.at(*pargs, **kwds) if pargs or kwds else l.IDENTITY
+    local_frame = apply_post_pre(local_frame, pre=pre, post=post)
+    if alter_pre or alter_post:
+        local_frame = apply_post_pre(
+            local_frame, pre=alter_pre, post=alter_post)
+    return local_frame
 
 @dataclass(frozen=True)
 class NamedShapeBase(object):
@@ -390,7 +399,7 @@ class AtSpecifier:
     args_named: frozendict
     
     def apply(self, shape_obj):
-        return shape_obj.at(*self.args_positional, **self.args_named)
+        return apply_at_args(shape_obj, *self.args_positional, **self.args_named)
 
 def at_spec(*args, **kwds):
     '''Returns an AtSpecifier with the parameters sent to this function.'''
@@ -1185,7 +1194,6 @@ class Sphere(Shape):
              * l.translate([self.r, 0, 0])
              * l.ROTV111_120)
 
-
 CONE_ARGS_XLATION_TABLE={'r_base': 'r1', 'r_top': 'r2'}
 @shape('anchorscad/core/cone')
 @dataclass
@@ -1237,18 +1245,20 @@ class Cone(Shape):
         return l.translate([0, 0, self.h / 2]) * l.rotX(180)
     
     @anchor('A location on the curved surface.')
-    def surface(self, h, degrees=0.0, radians=None, tangent=True):
-        if h < 0 or self.h < h:
-            raise IllegalParameterException(
-                f'Parameter h({h} is not in range [0 {self.h}].')
+    def surface(self, h=0, degrees=0.0, radians=None, tangent=True, 
+                rh=None, radius_delta=0.0):
+        if h is None:
+            h = 0.0
+        if not rh is None:
+            h = h + self.h * rh
         r = (h / self.h)
-        x = r * self.r_top + (1 - r) * self.r_base
+        x = r * self.r_top + (1 - r) * self.r_base + radius_delta
         if tangent:
             m = l.rot_to_V([-1, 0, 0], [self.r_top - self.r_base, 0, self.h]) * l.rotZ(90)
         else:
             m = l.ROTV111_120
         return l.rotZ(degrees=degrees, radians=radians) * l.translate([x, 0, h]) * m
-
+    
 
 def Cylinder(h=1, r=1, **kwds):
     '''Creates a Cone that has the same top and base radius. (a cylinder)'''
