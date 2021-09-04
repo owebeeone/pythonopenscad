@@ -128,7 +128,7 @@ class Container():
                 head_copies[0][1].append(*solids)
             else:
                 return [], []
-                
+   
             return [
                     head_copies[0][0] if head_copies[0] else self.createNamedUnion('build_composite')],  [
                     head_copies[1][0] if head_copies[1] else self.createNamedUnion('build_composite')]
