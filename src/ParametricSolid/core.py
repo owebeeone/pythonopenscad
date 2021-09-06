@@ -4,7 +4,7 @@
 
 import argparse
 import copy
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import fnmatch
 import os
 import pathlib
@@ -1244,6 +1244,7 @@ class Cone(Shape):
     def render(self, renderer):
         params = fill_params(self, renderer, ('fn', 'fa', 'fs'))
         params = translate_names(params, CONE_ARGS_XLATION_TABLE)
+        params.pop('r', None)  # If self is a Cylinder, we don't want r.
         renderer.add(renderer.model.Cylinder(r=None, **params))
         return renderer
     
@@ -1274,14 +1275,31 @@ class Cone(Shape):
             m = l.ROTV111_120
         return l.rotZ(degrees=degrees, radians=radians) * l.translate([x, 0, h]) * m
     
-
-def Cylinder(h=1, r=1, **kwds):
+@shape('anchorscad/core/cone')
+@dataclass
+class Cylinder(Cone):
     '''Creates a Cone that has the same top and base radius. (a cylinder)'''
-    kwds['h'] = h
-    kwds['r_base'] = r
-    kwds['r_top'] = r
-    return Cone(**kwds)
-
+    h: float=1.0
+    r: float=None
+    r_base: float=None
+    r_top: float=field(init=False)
+    # The fields below should be marked kw only (Python 3.10 feature).
+    fn: int=None
+    fa: float=None
+    fs: float=None
+    
+    EXAMPLE_SHAPE_ARGS=args(h=50, r=30, fn=30)
+    
+    def __post_init__(self):
+        if self.r is None:
+            if self.r_base is None:
+                self.r = 1.0
+            else:
+                self.r = self.r_base
+        self.r_base = self.r
+        self.r_top = self.r
+            
+        Cone.__post_init__(self)
 
 class CompositeShape(Shape):
     '''Provides functionality for composite shapes. Subclasses must set 'maker' in

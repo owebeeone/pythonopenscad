@@ -40,7 +40,8 @@ def box_expander(expansion_size, post=None):
 def cyl_expander(expansion_r, post=None):
     def expander(maker, name, anchor, cyl):
         expanded_r = expansion_r + cyl.r_base
-        new_shape = core.Cylinder(cyl.h, expanded_r)
+        params = core.non_defaults_dict(cyl, include=('fn', 'fa', 'fs'))
+        new_shape = core.Cylinder(h=cyl.h, r=expanded_r, **params)
         post_xform = Z_DELTA * l.ROTX_180
         if post:
             post_xform = post *  post_xform
@@ -51,22 +52,69 @@ def cyl_expander(expansion_r, post=None):
 def no_op(*args):
     pass
 
-ETHERNET=(core.Box([16, 21.25, 13.7]), [0, 3.0, 0], BOX_ANCHOR, OBOX_ANCHOR, box_expander([0.3] * 3))
+@dataclass
+class ShapeFactory:
+    clazz: type
+    shape_args: tuple
+    offset: tuple
+    anchor1: tuple
+    anchor2: tuple
+    expander: tuple
+    
+    def create(self, extra_params: dict):
+        params = (dict(((k, v) 
+                        for k, v in extra_params.items() 
+                        if hasattr(self.clazz, k))))
+        
+        params.update(self.shape_args[1])
+        return self.clazz(*self.shape_args[0], **params)
+    
+        
+ETHERNET = ShapeFactory(
+    core.Box, core.args([16, 21.25, 13.7]), 
+    [0, 3.0, 0], 
+    BOX_ANCHOR, 
+    OBOX_ANCHOR, 
+    box_expander([0.3] * 3))
 
-USBA=(core.Box([14.9,  17.5, 16.4]), [0, 3.0, 0], BOX_ANCHOR,OBOX_ANCHOR, box_expander([0.3] * 3))
+USBA=ShapeFactory(
+    core.Box, core.args([14.9,  17.5, 16.4]), 
+    [0, 3.0, 0], 
+    BOX_ANCHOR,
+    OBOX_ANCHOR, 
+    box_expander([0.3] * 3))
 
-MICRO_HDMI=(core.Box([7.1,  8, 3.6]), [0, 1.8, -0.5], BOX_ANCHOR, OBOX_ANCHOR, box_expander([5, 0, 4.5]))
+MICRO_HDMI=ShapeFactory(
+    core.Box, core.args([7.1,  8, 3.6]), 
+    [0, 1.8, -0.5], 
+    BOX_ANCHOR, 
+    OBOX_ANCHOR, 
+    box_expander([5, 0, 4.5]))
 
-USBC=(core.Box([9,  7.5, 3.3]), [0, 1.8, 0], BOX_ANCHOR, OBOX_ANCHOR, box_expander([5, 0, 4]))
+USBC=ShapeFactory(
+    core.Box, core.args([9,  7.5, 3.3]), 
+    [0, 1.8, 0], 
+    BOX_ANCHOR, 
+    OBOX_ANCHOR, 
+    box_expander([5, 0, 4]))
 
-AUDIO=(core.Cylinder(h=15, r=3, fn=20), [0, 2.7, 0], CYL_ANCHOR, OCYL_ANCHOR, cyl_expander(2))
+AUDIO=ShapeFactory(
+    core.Cylinder, core.args(h=15, r=3), 
+    [0, 2.7, 0], 
+    CYL_ANCHOR, 
+    OCYL_ANCHOR, 
+    cyl_expander(2))
 
-MICRO_SD=(core.Box([12,  11.35, 1.4]), [0, -3, 0], BOX_ANCHOR, OBOX_ANCHOR, 
-          box_expander([1, 1, 6], post=l.translate([0, -3, 0])))
+MICRO_SD=ShapeFactory(
+    core.Box, core.args([12,  11.35, 1.4]), 
+    [0, -3, 0], 
+    BOX_ANCHOR, 
+    OBOX_ANCHOR, 
+    box_expander([1, 1, 6], post=l.translate([0, -3, 0])))
 
-CPU_PACKAGE=(core.Box([15,  15, 2.4]), [0, -25, 0], core.args('face_edge', 1, 0, 1), IBOX_ANCHOR, no_op)
+CPU_PACKAGE=ShapeFactory(core.Box, core.args([15,  15, 2.4]), [0, -25, 0], core.args('face_edge', 1, 0, 1), IBOX_ANCHOR, no_op)
 
-HEADER_100=(core.Box([51,  5.1, 8.7]), [0, -1.75, 0], core.args('face_edge', 1, 0, 1), IBOX_ANCHOR, no_op)
+HEADER_100=ShapeFactory(core.Box, core.args([51,  5.1, 8.7]), [0, -1.75, 0], core.args('face_edge', 1, 0, 1), IBOX_ANCHOR, no_op)
 
 SIDE_ACCESS=(core.args('face_corner', 4, 0), (
     ('usbC', USBC, tranX(3.5 + 7.7)),
@@ -114,12 +162,12 @@ class RaspberryPi4Outline(core.CompositeShape):
         anchor_specs = []
         for _, items in ALL_ACCESS_ITEMS:
             for name, model, xform in items:
-                o_anchor = model[3]
+                o_anchor = model.anchor2
                 anchor_specs.append(
                     core.surface_args(name, *o_anchor[0], **o_anchor[1]))
         return tuple(anchor_specs)
     
-    EXAMPLE_SHAPE_ARGS=core.args(fn=20)
+    EXAMPLE_SHAPE_ARGS=core.args(fn=36)
     EXAMPLE_ANCHORS=tuple(
             core.surface_args(('mount_hole', i), 'top') for i in range(4)
         ) + make_access_anchors()
@@ -127,8 +175,9 @@ class RaspberryPi4Outline(core.CompositeShape):
         
     def __post_init__(self):
         maker = bbox.BoxSideBevels(
-            size=self.board_size, bevel_radius=self.bevel_radius, fn=20).solid(
-            'board').at('face_centre', 4)
+            size=self.board_size, 
+            bevel_radius=self.bevel_radius, 
+            fn=self.fn).solid('board').at('face_centre', 4)
         
         self.maker = maker
         
@@ -146,12 +195,14 @@ class RaspberryPi4Outline(core.CompositeShape):
 
         for base_anchor, items in ALL_ACCESS_ITEMS:
             for name, model, xform in items:
+                shape = model.create(params)
                 maker.add_at(
-                    model[0].solid(name).colour([0, 1, 0.5]).at(args=model[2], post=l.translate(model[1])),
+                    shape.solid(name).colour([0, 1, 0.5]).at(
+                        args=model.anchor1, post=l.translate(model.offset)),
                     args=base_anchor, post=xform * l.ROTY_180
                     )
                 # Add the outer hole.
-                model[4](maker, name, model[3], model[0])
+                model.expander(maker, name, model.anchor2, shape)
 
 
     
@@ -160,11 +211,11 @@ class RaspberryPi4Outline(core.CompositeShape):
 @dataclass
 class RaspberryPi4Case(core.CompositeShape):
     '''A Raspberry Pi 4 Case.'''
-    outline_model: core.Shape=RaspberryPi4Outline()
+    outline_model: core.Shape=None
     inner_size_delta: tuple=(3, 2, 22)
     inner_offset: tuple=(-1.5, 1, 3)
     wall_thickness: float=2
-    inner_bevel_radius: float=outline_model.bevel_radius + (-inner_offset[0] - inner_offset[1]) / 2
+    inner_bevel_radius: float=None
     screw_clearannce: float=0.2
     board_screw_min_len: float=6
     show_outline: bool=False
@@ -177,12 +228,26 @@ class RaspberryPi4Case(core.CompositeShape):
     fs: float=None
     
     EXAMPLE_ANCHORS=(core.surface_args('shell', 'face_centre', 1),)
-    
+    EXAMPLE_SHAPE_ARGS=core.args(fn=36)
+     
+    EXAMPLES_EXTENDED={'bottom': core.ExampleParams(
+                            shape_args=core.args(fn=36)),
+                       'top': core.ExampleParams(
+                            core.args(make_case_top=True, fn=36),
+                            anchors=(core.surface_args(
+                                        'outline', ('usbA3', 'outer'), 'face_edge', 3, 1),
+                                     core.surface_args(
+                                        'outline', ('usbA2', 'outer'), 'face_edge', 3, 3),))}
+
     def __post_init__(self):
+        params = core.non_defaults_dict(self, include=('fn', 'fa', 'fs'))
+        if self.outline_model is None:
+            self.outline_model = RaspberryPi4Outline(**params)
+        if self.inner_bevel_radius is None:
+            self.inner_bevel_radius = self.outline_model.bevel_radius + (-self.inner_offset[0] - self.inner_offset[1]) / 2
         inner_size = l.GVector(self.inner_size_delta) + l.GVector(self.outline_model.board_size)
         outer_size = (inner_size + (self.wall_thickness * 2,) * 3).A[0:3]
         bevel_radius = self.inner_bevel_radius + self.wall_thickness
-        params = core.non_defaults_dict(self, include=('fn', 'fa', 'fs'))
         maker = bbox.BoxShell(
             size=outer_size, 
             bevel_radius=bevel_radius, 
@@ -206,6 +271,14 @@ class RaspberryPi4Case(core.CompositeShape):
             
         cut_box_mode = core.ModeShapeFrame.HOLE if self.show_cut_box else core.ModeShapeFrame.HOLE
         
+        usbA2A3_column_vec = (
+            maker.at('outline', ('usbA3', 'outer'), 'face_edge', 3, 1).I * l.GVector([0, 0, 0,])
+            - maker.at('outline', ('usbA3', 'outer'), 'face_edge', 3, 3).I * l.GVector([0, 0, 0,]))
+        
+        print('p1', maker.at('outline', ('usbA3', 'outer'), 'face_edge', 3, 1) * l.GVector([0, 0, 0,]))
+        print('p2', maker.at('outline', ('usbA3', 'outer'), 'face_edge', 3, 2) * l.GVector([0, 0, 0,]))
+        
+        print(usbA2A3_column_vec)
         maker.add_at(
             split_box_cage
                 .named_shape('split_box', cut_box_mode)
@@ -224,11 +297,13 @@ class RaspberryPi4Case(core.CompositeShape):
             f'Board mounting screw hole height {max_allowable_screw_size} is smaller than the '
             f'mnimum size {self.board_screw_min_len}.')
         
+        params = core.non_defaults_dict(self, include=('fn', 'fa', 'fs'))
         board_screw_hole = SelfTapHole(
             thru_len=1, 
             tap_len=max_allowable_screw_hole_height -1,
             outer_dia=HOLE_SUPPORT_RADIUS * 2,
-            dia=2.6)
+            dia=2.6,
+            **params)
         
         for i in range(4):
             maker.add_at(board_screw_hole.composite(('support', i)).at('start', post=ROTX_180),
