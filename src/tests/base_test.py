@@ -179,6 +179,7 @@ class Test(unittest.TestCase):
 
     def test_offset(self):
         self.assertEqual(base.Offset(r=3.0).r, 3.0)
+        self.assertEqual(base.Offset().r, 1.0)
 
     def testModifiers(self):
         obj = base.Cylinder()
@@ -194,6 +195,14 @@ class Test(unittest.TestCase):
         )
         self.assertFalse(obj.has_modifier(base.DEBUG))
         self.assertTrue(obj.has_modifier(base.TRANSPARENT))
+        
+    def testMetadataName(self):
+        obj = base.Sphere()
+        self.assertEquals(str(obj), 'sphere(r=1.0);\n')
+        obj.setMetadataName("a_name")
+        self.assertEquals(str(obj), "// 'a_name'\nsphere(r=1.0);\n")
+        obj.setMetadataName(('a', 'tuple'))
+        self.assertEquals(str(obj), "// ('a', 'tuple')\nsphere(r=1.0);\n")
 
 
 if __name__ == "__main__":
