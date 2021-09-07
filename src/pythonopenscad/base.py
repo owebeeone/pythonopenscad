@@ -1205,7 +1205,7 @@ class Offset(PoscParentBase):
 
     def check_valid(self):
         '''Checks that the construction of cylinder is valid.'''
-        if not all(x is None for x in [self.r, self.delta]):
+        if all(x is None for x in [self.r, self.delta]):
             self.r = 1.0
         self.check_required_parameters()
 
