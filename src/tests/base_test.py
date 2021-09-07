@@ -3,7 +3,7 @@ Basic set of tests.
 
 '''
 import unittest
-import base
+import pythonopenscad as base
 
 
 class Test(unittest.TestCase):
@@ -176,6 +176,9 @@ class Test(unittest.TestCase):
     def test_osc_true_false(self):
         self.assertFalse(base.OSC_FALSE)
         self.assertTrue(base.OSC_TRUE)
+
+    def test_offset(self):
+        self.assertEqual(base.Offset(r=3.0).r, 3.0)
 
     def testModifiers(self):
         obj = base.Cylinder()
