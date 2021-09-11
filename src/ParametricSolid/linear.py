@@ -489,6 +489,10 @@ class GMatrix(object):
     
     def get_rotation(self):
         return GMatrix(self.A[0:3,0:3])
+    
+    def get_axis(self, index):
+        v = self.A[index]
+        return GVector(v[0:3])
 
     @property
     def I(self):
@@ -751,4 +755,65 @@ def mirror(axis):
     # then rotate back to the original frame of reference.
     return m.I * mm * m
 
+def _get_plane_normal(plane_mat, plane_mat_I=None):
+    '''Returns a GMatrix representing the vector from the origin to the
+    translation point normal to the projected X-Y plane.'''
+    if not plane_mat_I:
+        plane_mat_I = plane_mat.I
+    p_z = plane_mat_I.get_axis(2)
+    p_trans_dir = rot_to_V(Z_AXIS, p_z)
+    p_trans = plane_mat.get_translation()
+    p_tran_len = -p_z.dot3D(p_trans)
+    return p_trans_dir * translate([0, 0, p_tran_len])
 
+def plane_intersect(planeA, planeB):
+    '''Find the intersecting line of 2 planes represented as the GMatrix x-y
+    plane. i.e. The Z vector of the plane matrix parameters are the normal
+    to the plane. The result is another GMatrix whose Z axis is the line
+    direction. The X axis of the result will be co-planar with planeA and
+    the Y axis will be normal to plane2. If the planes are co-planar, None
+    is returned.
+    
+    Args:
+      planeA: a GMatrix whose X-Y plane represents the plane (Z is normal).
+      planeB: a GMatrix whose X-Y plane represents the plane (Z is normal).
+    '''
+    
+    # We'll need this a couple of times.
+    planeB_I = planeB.I
+
+    # Find planeB in planeA's frame of reference.
+    to_planeA = planeB_I * planeA
+    to_planeA_I = to_planeA.I
+
+    to_planeA_mat = _get_plane_normal(to_planeA_I, to_planeA)
+    
+    # From the origin to the translated origin of planeB, the solution
+    # of the intersection is 2D line perpendicular to the translation
+    # of to_planeA.
+    to_pA_trans = to_planeA_mat.get_translation()
+    
+    # Project a point onto planeA.
+    on_planeA = GVector([to_pA_trans.x, to_pA_trans.y, 0])
+    x02 = clean(on_planeA.dot3D(on_planeA))
+    
+    if x02 == 0:
+        bz = to_planeA.get_axis(2)
+        intersecting_line_dir = bz.cross3D(Z_AXIS)
+        if clean(intersecting_line_dir.length()) == 0:
+            # Planes are coplanar or the origin of planA is on the intersection.
+            return None
+        interesct_line = ROTX_90 * rot_to_V(intersecting_line_dir, Y_AXIS)
+    else:
+        # Compute the 2D line intersection.
+        z0 = to_pA_trans.z
+        line_offset = on_planeA * ((x02 + z0 * z0) / x02)
+        
+        # Compute the matrix representing the line.
+        interesct_line = (
+            ROTX_90 * rot_to_V(line_offset, X_AXIS) * translate(line_offset))
+
+    # Put this back in the original/common frame of reference.
+    return planeA * interesct_line.I
+    
+        
