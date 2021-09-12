@@ -795,25 +795,52 @@ def plane_intersect(planeA, planeB):
     
     # Project a point onto planeA.
     on_planeA = GVector([to_pA_trans.x, to_pA_trans.y, 0])
-    x02 = clean(on_planeA.dot3D(on_planeA))
     
+    # Find line direction using Z axis of plane.
+    bz = to_planeA.get_axis(2)
+    intersecting_line_dir = bz.cross3D(Z_AXIS)
+    if clean(intersecting_line_dir.length(), epsilon=1.e-20) == 0:
+        # Planes are coplanar or the origin of planA is on the intersection.
+        return None
+    
+    intersection_direction = ROTX_90 * rot_to_V(intersecting_line_dir, Y_AXIS)
+    x02 = clean(on_planeA.dot3D(on_planeA), epsilon=1.e-20)
     if x02 == 0:
-        bz = to_planeA.get_axis(2)
-        intersecting_line_dir = bz.cross3D(Z_AXIS)
-        if clean(intersecting_line_dir.length()) == 0:
-            # Planes are coplanar or the origin of planA is on the intersection.
-            return None
-        interesct_line = ROTX_90 * rot_to_V(intersecting_line_dir, Y_AXIS)
+        # Line intersects through the origin.
+        interesct_line = intersection_direction
     else:
         # Compute the 2D line intersection.
         z0 = to_pA_trans.z
         line_offset = on_planeA * ((x02 + z0 * z0) / x02)
         
         # Compute the matrix representing the line.
-        interesct_line = (
-            ROTX_90 * rot_to_V(line_offset, X_AXIS) * translate(line_offset))
+        interesct_line = intersection_direction * translate(line_offset)
 
     # Put this back in the original/common frame of reference.
     return planeA * interesct_line.I
     
-        
+def plane_line_intersect(plane_in, line_in):
+    '''Find the interesting point between a plane and a line.
+    The plane is represented as by the GMatrix x-y plane (Z is normal). The
+    line is also a GMatrix whose Z direction is the direction of the line and
+    the line traverses the origin of the frame of reference. Returns None if 
+    there is no intersection. Returns a GMatrix of the intersecting point 
+    maintaining the orientation of the input line but translated so the 
+    origin is at the point of intersection.'''
+    
+    plane = plane_in.I
+    line = line_in.I
+    
+    p_z = plane.get_axis(2)
+    l_z = line.get_axis(2)
+    d = clean(l_z.dot3D(p_z), epsilon=1.e-20)
+    if d == 0:
+        # line is parallel to plane.
+        return None
+    
+    t = p_z.dot3D(plane_in.get_translation() - line_in.get_translation()) / -d
+    
+    result = line * translate(l_z * t)
+    
+    return result.I
+
