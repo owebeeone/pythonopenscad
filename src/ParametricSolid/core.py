@@ -1459,13 +1459,12 @@ class Coordinates(CompositeShape):
     def within(self, *args, **kwds):
         return self.maker.at(*args, **kwds)
     
-    
 @shape('anchorscad/core/annotated_coordinates')
 @dataclass
 class AnnotatedCoordinates(CompositeShape):
     
     coordinates: Coordinates=Coordinates()
-    coord_labels: frozendict=frozendict({'x': 'x', 'y': 'y', 'z': 'z'})
+    coord_labels: frozendict=None
     text_stem_size_ratio:float = 0.3
     coord_label_at: tuple=args(post=l.translate([0, 0, 1]) * l.rotY(-90))
     label: str=None
@@ -1475,6 +1474,9 @@ class AnnotatedCoordinates(CompositeShape):
     
     
     def __post_init__(self):
+        
+        if not self.coord_labels:
+            self.coord_labels = frozendict({'x': 'x', 'y': 'y', 'z': 'z'})
         
         maker = self.coordinates.solid('coords').at('origin')
         if self.coord_labels:
