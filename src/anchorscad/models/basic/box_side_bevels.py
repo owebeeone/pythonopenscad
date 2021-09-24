@@ -129,18 +129,27 @@ class BoxShell(core.CompositeShape):
     
     def __post_init__(self):
         size = np.array(self.size)
+        centre_size = size - self.shell_size
         inner_size = size - 2 * self.shell_size
         if self.bevel_radius > self.shell_size:
             inner_bevel = self.bevel_radius - self.shell_size
         else:
             inner_bevel= 0
         
+        if self.bevel_radius > self.shell_size / 2:
+            centre_bevel = self.bevel_radius - self.shell_size
+        else:
+            centre_bevel= 0
+            
+        
         params = core.non_defaults_dict(self, include=('fn', 'fa', 'fs'))
         
         outer_box = self.box_class(size=self.size, bevel_radius=self.bevel_radius, **params)
+        centre_cage_box = self.box_class(size=centre_size, bevel_radius=centre_bevel, **params)
         inner_box = self.box_class(size=inner_size, bevel_radius=inner_bevel, **params)
         
         maker = outer_box.solid('outer').at('centre')
+        maker.add(centre_cage_box.cage('shell_centre').at('centre'))
         maker.add(inner_box.hole('inner').at('centre'))
         
         self.maker = maker

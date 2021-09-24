@@ -13,6 +13,9 @@ import ParametricSolid.linear as l
 import anchorscad.models.basic.box_side_bevels as bbox
 from anchorscad.models.screws.holes import SelfTapHole
 import numpy as np
+from anchorscad.models.basic.TriangularPrism import TriangularPrism
+from anchorscad.models.grille.case_vent.basic import RectangularGrilleHoles
+from _pydecimal import _Log10Memoize
 
 
 Z_DELTA=tranZ(-0.01)
@@ -218,9 +221,13 @@ class RaspberryPi4Case(core.CompositeShape):
     inner_bevel_radius: float=None
     screw_clearannce: float=0.2
     board_screw_min_len: float=6
+    front_flange_depth: float=10
+    vent_hole: tuple= (50, 10)
     show_outline: bool=False
     show_cut_box: bool=False
     make_case_top: bool=False
+    rhs_grille_size: float=9
+    rhs_grille_y_offs: float=4
     
     split_box_delta: float=40
     fn: int=None
@@ -229,15 +236,31 @@ class RaspberryPi4Case(core.CompositeShape):
     
     EXAMPLE_ANCHORS=(core.surface_args('shell', 'face_centre', 1),)
     EXAMPLE_SHAPE_ARGS=core.args(fn=36)
-     
+    
+    # Some anchor locations for locating flange position and sizes.
+    USBA2_A2 = core.surface_args(
+        'outline', ('usbA2', 'outer'), 'face_edge', 1, 0, 0)
+    USBA3_A1 = core.surface_args(
+        'outline', ('usbA3', 'outer'), 'face_edge', 1, 0, 1)
+    USBA3_A2 = core.surface_args(
+        'outline', ('usbA3', 'outer'), 'face_edge', 1, 0, 0)
+    ETH_A1 = core.surface_args(
+        'outline', ('rj45', 'outer'), 'face_edge', 1, 0, 1)
+    BOX_TOP = core.surface_args('inner', 'face_centre', 4)
+    CUT_PLANE = core.surface_args('outline', 'audio', 'base', post=l.ROTX_270)
+    
+    HEADER_CORNER = core.surface_args(
+        'outline', 'header100', 'face_edge', 3, 0, 0.5,
+        post=l.translate([0, -rhs_grille_y_offs, 0]))
+    
+    BOX_RHS = core.surface_args('shell_centre', 'face_centre', 3)
+    BOX_LHS = core.surface_args('shell_centre', 'face_centre', 0)
+    
     EXAMPLES_EXTENDED={'bottom': core.ExampleParams(
                             shape_args=core.args(fn=36)),
                        'top': core.ExampleParams(
                             core.args(make_case_top=True, fn=36),
-                            anchors=(core.surface_args(
-                                        'outline', ('usbA3', 'outer'), 'face_edge', 3, 1),
-                                     core.surface_args(
-                                        'outline', ('usbA2', 'outer'), 'face_edge', 3, 3),))}
+                            anchors=())}
 
     def __post_init__(self):
         params = core.non_defaults_dict(self, include=('fn', 'fa', 'fs'))
@@ -271,14 +294,6 @@ class RaspberryPi4Case(core.CompositeShape):
             
         cut_box_mode = core.ModeShapeFrame.HOLE if self.show_cut_box else core.ModeShapeFrame.HOLE
         
-        usbA2A3_column_vec = (
-            maker.at('outline', ('usbA3', 'outer'), 'face_edge', 3, 1).I * l.GVector([0, 0, 0,])
-            - maker.at('outline', ('usbA3', 'outer'), 'face_edge', 3, 3).I * l.GVector([0, 0, 0,]))
-        
-        print('p1', maker.at('outline', ('usbA3', 'outer'), 'face_edge', 3, 1) * l.GVector([0, 0, 0,]))
-        print('p2', maker.at('outline', ('usbA3', 'outer'), 'face_edge', 3, 2) * l.GVector([0, 0, 0,]))
-        
-        print(usbA2A3_column_vec)
         maker.add_at(
             split_box_cage
                 .named_shape('split_box', cut_box_mode)
@@ -286,6 +301,66 @@ class RaspberryPi4Case(core.CompositeShape):
                 .at('split_box', 'face_centre', 4), 
             'face_centre', 4, post=tranZ(-cut_xlation.y) * cut_xform)
         
+        # Adds a flange to support the thin columns at the front of the
+        # case. Here we project some lines from the edges of the USB
+        # and RJ45 connector expanded access holes to the cut line
+        # and then to the top of the case. This uses the intersecting
+        # points between the top and bottom planes to find the dimensions
+        # of the plange.
+        support_bound_planes = (self.BOX_TOP, self.CUT_PLANE)
+        support_bound_lines = (self.USBA2_A2, self.USBA3_A1, 
+            self.USBA3_A2, self.ETH_A1)
+        
+        top_points = self.find_all_intersect(
+            maker, support_bound_planes[0], *support_bound_lines)
+        
+        bottom_points = self.find_all_intersect(
+            maker, support_bound_planes[1], *support_bound_lines)
+        
+        face_top_locs = []
+        for i, m in enumerate(top_points):
+            v = m.I * l.GVector([0, 0, 0,])
+            face_top_locs.append(v)
+        
+        face_bot_locs = []
+        for i, m in enumerate(bottom_points):
+            v = m.I * l.GVector([0, 0, 0,])
+            face_bot_locs.append(v)
+            print(i, ": ", v)
+            
+        usb_usb_flange = self.make_flange(
+            (face_top_locs[1] - face_top_locs[0]).x,
+            (face_bot_locs[0] - face_top_locs[0]).z)
+        
+        
+        usb_rj45_flange = self.make_flange(
+            (face_top_locs[3] - face_top_locs[2]).x,
+            (face_bot_locs[2] - face_top_locs[2]).z)
+        
+        maker.add_at(usb_usb_flange.solid('usb_usb_flange')
+                     .at('prism', 'face3', 1),
+                     post=top_points[0] * l.ROTY_270 * l.ROTX_90)
+        
+        maker.add_at(usb_rj45_flange.solid('usb_rj45_flange')
+                     .at('prism', 'face3', 1),
+                     post=top_points[2] * l.ROTY_270 * l.ROTX_90)
+        
+        # Add air grilles
+        
+        grille_holes = RectangularGrilleHoles(
+            [50, self.wall_thickness + 0.01, self.rhs_grille_size])
+        
+        maker.add_at(grille_holes.hole('rhs_grille').at('centre', post=l.ROTX_90),
+                     post=l.plane_line_intersect(
+                         core.apply_anchor_args(maker, self.BOX_RHS),
+                         core.apply_anchor_args(maker, self.HEADER_CORNER)
+                         ))
+        
+        maker.add_at(grille_holes.hole('lhs_grille').at('centre', post=l.ROTX_90),
+                     post=l.plane_line_intersect(
+                         core.apply_anchor_args(maker, self.BOX_LHS),
+                         core.apply_anchor_args(maker, self.HEADER_CORNER)
+                         ))
         
         bottom_loc = maker.at('shell', 'face_centre', 1).get_translation()
         screw_hole_loc = maker.at('outline', ('mount_hole', 0), 'top').get_translation()
@@ -320,6 +395,24 @@ class RaspberryPi4Case(core.CompositeShape):
                     .transparent(True)
                     .at('centre'),
                 'main', 'outline', 'centre')
+            
+    def make_flange(self, width, height):
+        return TriangularPrism([
+            self.front_flange_depth,
+            height,
+            width])    
+        
+    
+    def find_all_intersect(self, maker, plane_anchor, *line_anchors):
+        return tuple(self.find_intersection(maker, plane_anchor, la) 
+                     for la in line_anchors)
+    
+    def find_intersection(self, maker, plane_anchor, line_anchor):
+        plane = core.apply_at_args(
+            maker, *plane_anchor[1][0], **plane_anchor[1][1])
+        line = core.apply_at_args(
+            maker, *line_anchor[1][0], **line_anchor[1][1])
+        return l.plane_line_intersect(plane, line)
 
 if __name__ == "__main__":
     core.anchorscad_main(False)

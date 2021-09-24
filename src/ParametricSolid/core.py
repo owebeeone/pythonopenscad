@@ -228,6 +228,9 @@ def apply_at_args(
             local_frame, pre=alter_pre, post=alter_post)
     return local_frame
 
+def apply_anchor_args(shape, anchor_args): 
+    return apply_at_args(shape, *anchor_args[1][0], **anchor_args[1][1])
+
 @dataclass(frozen=True)
 class NamedShapeBase(object):
     shape: object  # Shape or Maker or LazyShape

@@ -827,17 +827,20 @@ def plane_line_intersect(plane_in, line_in):
     there is no intersection. Returns a GMatrix of the intersecting point 
     maintaining the orientation of the input line but translated so the 
     origin is at the point of intersection.'''
+    # Algorithm adapted from:
+    #    https://en.wikipedia.org/wiki/Line%E2%80%93plane_intersection
     
     plane = plane_in.I
     line = line_in.I
     
     p_z = plane.get_axis(2)
-    l_z = line.get_axis(2)
+    l_z = line.get_axis(2)  # The line direction.
     d = clean(l_z.dot3D(p_z), epsilon=1.e-20)
     if d == 0:
         # line is parallel to plane.
         return None
     
+    # Compute how far to extend line to reach the intersecting point.
     t = p_z.dot3D(plane_in.get_translation() - line_in.get_translation()) / -d
     
     result = line * translate(l_z * t)
