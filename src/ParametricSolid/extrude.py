@@ -200,6 +200,13 @@ class OffsetType:
 OFFSET_ROUND=OffsetType(pc.JT_ROUND)
 OFFSET_MITER=OffsetType(pc.JT_MITER)
 OFFSET_SQUARE=OffsetType(pc.JT_SQUARE)
+
+def adder(a, b):
+    if a is None:
+        return None
+    if b is None:
+        return a
+    return a + b
     
 @dataclass(frozen=True)
 class Path():
@@ -246,12 +253,41 @@ class Path():
         return (points, 
                 (tuple(tuple(range(indexes[i], indexes[i+1])) for i in range(len(start_indexes)))))
 
-    def transform_to_builder(self, m):
-        '''Returns a PathBuilder with the new transformed path.'''
-        builder = PathBuilder()
+    def transform_to_builder(self, 
+                             m, 
+                             builder=None, 
+                             suffix=None, 
+                             appender=adder,
+                             skip_first_move=None):
+        '''Returns a PathBuilder with the new transformed path.
+        Args:
+          m: A GMatrix to transform the points.
+          builder: Optional builder to append path to.
+          suffix: Names from this path are suffixed by this.
+          appender: Function to perform appending. Default is adder.
+          skip_first_move: Skips the first move operation.
+        '''
+        if not builder:
+            skip_first_move = False if skip_first_move is None else skip_first_move
+            builder = PathBuilder()
+        else:
+            skip_first_move = True if skip_first_move is None else skip_first_move
         
-        for op in self.ops:
-            builder.add_op_with_params(op.transform(m), op.name)
+        # Perform skip on first op if it is a move.
+        iterops = iter(self.ops)
+        if skip_first_move:
+            try:
+                op = next(iterops)
+                if not op.is_move():
+                    builder.add_op_with_params(
+                        op.transform(m), appender(op.name, suffix))
+            except StopIteration:
+                pass
+        
+        for op in iterops:
+            builder.add_op_with_params(
+                op.transform(m), appender(op.name, suffix))
+
         return builder
             
     def transform(self, m):
@@ -468,6 +504,9 @@ class PathBuilder():
             return dict((k, getattr(self, k)) 
                         for k in self.__annotations__.keys() 
                             if not getattr(self, k) is None and k != 'prev_op')
+            
+        def is_move(self):
+            return False
     
     @dataclass(frozen=True)
     class _LineTo(OpBase):
@@ -541,6 +580,9 @@ class PathBuilder():
             params = self._as_non_defaults_dict()
             params['point'] = (m * to_gvector(self.point)).A[0:len(self.point)]
             return (self.__class__, params)
+        
+        def is_move(self):
+            return True
             
 
     @dataclass(frozen=True)
@@ -1129,7 +1171,7 @@ class LinearExtrude(ExtrudedShape):
         y_direction = z_direction.cross3D(x_direction)
         orientation = l.GMatrix.from_zyx_axis(x_direction, y_direction, z_direction) * l.rotX(90)
         
-        # The twist andle is simply a rotation about Z depending on height.
+        # The twist angle is simply a rotation about Z depending on height.
         rel_h = h / self.h
         twist_angle = self.twist * rel_h
         twist_rot = l.rotZ(-twist_angle)
