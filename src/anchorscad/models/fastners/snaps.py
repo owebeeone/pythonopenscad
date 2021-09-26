@@ -8,6 +8,7 @@ from dataclasses import dataclass
 import ParametricSolid.core as core
 import ParametricSolid.linear as l
 from ParametricSolid.extrude import PathBuilder, LinearExtrude
+from anchorscad.models.basic.box_side_bevels import BoxSideBevels
 
 
 @core.shape('anchorscad.models.fastners.snaps')
@@ -21,14 +22,18 @@ class Snap(core.CompositeShape):
     max_x: float=0.3
     t_size: float=1.0
     tab_protrusion: float=1
-    
+    tab_height: float=4
+    epsilon: float=1.e-2
+    fn:int = 16
     
     EXAMPLE_SHAPE_ARGS=core.args()
-    EXAMPLE_ANCHORS=()
+    EXAMPLE_ANCHORS=(
+                core.surface_args('snap', 0.5),)
     
     def __post_init__(self):
-        maker = core.Box(self.size).solid(
-            'plane1').transparent(1).colour([1, 1, 0, 0.5]).at('centre')
+        box = core.Box(self.size)
+        maker = box.cage(
+            'cage').transparent(1).colour([1, 1, 0, 0.5]).at('centre')
             
         max_x = self.max_x
         t_size = self.t_size
@@ -44,9 +49,8 @@ class Snap(core.CompositeShape):
             .spline(([0, 2 * t_size], [0, 2 * t_size]), cv_len=cv_len, name='tail')
             .line([0, extentY], name='draw')
             .line([extentX, extentY], name='top')
-            .line([extentX_t, extentY], name='top_protrusion')
-            .line([extentX_t, 0], name='side')
-            .line([extentX, 0], name='bottom_prot')
+            .line([extentX_t, extentY - self.tab_protrusion], name='top_protrusion')
+            .line([extentX, 0], name='side')
             .line([0, 0], name='bottom')
             .build())
 
@@ -55,7 +59,40 @@ class Snap(core.CompositeShape):
         maker.add_at(shape.solid('tooth').at('top', 0),
                      'face_edge', 0, 3, post=l.ROTY_180)
         
+        # Round the clip.
+        clip_size = box.size.A[0:3] + 2 * self.epsilon
+        clip_size[2] = clip_size[2] + self.tab_protrusion
+        clip_cage = (core.Box(clip_size).cage('clip_cage')
+                .transparent(1).colour([0, 1, 0, 0.5])
+                .at('centre'))
+        
+        
+        th = self.tab_height
+        cutter_size = clip_size + self.epsilon / 2
+        cutter_size[1] = th
+        clip = core.Box(cutter_size)
+        clip_cage.add_at(clip.solid('clip').at('face_corner', 1, 1), 'face_corner', 1, 1)
+           
+        keep_size = clip_size + self.epsilon
+        keep = BoxSideBevels(keep_size, th, fn=self.fn)
+        clip_cage.add_at(keep.hole('keep').at('shell', 'face_corner', 1, 1),
+                    'face_corner', 1, 1)
+        
+        maker.add_at(
+            clip_cage.hole('clip').at('face_centre', 1), 
+            'face_centre', 1, post=l.translate([-self.epsilon / 2, -self.epsilon, 0]))
+        
         self.maker = maker
+        
+    @core.anchor('Snap seam edge.')
+    def snap(self, rpos=0.5):
+        '''Anchors to the seam line..
+        Args:
+            rpos: 0.0-1.0, 0.5 is centre.
+        '''
+        return (self.at('tooth', 'bottom', 1.0, rh=rpos) 
+                * l.tranZ(self.tab_height) * l.ROTV111_120 * l.ROTY_180)
+
 
 if __name__ == '__main__':
     core.anchorscad_main(False)

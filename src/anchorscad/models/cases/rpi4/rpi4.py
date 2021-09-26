@@ -15,7 +15,7 @@ from anchorscad.models.screws.holes import SelfTapHole
 import numpy as np
 from anchorscad.models.basic.TriangularPrism import TriangularPrism
 from anchorscad.models.grille.case_vent.basic import RectangularGrilleHoles
-from _pydecimal import _Log10Memoize
+from anchorscad.models.fastners.snaps import Snap
 
 
 Z_DELTA=tranZ(-0.01)
@@ -228,6 +228,7 @@ class RaspberryPi4Case(core.CompositeShape):
     make_case_top: bool=False
     rhs_grille_size: float=9
     rhs_grille_y_offs: float=4
+    fastener: type=Snap
     
     split_box_delta: float=40
     fn: int=None
@@ -255,6 +256,15 @@ class RaspberryPi4Case(core.CompositeShape):
     
     BOX_RHS = core.surface_args('shell_centre', 'face_centre', 3)
     BOX_LHS = core.surface_args('shell_centre', 'face_centre', 0)
+    
+    SNAP_RHS = core.surface_args(
+        'shell_centre', 'face_edge', 3, 0, 0.85)
+    SNAP_LHS = core.surface_args(
+        'shell_centre', 'face_edge', 0, 2, 0.85)
+    SNAP_REAR_LHS = core.surface_args(
+        'shell_centre', 'face_edge', 2, 2, 0.2)
+    SNAP_REAR_RHS = core.surface_args(
+        'shell_centre', 'face_edge', 2, 2, 0.8)
     
     EXAMPLES_EXTENDED={'bottom': core.ExampleParams(
                             shape_args=core.args(fn=36)),
@@ -306,7 +316,7 @@ class RaspberryPi4Case(core.CompositeShape):
         # and RJ45 connector expanded access holes to the cut line
         # and then to the top of the case. This uses the intersecting
         # points between the top and bottom planes to find the dimensions
-        # of the plange.
+        # of the flange.
         support_bound_planes = (self.BOX_TOP, self.CUT_PLANE)
         support_bound_lines = (self.USBA2_A2, self.USBA3_A1, 
             self.USBA3_A2, self.ETH_A1)
@@ -381,7 +391,9 @@ class RaspberryPi4Case(core.CompositeShape):
             **params)
         
         for i in range(4):
-            maker.add_at(board_screw_hole.composite(('support', i)).at('start', post=ROTX_180),
+            maker.add_at(board_screw_hole
+                         .composite(('support', i))
+                         .at('start', post=ROTX_180),
                          'outline', ('mount_hole', i), 'top')
         
      
@@ -395,6 +407,22 @@ class RaspberryPi4Case(core.CompositeShape):
                     .transparent(True)
                     .at('centre'),
                 'main', 'outline', 'centre')
+            
+        fastener_mode = (core.ModeShapeFrame.SOLID 
+                         if self.make_case_top 
+                         else core.ModeShapeFrame.HOLE)
+        
+        fastener_shape = self.fastener()
+        clip_anchors = (self.SNAP_RHS, 
+                        self.SNAP_LHS, 
+                        self.SNAP_REAR_RHS, 
+                        self.SNAP_REAR_LHS)
+        cut_trans = l.tranY(-cut_xlation.y)
+        for i, a in enumerate(clip_anchors):
+            top_maker.add_at(fastener_shape
+                    .named_shape(('clip', i), fastener_mode)
+                    .at('snap'),
+                    post=core.apply_anchor_args(top_maker, a) * -cut_trans)
             
     def make_flange(self, width, height):
         return TriangularPrism([
