@@ -16,6 +16,7 @@ import numpy as np
 from anchorscad.models.basic.TriangularPrism import TriangularPrism
 from anchorscad.models.grille.case_vent.basic import RectangularGrilleHoles
 from anchorscad.models.fastners.snaps import Snap
+from anchorscad.models.vent.fan.fan_vent import FanVent
 
 
 Z_DELTA=tranZ(-0.01)
@@ -229,6 +230,10 @@ class RaspberryPi4Case(core.CompositeShape):
     rhs_grille_size: float=9
     rhs_grille_y_offs: float=4
     fastener: type=Snap
+    epsilon: float=0.01
+    upper_fan: object=FanVent(grille_as_cutout=True,
+                              vent_thickness=wall_thickness + epsilon,
+                              screw_hole_extension=wall_thickness-0.5)
     
     split_box_delta: float=40
     fn: int=None
@@ -265,6 +270,10 @@ class RaspberryPi4Case(core.CompositeShape):
         'shell_centre', 'face_edge', 2, 2, 0.2)
     SNAP_REAR_RHS = core.surface_args(
         'shell_centre', 'face_edge', 2, 2, 0.8)
+    FAN_FIXING_PLANE=core.surface_args(
+        'shell_centre', 'face_centre', 4)
+    FAN_POSITION=core.surface_args(
+        'outline', 'cpu', 'face_centre', 1, post=l.translate([-6, -2, 0]))
     
     EXAMPLES_EXTENDED={'bottom': core.ExampleParams(
                             shape_args=core.args(fn=36)),
@@ -382,6 +391,19 @@ class RaspberryPi4Case(core.CompositeShape):
             f'Board mounting screw hole height {max_allowable_screw_size} is smaller than the '
             f'mnimum size {self.board_screw_min_len}.')
         
+        # Add Fan
+        
+        fan_fix_plane = core.apply_anchor_args(maker, self.FAN_FIXING_PLANE)
+        fan_fix_pos = core.apply_anchor_args(maker, self.FAN_POSITION)
+        
+        fan_pos = l.plane_line_intersect(fan_fix_plane, fan_fix_pos)
+        
+        maker.add_at(self.upper_fan.composite('fan')
+                     .at('grille_centre'),
+                     post=fan_pos)
+        
+        # Add screw holes.
+        
         params = core.non_defaults_dict(self, include=('fn', 'fa', 'fs'))
         board_screw_hole = SelfTapHole(
             thru_len=1, 
@@ -408,6 +430,7 @@ class RaspberryPi4Case(core.CompositeShape):
                     .at('centre'),
                 'main', 'outline', 'centre')
             
+        # Add fasteners.
         fastener_mode = (core.ModeShapeFrame.SOLID 
                          if self.make_case_top 
                          else core.ModeShapeFrame.HOLE)
@@ -423,6 +446,7 @@ class RaspberryPi4Case(core.CompositeShape):
                     .named_shape(('clip', i), fastener_mode)
                     .at('snap'),
                     post=core.apply_anchor_args(top_maker, a) * -cut_trans)
+            
             
     def make_flange(self, width, height):
         return TriangularPrism([
