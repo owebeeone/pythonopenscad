@@ -19,7 +19,7 @@ class Snap(core.CompositeShape):
     '''
     size: tuple=(10, 8, 2)
     depth_factor: float=0.5
-    max_x: float=0.45
+    max_x: float=0.65
     t_size: float=1.5
     tab_protrusion: float=1
     tab_height: float=4
@@ -45,7 +45,7 @@ class Snap(core.CompositeShape):
         path = (PathBuilder()
             .move([max_x, 0])
             .line([max_x - 0.01, 0.01], 'direction')
-            .spline(([-max_x, -t_size], [-max_x, t_size]), cv_len=cv_len, name='lead')
+            .spline(([-max_x, -t_size], [-max_x, 1.3 * t_size]), cv_len=cv_len, name='lead')
             .spline(([0, 2 * t_size], [0, 2 * t_size]), cv_len=cv_len, name='tail')
             .line([0, extentY], name='draw')
             .line([extentX, extentY], name='top')
