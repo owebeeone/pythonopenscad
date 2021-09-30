@@ -373,7 +373,6 @@ class RaspberryPi4Case(core.CompositeShape):
         for i, m in enumerate(bottom_points):
             v = m.I * l.GVector([0, 0, 0,])
             face_bot_locs.append(v)
-            print(i, ": ", v)
             
         usb_usb_flange = self.make_flange(
             (face_top_locs[1] - face_top_locs[0]).x,
