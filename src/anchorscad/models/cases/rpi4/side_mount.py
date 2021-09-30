@@ -29,6 +29,7 @@ class SideMount(CompositeShape):
     access_dia: float
     bevel_r: float
     counter_sink_overlap: float
+    dia: float=2.6
     outer_dia: float=None
     dia: object=None
     dims: HoleDimensions=None
@@ -40,7 +41,16 @@ class SideMount(CompositeShape):
     
     
     EXAMPLE_SHAPE_ARGS=args(
-        access_len=10, access_dia=4.5, counter_sink_overlap=0.5, fn=20)
+        h=10,
+        taper_h=3,
+        wall_sink_depth=3,
+        thru_len=1,
+        bevel_r=2,
+        tap_len=2,
+        access_len=10, 
+        access_dia=4.5, 
+        counter_sink_overlap=0.5, 
+        fn=20)
     
     def __post_init__(self):
         self_tap_hole = create_from(SelfTapHole, self)

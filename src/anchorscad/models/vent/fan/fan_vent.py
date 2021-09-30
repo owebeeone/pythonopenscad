@@ -8,7 +8,7 @@ from dataclasses import dataclass
 import ParametricSolid.core as core
 import ParametricSolid.linear as l
 from anchorscad.models.basic.pipe import Pipe
-from anchorscad.models.screws.dims import M_HOLE 
+from anchorscad.models.screws.dims import holeMetricDims 
 from anchorscad.models.grille.round.CurlySpokes import CurlySpokes
 
 
@@ -21,7 +21,8 @@ class FanVent(core.CompositeShape):
     vent_thickness: float=2
     size: tuple=(30, 30, 7.4)
     screw_hole_size: float=2.6
-    screw_support_dia: float=4.6
+    screw_hole_tap_dia_scale: float=0.95 # Needs more to tap onto.
+    screw_support_dia: float=4.7
     screw_support_depth: float=2.3
     screw_centres: float=(27.3 + 20.6) / 2
     screw_hole_extension: float=1.5
@@ -44,8 +45,9 @@ class FanVent(core.CompositeShape):
                  .colour([1, 1, 0, 0.5])
                  .transparent(1)
                  .at('face_centre', 1))
-            
-        inside_r = M_HOLE[self.screw_hole_size].tap_dia / 2
+
+        inside_r = (self.screw_hole_tap_dia_scale
+            * holeMetricDims(self.screw_hole_size).tap_dia / 2)
             
         screw_mount = Pipe(h=self.screw_support_depth + self.screw_hole_extension,
                            inside_r=inside_r,

@@ -19,8 +19,8 @@ class Snap(core.CompositeShape):
     '''
     size: tuple=(10, 8, 2)
     depth_factor: float=0.5
-    max_x: float=0.3
-    t_size: float=1.0
+    max_x: float=0.45
+    t_size: float=1.5
     tab_protrusion: float=1
     tab_height: float=4
     epsilon: float=1.e-2

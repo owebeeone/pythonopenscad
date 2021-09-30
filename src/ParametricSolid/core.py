@@ -509,6 +509,7 @@ class ExampleParams():
 class Shape(ShapeNamer, ShapeMaker):
     '''The base "shape" class for Anchorscad.
     '''
+    EXAMPLE_VERSION=None
     EXAMPLE_ANCHORS=()
     EXAMPLE_SHAPE_ARGS=args()
     EXAMPLES_EXTENDED=dict()
@@ -1156,8 +1157,10 @@ class Text(Shape):
         return renderer.add(scale_obj)
     
     @anchor('The default position for this text. depth=(rear, centre, front)')
-    def default(self, depth='centre'):
-        return l.translate([0, 0, self.depth * TEXT_DEPTH_MAP[depth]])
+    def default(self, depth='centre', rd=None):
+        if rd is None:
+            rd = TEXT_DEPTH_MAP[depth]
+        return l.translate([0, 0, self.depth * rd])
     
 
 ANGLES_TYPE = l.list_of(l.strict_float, len_min_max=(3, 3), fill_to_min=0.0)
@@ -1252,8 +1255,13 @@ class Cone(Shape):
         return renderer
     
     @anchor('The base of the cylinder')
-    def base(self):
-        return l.rotX(180)
+    def base(self, h=0, rh=None):
+        if rh:
+            h = h + rh * self.h
+        transform = l.ROTX_180
+        if not h:
+            return transform
+        return l.tranZ(h) * transform
     
     @anchor('The top of the cylinder')
     def top(self):
@@ -1261,7 +1269,7 @@ class Cone(Shape):
     
     @anchor('The centre of the cylinder')
     def centre(self):
-        return l.translate([0, 0, self.h / 2]) * l.rotX(180)
+        return l.translate([0, 0, self.h / 2]) * l.ROTX_180
     
     @anchor('A location on the curved surface.')
     def surface(self, h=0, degrees=0.0, radians=None, tangent=True, 
@@ -1270,7 +1278,7 @@ class Cone(Shape):
             h = 0.0
         if not rh is None:
             h = h + self.h * rh
-        r = (h / self.h)
+        r = (h / self.h) if self.h else 0
         x = r * self.r_top + (1 - r) * self.r_base + radius_delta
         if tangent:
             m = l.rot_to_V([-1, 0, 0], [self.r_top - self.r_base, 0, self.h]) * l.rotZ(90)
@@ -1547,6 +1555,10 @@ class RenderOptions:
     def match_name(self, cname):
         return self.class_name_re.match(cname)
                 
+def nameof(name, shape_clazz):
+    if shape_clazz.EXAMPLE_VERSION:
+        return ''.join((name, shape_clazz.EXAMPLE_VERSION))
+    return name
 
 def render_exmaples(module, render_options, consumer):
     '''Scans a module for all Anchorscad shape classes and renders examples.'''
@@ -1565,7 +1577,8 @@ def render_exmaples(module, render_options, consumer):
                     obj = clz.example(e)
                     poscobj = renderer.render(
                         obj, initial_frame=None, initial_attrs=render_options.render_attributes)
-                    consumer(poscobj, clz, e)
+                    
+                    consumer(poscobj, clz, nameof(e, clz))
                 except BaseException as ex:
                     sys.stderr.write(f'Error while rendering {clz.__name__}:\n{ex}\n')
                     traceback.print_exception(*sys.exc_info()) 

@@ -96,7 +96,8 @@ class CountersinkAccessHole(CompositeShape):
             r=access_r,
             **params)
         maker = access_hole_cage.cage('access_hole_cage').at('top')
-        maker.add_at(access_hole.hole('access_hole').at('surface', self.counter_sink_overlap, tangent=False),
+        maker.add_at(access_hole.hole('access_hole')
+                     .at('surface', self.counter_sink_overlap, tangent=False),
                      'surface', 0, tangent=False)
         
         couter_sink_hole = Cone(h=access_r, r_base=0, r_top=access_r, **params)
@@ -115,9 +116,9 @@ class CountersinkSelfTapHole(CompositeShape):
     '''
     thru_len: float
     tap_len: float
-    access_len: float
-    access_dia: float
-    counter_sink_overlap: float
+    access_len: float=1
+    access_dia: float=None
+    counter_sink_overlap: float=0.5
     outer_dia: float=None
     dia: object=None
     dims: HoleDimensions=None
@@ -129,9 +130,11 @@ class CountersinkSelfTapHole(CompositeShape):
     
     
     EXAMPLE_SHAPE_ARGS=args(
-        thru_len=10, tap_len=5, access_len=10, access_dia=5, outer_dia=8, dia=2.6, counter_sink_overlap=0.5, fn=180)
+        thru_len=10, tap_len=5, access_len=10, 
+        access_dia=5, outer_dia=8, dia=2.6, counter_sink_overlap=0.5, fn=180)
     
     def __post_init__(self):
+        
         self_tap_hole = create_from(SelfTapHole, self)
         if not self.access_dia:
             self.access_dia = self_tap_hole.outer_dia + self.overlap_delta

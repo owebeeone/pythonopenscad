@@ -17,7 +17,12 @@ from anchorscad.models.basic.TriangularPrism import TriangularPrism
 from anchorscad.models.grille.case_vent.basic import RectangularGrilleHoles
 from anchorscad.models.fastners.snaps import Snap
 from anchorscad.models.vent.fan.fan_vent import FanVent
+from anchorscad.models.screws.screw_tab import ScrewTab
+from time import time
 
+
+# The time of life.
+MODEL_V0=1632924118
 
 Z_DELTA=tranZ(-0.01)
 
@@ -209,8 +214,6 @@ class RaspberryPi4Outline(core.CompositeShape):
                 model.expander(maker, name, model.anchor2, shape)
 
 
-    
-
 @core.shape('anchorscad/models/cases/rpi4_case')
 @dataclass
 class RaspberryPi4Case(core.CompositeShape):
@@ -230,16 +233,21 @@ class RaspberryPi4Case(core.CompositeShape):
     rhs_grille_size: float=9
     rhs_grille_y_offs: float=4
     fastener: type=Snap
+    snap_pry_hole_size: tuple=(10, wall_thickness * 0.75, 1.7)
     epsilon: float=0.01
     upper_fan: object=FanVent(grille_as_cutout=True,
                               vent_thickness=wall_thickness + epsilon,
                               screw_hole_extension=wall_thickness-0.5)
-    
+    version: object=core.Text(
+        text=f'-{int(time())-1632924118:X}', 
+        size=5, 
+        depth=0.3 if wall_thickness > 0.5 else wall_thickness * 0.5)
     split_box_delta: float=40
     fn: int=None
     fa: float=None
     fs: float=None
     
+    EXAMPLE_VERSION=version.text
     EXAMPLE_ANCHORS=(core.surface_args('shell', 'face_centre', 1),)
     EXAMPLE_SHAPE_ARGS=core.args(fn=36)
     
@@ -272,8 +280,28 @@ class RaspberryPi4Case(core.CompositeShape):
         'shell_centre', 'face_edge', 2, 2, 0.8)
     FAN_FIXING_PLANE=core.surface_args(
         'shell_centre', 'face_centre', 4)
+    
+    PRY_RHS = core.surface_args(
+        'shell', 'face_edge', 3, 0, 0.7, post=l.tranZ(epsilon) * l.ROTY_180)
+    PRY_REAR = core.surface_args(
+        'shell', 'face_edge', 2, 2, 0.5, post=l.tranZ(epsilon) * l.ROTY_180)
+    
     FAN_POSITION=core.surface_args(
         'outline', 'cpu', 'face_centre', 1, post=l.translate([-6, -2, 0]))
+    
+    TAB_RHS = core.surface_args(
+        'shell', 'face_edge', 3, 2, 0.8)
+    TAB_LHS = core.surface_args(
+        'shell', 'face_edge', 0, 0, 0.8)
+    TAB_REAR_LHS = core.surface_args(
+        'shell', 'face_edge', 2, 0, 0.2)
+    TAB_REAR_RHS = core.surface_args(
+        'shell', 'face_edge', 2, 0, 0.8)
+    
+    VERS_UPPER = core.surface_args(
+        'shell', 'face_edge', 4, 1, 0.1, post=l.translate([0, 2, epsilon]))
+    VERS_LOWER = core.surface_args(
+        'shell', 'face_edge', 1, 1, 0.9, post=l.translate([0, 2, epsilon]))
     
     EXAMPLES_EXTENDED={'bottom': core.ExampleParams(
                             shape_args=core.args(fn=36)),
@@ -417,6 +445,20 @@ class RaspberryPi4Case(core.CompositeShape):
                          .composite(('support', i))
                          .at('start', post=ROTX_180),
                          'outline', ('mount_hole', i), 'top')
+            
+        # Add mounting screw tabs.
+        
+        tab_anchors = (self.TAB_RHS, 
+                        self.TAB_LHS, 
+                        self.TAB_REAR_RHS, 
+                        self.TAB_REAR_LHS)
+        tab_trans = l.ROTY_180
+        tab_shape = ScrewTab()
+        for i, a in enumerate(tab_anchors):
+            maker.add_at(tab_shape
+                    .composite(('tab', i))
+                    .at('face_edge', 0, 0),
+                    post=core.apply_anchor_args(maker, a) * tab_trans)
         
      
         top_maker = maker.solid('main').at('centre')
@@ -446,7 +488,25 @@ class RaspberryPi4Case(core.CompositeShape):
                     .named_shape(('clip', i), fastener_mode)
                     .at('snap'),
                     post=core.apply_anchor_args(top_maker, a) * -cut_trans)
+        
+        # Add pry holes
+        pry_shape = core.Box(self.snap_pry_hole_size)
+        pry_anchors = (self.PRY_RHS, self.PRY_REAR)
+        for i, a in enumerate(pry_anchors):
+            top_maker.add_at(pry_shape
+                    .hole(('pry', i))
+                    .at('face_centre', 0),
+                    post=core.apply_anchor_args(top_maker, a) * -cut_trans)
             
+        # Add version text
+        text_anchor, text_name = ((self.VERS_UPPER, 'upper') 
+                       if self.make_case_top 
+                       else (self.VERS_LOWER, 'lower'))
+        top_maker.add_at(self.version
+                .hole((('version', text_name), i))
+                .at('default', rd=0.4),
+                post=core.apply_anchor_args(top_maker, text_anchor))
+        
             
     def make_flange(self, width, height):
         return TriangularPrism([

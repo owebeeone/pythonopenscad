@@ -39,7 +39,7 @@ class HeadDimensions(object):
     
 @dataclass(frozen=True)
 class HoleDimensions(object):
-    '''Contains dimensions screw holes.
+    '''Contains dimensions for screw holes.
     '''
     thru_dia: float
     tap_dia: float

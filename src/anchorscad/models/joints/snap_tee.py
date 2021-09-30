@@ -62,4 +62,4 @@ class SelfTapHole(CompositeShape):
     EXAMPLE_ANCHORS=(surface_args('start'), surface_args('bottom'))
     
     def __post_init__(self):
-        
+        pass
