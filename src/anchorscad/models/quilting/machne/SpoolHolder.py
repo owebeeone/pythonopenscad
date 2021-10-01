@@ -16,15 +16,17 @@ class SpoolHolder(core.CompositeShape):
     <description>
     '''
     h: float=28.6
-    shaft_r: float=6.4 / 2
+    shaft_r: float=6.5 / 2
     rod_r: float=6.0 / 2
-    shrink_r: float=0.20 / 2
+    rod_hole_base_r: float=5.9 / 2
+    shrink_r: float=0.15 / 2
     holder_r: float=19 / 2
     holder_cut: float=1.5
     top_r_delta: float=0.04 / 2
     rod_sup_len: float=25
     rod_sup_r_top: float=12 / 2
     rod_sup_r_base: float=19 / 2
+    rod_angle: float=0.75  # Degrees
     epsilon: float=0.001
     fn: int=64
     
@@ -49,17 +51,25 @@ class SpoolHolder(core.CompositeShape):
             'holder').at('centre')    
         maker.add_at(holder, 'centre')
         
+        holder_cutter = core.Cylinder(h=self.rod_sup_r_base / 2, 
+                               r=self.holder_r, 
+                               fn=self.fn).hole(
+            'holder_cutter').at('base') 
+        maker. add_at(holder_cutter, 'base', h=-self.epsilon, rh=1)
+        
         rod_suppoort_shape = core.Cone(
             h=self.rod_sup_len, 
             r_top=self.rod_sup_r_top, 
             r_base=self.rod_sup_r_base, 
             fn=self.fn).solid(
             'rod_support').colour([0, 1, 0, 1]).at('base')
-        maker.add_at(rod_suppoort_shape, 'base', rh=0.6, post=l.ROTX_90)
+        maker.add_at(rod_suppoort_shape, 'base', rh=0.71, 
+                     post=l.rotX(90 - self.rod_angle))
         
            
-        holder = core.Cylinder(h=self.rod_sup_len + epsi2,  
-                               r=self.rod_r + self.shrink_r, 
+        holder = core.Cone(h=self.rod_sup_len + epsi2,  
+                               r_top=self.rod_r + self.shrink_r, 
+                               r_base=self.rod_hole_base_r + self.shrink_r,
                                fn=self.fn).hole(
             'rod_hole').at('centre')    
         maker.add_at(holder, 'rod_support', 'centre')
@@ -80,12 +90,13 @@ class SpoolHolderCap(core.CompositeShape):
     '''
     h: float=11.3
     shaft_r: float=6.0 / 2
-    shrink_r: float=0.21 / 2
+    shrink_r: float=0.15 / 2
     top_r_delta: float=0.04 / 2
     washer_h: float=3
     washer_r: float=23.0 / 2
     stem_top_rd: float=1.5
     stem_base_rd: float=2.5
+    slicer_width: float=0.2
     epsilon: float=0.001
     fn: int=64
     
@@ -122,7 +133,15 @@ class SpoolHolderCap(core.CompositeShape):
             h=stem_h + epsi2, r_base=r, r_top=rtop, fn=self.fn).hole(
             'top_hole').colour([0, 1, 1, 0.5]).at('base')
         maker.add_at(top_hole, 'stem', 'base')
-            
+
+        epsi2 = 2 * self.epsilon
+        slicer = core.Box(
+            [self.slicer_width, 
+             self.washer_r + self.epsilon, 
+             self.h + epsi2]).hole('slicer').colour(
+                 [0, 0, 1, 1]).at('face_centre', 0)
+             
+        maker.add_at(slicer, 'shaft_cage', 'base', rh=0.5, post=l.ROTX_90)
         
         self.maker = maker
 

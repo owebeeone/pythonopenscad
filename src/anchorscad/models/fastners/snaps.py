@@ -17,9 +17,9 @@ class Snap(core.CompositeShape):
     '''
     <description>
     '''
-    size: tuple=(10, 8, 2)
+    size: tuple=(15, 8, 2)
     depth_factor: float=0.5
-    max_x: float=0.65
+    max_x: float=0.60
     t_size: float=1.5
     tab_protrusion: float=1
     tab_height: float=4
@@ -71,16 +71,20 @@ class Snap(core.CompositeShape):
         cutter_size = clip_size + self.epsilon / 2
         cutter_size[1] = th
         clip = core.Box(cutter_size)
-        clip_cage.add_at(clip.solid('clip').at('face_corner', 1, 1), 'face_corner', 1, 1)
+        clip_cage.add_at(clip.solid('clip').at(
+            'face_corner', 1, 1), 'face_corner', 1, 1)
            
         keep_size = clip_size + self.epsilon
         keep = BoxSideBevels(keep_size, th, fn=self.fn)
         clip_cage.add_at(keep.hole('keep').at('shell', 'face_corner', 1, 1),
                     'face_corner', 1, 1)
         
+        
+        
         maker.add_at(
             clip_cage.hole('clip').at('face_centre', 1), 
-            'face_centre', 1, post=l.translate([-self.epsilon / 2, -self.epsilon, 0]))
+            'face_centre', 1, 
+            post=l.translate([-self.epsilon / 2, -self.epsilon, 0]))
         
         self.maker = maker
         

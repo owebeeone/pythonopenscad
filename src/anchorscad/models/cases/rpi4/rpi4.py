@@ -271,9 +271,9 @@ class RaspberryPi4Case(core.CompositeShape):
     BOX_LHS = core.surface_args('shell_centre', 'face_centre', 0)
     
     SNAP_RHS = core.surface_args(
-        'shell_centre', 'face_edge', 3, 0, 0.85)
+        'shell_centre', 'face_edge', 3, 0, 0.88)
     SNAP_LHS = core.surface_args(
-        'shell_centre', 'face_edge', 0, 2, 0.85)
+        'shell_centre', 'face_edge', 0, 2, 0.88)
     SNAP_REAR_LHS = core.surface_args(
         'shell_centre', 'face_edge', 2, 2, 0.2)
     SNAP_REAR_RHS = core.surface_args(
