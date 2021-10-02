@@ -6,13 +6,11 @@ Created on 25 Jan 2021
 
 from dataclasses import dataclass
 
-from ParametricSolid.core import Box
 import ParametricSolid.core as core
 from ParametricSolid.linear import tranX, tranY, tranZ, ROTX_180
 import ParametricSolid.linear as l
 import anchorscad.models.basic.box_side_bevels as bbox
 from anchorscad.models.screws.holes import SelfTapHole
-import numpy as np
 from anchorscad.models.basic.TriangularPrism import TriangularPrism
 from anchorscad.models.grille.case_vent.basic import RectangularGrilleHoles
 from anchorscad.models.fastners.snaps import Snap
@@ -35,6 +33,8 @@ CYL_ANCHOR=core.args('surface', 0, -90)
 OCYL_ANCHOR=core.args('base')
 
 def box_expander(expansion_size, post=None):
+    '''
+    '''
     def expander(maker, name, anchor, box):
         expanded_size = l.GVector(expansion_size) + box.size
         new_shape = core.Box(expanded_size)
@@ -225,7 +225,7 @@ class RaspberryPi4Case(core.CompositeShape):
     inner_bevel_radius: float=None
     screw_clearannce: float=0.2
     board_screw_min_len: float=6
-    front_flange_depth: float=10
+    front_flange_depth: float=20
     vent_hole: tuple= (50, 10)
     show_outline: bool=False
     show_cut_box: bool=False
@@ -247,7 +247,7 @@ class RaspberryPi4Case(core.CompositeShape):
     fa: float=None
     fs: float=None
     
-    EXAMPLE_VERSION=version.text
+    #EXAMPLE_VERSION=version.text
     EXAMPLE_ANCHORS=(core.surface_args('shell', 'face_centre', 1),)
     EXAMPLE_SHAPE_ARGS=core.args(fn=36)
     
@@ -376,12 +376,12 @@ class RaspberryPi4Case(core.CompositeShape):
             
         usb_usb_flange = self.make_flange(
             (face_top_locs[1] - face_top_locs[0]).x,
-            (face_bot_locs[0] - face_top_locs[0]).z)
+            (face_bot_locs[0] - face_top_locs[0]).z + self.wall_thickness)
         
         
         usb_rj45_flange = self.make_flange(
             (face_top_locs[3] - face_top_locs[2]).x,
-            (face_bot_locs[2] - face_top_locs[2]).z)
+            (face_bot_locs[2] - face_top_locs[2]).z + self.wall_thickness)
         
         maker.add_at(usb_usb_flange.solid('usb_usb_flange')
                      .at('prism', 'face3', 1),
@@ -481,7 +481,7 @@ class RaspberryPi4Case(core.CompositeShape):
                         self.SNAP_LHS, 
                         self.SNAP_REAR_RHS, 
                         self.SNAP_REAR_LHS)
-        cut_trans = l.tranY(-cut_xlation.y)
+        cut_trans = tranY(-cut_xlation.y)
         for i, a in enumerate(clip_anchors):
             top_maker.add_at(fastener_shape
                     .named_shape(('clip', i), fastener_mode)

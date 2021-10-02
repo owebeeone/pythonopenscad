@@ -17,11 +17,11 @@ class Snap(core.CompositeShape):
     '''
     <description>
     '''
-    size: tuple=(15, 8, 2)
+    size: tuple=(15, 10, 2)
     depth_factor: float=0.5
-    max_x: float=0.60
+    max_x: float=0.55
     t_size: float=1.5
-    tab_protrusion: float=1
+    tab_protrusion: float=1.5
     tab_height: float=4
     epsilon: float=1.e-2
     fn:int = 16
