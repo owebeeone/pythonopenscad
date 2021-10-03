@@ -272,7 +272,8 @@ class PipeCrossBracket(core.CompositeShape):
         screw_2_locator = core.Box(
             [self.clip_height, self.clip_height, 1])
         
-        screw_2_locator_shape = screw_2_locator.cage('screw_2_locator').at('face_edge', 0, 0)
+        screw_2_locator_shape = screw_2_locator.cage(
+            'screw_2_locator').at('face_edge', 0, 0)
  
         screw_2_locator_shape.add_at(
             screw2_shape.composite('screw2').at('screw_cage', 'top'),
@@ -364,9 +365,9 @@ class PipeCrossBracket(core.CompositeShape):
         locations = (
             (tie_maker_l, ('face_edge', 3, 0, 0)),
             (tie_maker_r, ('face_edge', 3, 3, 1)),
-            (tie_maker_r, ('face_edge', 3, 1, 0)),
-            (tie_maker_r, ('face_edge', 3, 2, 0)),
-            (tie_maker_l, ('face_edge', 3, 2, 1)),
+            (tie_maker_r, ('face_edge', 3, 1, 1)),
+            (tie_maker_r, ('face_edge', 3, 2, 1)),
+            (tie_maker_l, ('face_edge', 3, 2, 0)),
             )
         
         for m, loc in locations:

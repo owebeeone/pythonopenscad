@@ -19,7 +19,7 @@ class Planes(core.CompositeShape):
     mat1: l.GMatrix
     
     EXAMPLE_SHAPE_ARGS=core.args()
-    EXAMPLE_ANCHORS=(,)
+    EXAMPLE_ANCHORS=()
     
     def __post_init__(self):
         maker = core.Box([100, 100, 1]).solid(

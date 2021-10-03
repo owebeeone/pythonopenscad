@@ -121,39 +121,21 @@ MICRO_SD=ShapeFactory(
     OBOX_ANCHOR, 
     box_expander([1, 1, 6], post=l.translate([0, -3, 0])))
 
-CPU_PACKAGE=ShapeFactory(core.Box, core.args([15,  15, 2.4]), [0, -25, 0], core.args('face_edge', 1, 0, 1), IBOX_ANCHOR, no_op)
+CPU_PACKAGE=ShapeFactory(
+    core.Box, 
+    core.args([15,  15, 2.4]), [0, -25, 0], 
+    core.args('face_edge', 1, 0, 1), 
+    IBOX_ANCHOR, 
+    no_op)
 
-HEADER_100=ShapeFactory(core.Box, core.args([51,  5.1, 8.7]), [0, -1.75, 0], core.args('face_edge', 1, 0, 1), IBOX_ANCHOR, no_op)
-
-SIDE_ACCESS=(core.args('face_corner', 4, 0), (
-    ('usbC', USBC, tranX(3.5 + 7.7)),
-    ('hdmi1', MICRO_HDMI, tranX(3.5 + 7.7 + 14.8)),
-    ('hdmi2', MICRO_HDMI, tranX(3.5 + 7.7 + 14.8 + 13.5)),
-    ('audio', AUDIO, tranX(3.5 + 7.7 + 14.8 + 13.5 + 7 + 7.5)),
-    ('cpu', CPU_PACKAGE, tranX(22.0)),
-    ))
-
-OSIDE_ACCESS=(core.args('face_corner', 4, 2), (
-    ('header100', HEADER_100, tranX(27.0)),
-    ))
-
-FRONT_ACCESS=(core.args('face_corner', 4, 1), (
-    ('usbA2', USBA, tranX(9)),
-    ('usbA3', USBA, tranX(27)),
-    ('rj45', ETHERNET, tranX(45.75)),
-    ))
-
-BOTTOM_ACCESS=(core.args('face_corner', 1, 3), (
-    ('micro_sd', MICRO_SD, tranX((34.15 + 22.15) / 2)),
-    ))
-
-ALL_ACCESS_ITEMS=(SIDE_ACCESS, FRONT_ACCESS, BOTTOM_ACCESS, OSIDE_ACCESS)
+HEADER_100=ShapeFactory(
+    core.Box, 
+    core.args([51,  5.1, 8.7]), [0, -1.75, 0], 
+    core.args('face_edge', 1, 0, 1), 
+    IBOX_ANCHOR, 
+    no_op)
 
 DELTA=0.02
-
-HOLE_RADIUS=2.7/2
-HOLE_SUPPORT_RADIUS=5.5/2
-HOLE_POSITIONS=((3.5, 3.5), (3.5, 3.5 + 49), (3.5 + 58, 3.5), (3.5 + 58, 3.5 + 49))
 
 @core.shape('anchorscad/models/cases/rpi4_model')
 @dataclass
@@ -167,9 +149,38 @@ class RaspberryPi4Outline(core.CompositeShape):
     fa: float=None
     fs: float=None
     
-    def make_access_anchors():
+    HOLE_RADIUS=2.7/2
+    HOLE_SUPPORT_RADIUS=5.5/2
+    HOLE_POSITIONS=(
+        (3.5, 3.5), (3.5, 3.5 + 49), (3.5 + 58, 3.5), (3.5 + 58, 3.5 + 49))
+    
+    SIDE_ACCESS=(core.args('face_corner', 4, 0), (
+        ('usbC', USBC, tranX(3.5 + 7.7)),
+        ('hdmi1', MICRO_HDMI, tranX(3.5 + 7.7 + 14.8)),
+        ('hdmi2', MICRO_HDMI, tranX(3.5 + 7.7 + 14.8 + 13.5)),
+        ('audio', AUDIO, tranX(3.5 + 7.7 + 14.8 + 13.5 + 7 + 7.5)),
+        ('cpu', CPU_PACKAGE, tranX(22.0)),
+        ))
+
+    OSIDE_ACCESS=(core.args('face_corner', 4, 2), (
+        ('header100', HEADER_100, tranX(27.0)),
+        ))
+    
+    FRONT_ACCESS=(core.args('face_corner', 4, 1), (
+        ('usbA2', USBA, tranX(9)),
+        ('usbA3', USBA, tranX(27)),
+        ('rj45', ETHERNET, tranX(45.75)),
+        ))
+    
+    BOTTOM_ACCESS=(core.args('face_corner', 1, 3), (
+        ('micro_sd', MICRO_SD, tranX((34.15 + 22.15) / 2)),
+        ))
+    
+    ALL_ACCESS_ITEMS=(SIDE_ACCESS, FRONT_ACCESS, BOTTOM_ACCESS, OSIDE_ACCESS)
+
+    def make_access_anchors(all_items):
         anchor_specs = []
-        for _, items in ALL_ACCESS_ITEMS:
+        for _, items in all_items:
             for name, model, xform in items:
                 o_anchor = model.anchor2
                 anchor_specs.append(
@@ -179,7 +190,7 @@ class RaspberryPi4Outline(core.CompositeShape):
     EXAMPLE_SHAPE_ARGS=core.args(fn=36)
     EXAMPLE_ANCHORS=tuple(
             core.surface_args(('mount_hole', i), 'top') for i in range(4)
-        ) + make_access_anchors()
+        ) + make_access_anchors(ALL_ACCESS_ITEMS)
         
         
     def __post_init__(self):
@@ -195,14 +206,14 @@ class RaspberryPi4Outline(core.CompositeShape):
              
         params = core.non_defaults_dict(self, include=('fn', 'fa', 'fs'))
         mount_hole = core.Cylinder(
-            h=self.board_size[2] + 2 * DELTA, r=HOLE_RADIUS, **params)
+            h=self.board_size[2] + 2 * DELTA, r=self.HOLE_RADIUS, **params)
         
-        for i, t in enumerate(HOLE_POSITIONS):
+        for i, t in enumerate(self.HOLE_POSITIONS):
             maker.add_at(
                 mount_hole.hole(('mount_hole', i)).at('base'), 
                 'face_corner', 4, 0, post=l.translate(t + (DELTA,)))
 
-        for base_anchor, items in ALL_ACCESS_ITEMS:
+        for base_anchor, items in self.ALL_ACCESS_ITEMS:
             for name, model, xform in items:
                 shape = model.create(params)
                 maker.add_at(
@@ -273,7 +284,7 @@ class RaspberryPi4Case(core.CompositeShape):
     SNAP_RHS = core.surface_args(
         'shell_centre', 'face_edge', 3, 0, 0.88)
     SNAP_LHS = core.surface_args(
-        'shell_centre', 'face_edge', 0, 2, 0.88)
+        'shell_centre', 'face_edge', 0, 2, 1 - 0.88)
     SNAP_REAR_LHS = core.surface_args(
         'shell_centre', 'face_edge', 2, 2, 0.2)
     SNAP_REAR_RHS = core.surface_args(
@@ -290,7 +301,7 @@ class RaspberryPi4Case(core.CompositeShape):
         'outline', 'cpu', 'face_centre', 1, post=l.translate([-6, -2, 0]))
     
     TAB_RHS = core.surface_args(
-        'shell', 'face_edge', 3, 2, 0.8)
+        'shell', 'face_edge', 3, 2, 1 - 0.8)
     TAB_LHS = core.surface_args(
         'shell', 'face_edge', 0, 0, 0.8)
     TAB_REAR_LHS = core.surface_args(
@@ -435,7 +446,7 @@ class RaspberryPi4Case(core.CompositeShape):
         board_screw_hole = SelfTapHole(
             thru_len=1, 
             tap_len=max_allowable_screw_hole_height -1,
-            outer_dia=HOLE_SUPPORT_RADIUS * 2,
+            outer_dia=self.outline_model.HOLE_SUPPORT_RADIUS * 2,
             dia=2.6,
             **params)
         

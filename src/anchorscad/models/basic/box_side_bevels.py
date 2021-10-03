@@ -44,10 +44,10 @@ class BoxSideBevelsX(core.CompositeShape):
         maker.add(core.Box(inner_size).cage('hull').at('centre'))
         
         params = core.non_defaults_dict(self, include=('fn', 'fa', 'fs'))
-        round = core.Cylinder(h=self.size[2], r=self.bevel_radius, **params)
+        roundc = core.Cylinder(h=self.size[2], r=self.bevel_radius, **params)
         faces = ((0, 1), (2, 1), (3, 3), (5, 1))
         for f, e in faces:
-            maker.add_at(round.solid(f).at('centre'), 'hull', 'face_edge', f, e, post=l.ROTY_90)
+            maker.add_at(roundc.solid(f).at('centre'), 'hull', 'face_edge', f, e, post=l.ROTY_90)
         
         size_delta + np.array([2 * self.bevel_radius, 2 * self.bevel_radius, 0])
         

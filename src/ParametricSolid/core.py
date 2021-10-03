@@ -1033,22 +1033,21 @@ class Box(Shape):
         return l.translate(l.GVector(self.size) / 2)
     
     @anchor('Corner of box given face (0-5) and corner (0-3)')
-    def face_corner(self, face, corner):
-        orientation = self.ORIENTATION[face] * l.rotZ(90 * corner)
-        loc = l.GVector(self.size)  # make a copy.
-        for i in self.COORDINATES_CORNERS_ZEROS[face][corner]:
-            loc[i] = 0.0
-        return l.translate(loc) * orientation
+    def face_corner(self, face, corner, t=0, d=0):
+        return self.face_edge(face, corner, t=t, d=d)
     
     @anchor('Edge centre of box given face (0-5) and edge (0-3)')
-    def face_edge(self, face, edge, t=0.5):
+    def face_edge(self, face, edge, t=0.5, d=0):
         orientation = self.ORIENTATION[face] * l.rotZ(90 * edge)
         loc = l.GVector(self.size)  # make a copy.
         half_of = self.COORDINATES_EDGE_HALVES[face][edge]
         zero_of = self.COORDINATES_CORNERS_ZEROS[face][edge]
         for i in range(3):
             if i in half_of:
-                loc[i] *= t
+                if i in zero_of:
+                    loc[i] = t * loc[i] + d
+                else:
+                    loc[i] = (1 - t) * loc[i] - d
             elif i in zero_of:
                 loc[i]  = 0.0
         return l.translate(loc) * orientation
