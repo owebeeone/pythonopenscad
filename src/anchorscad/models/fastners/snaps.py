@@ -17,13 +17,14 @@ class Snap(core.CompositeShape):
     '''
     <description>
     '''
-    size: tuple=(15, 10, 2)
+    size: tuple=(15, 10, 3)
     depth_factor: float=0.5
     max_x: float=0.55
-    t_size: float=1.5
+    t_size: float=1.3
     tab_protrusion: float=1.5
     tab_height: float=4
     epsilon: float=1.e-2
+    snap_offs_factor: float=0.17
     fn:int = 16
     
     EXAMPLE_SHAPE_ARGS=core.args()
@@ -40,18 +41,18 @@ class Snap(core.CompositeShape):
         extentX = self.size[2] * self.depth_factor
         extentY = self.size[1]
         extentX_t = extentX + self.tab_protrusion
-        cv_len = (t_size / 2, t_size / 2)
+        
+        start=[1, 0]
         
         path = (PathBuilder()
-            .move([max_x, 0])
-            .line([max_x - 0.01, 0.01], 'direction')
-            .spline(([-max_x, -t_size], [-max_x, 1.3 * t_size]), cv_len=cv_len, name='lead')
-            .spline(([0, 2 * t_size], [0, 2 * t_size]), cv_len=cv_len, name='tail')
+            .move(start)
+            .line([-max_x, t_size], 'edge1')
+            .line([-max_x, 1.2 * t_size], 'edge3')
+            .line([0, 1.5 * t_size], 'edge4')
             .line([0, extentY], name='draw')
             .line([extentX, extentY], name='top')
             .line([extentX_t, extentY - self.tab_protrusion], name='top_protrusion')
-            .line([extentX, 0], name='side')
-            .line([0, 0], name='bottom')
+            .line(start, name='bottom')
             .build())
 
         shape = LinearExtrude(path, h=self.size[0])
@@ -94,8 +95,8 @@ class Snap(core.CompositeShape):
         Args:
             rpos: 0.0-1.0, 0.5 is centre.
         '''
-        return (self.at('tooth', 'bottom', 1.0, rh=rpos) 
-                * l.tranZ(self.tab_height) * l.ROTV111_120 * l.ROTY_180)
+        return (self.at('centre') * l.ROTZ_180 * l.tranY(
+            -self.snap_offs_factor * self.size[1]))
 
 
 if __name__ == '__main__':

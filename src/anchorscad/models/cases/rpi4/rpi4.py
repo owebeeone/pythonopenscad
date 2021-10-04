@@ -243,7 +243,8 @@ class RaspberryPi4Case(core.CompositeShape):
     make_case_top: bool=False
     rhs_grille_size: float=9
     rhs_grille_y_offs: float=4
-    fastener: type=Snap
+    fastener_side: core.Shape=Snap(size=(15, 9.5, 3))
+    fastener_rear: core.Shape=Snap(size=(15, 9.5, 4))
     snap_pry_hole_size: tuple=(10, wall_thickness * 0.75, 1.7)
     epsilon: float=0.01
     upper_fan: object=FanVent(grille_as_cutout=True,
@@ -286,9 +287,11 @@ class RaspberryPi4Case(core.CompositeShape):
     SNAP_LHS = core.surface_args(
         'shell_centre', 'face_edge', 0, 2, 1 - 0.88)
     SNAP_REAR_LHS = core.surface_args(
-        'shell_centre', 'face_edge', 2, 2, 0.2)
+        'shell_centre', 'face_edge', 2, 2, 0.19)
     SNAP_REAR_RHS = core.surface_args(
-        'shell_centre', 'face_edge', 2, 2, 0.8)
+        'shell_centre', 'face_edge', 2, 2, 1 - 0.19)
+    SNAP_ANCHOR=core.surface_args('snap', post=l.translate((0, -1, -0.3)))
+    
     FAN_FIXING_PLANE=core.surface_args(
         'shell_centre', 'face_centre', 4)
     
@@ -310,9 +313,9 @@ class RaspberryPi4Case(core.CompositeShape):
         'shell', 'face_edge', 2, 0, 0.8)
     
     VERS_UPPER = core.surface_args(
-        'shell', 'face_edge', 4, 1, 0.1, post=l.translate([0, 2, epsilon]))
+        'shell', 'face_edge', 4, 1, 0.15, post=l.translate([0, 2, epsilon]))
     VERS_LOWER = core.surface_args(
-        'shell', 'face_edge', 1, 1, 0.9, post=l.translate([0, 2, epsilon]))
+        'shell', 'face_edge', 1, 1, 0.15, post=l.translate([0, 2, epsilon]))
     
     EXAMPLES_EXTENDED={'bottom': core.ExampleParams(
                             shape_args=core.args(fn=36)),
@@ -487,16 +490,16 @@ class RaspberryPi4Case(core.CompositeShape):
                          if self.make_case_top 
                          else core.ModeShapeFrame.HOLE)
         
-        fastener_shape = self.fastener()
-        clip_anchors = (self.SNAP_RHS, 
-                        self.SNAP_LHS, 
-                        self.SNAP_REAR_RHS, 
-                        self.SNAP_REAR_LHS)
+        clip_anchors = ((self.fastener_side, self.SNAP_RHS), 
+                        (self.fastener_side, self.SNAP_LHS), 
+                        (self.fastener_rear, self.SNAP_REAR_RHS), 
+                        (self.fastener_rear, self.SNAP_REAR_LHS))
         cut_trans = tranY(-cut_xlation.y)
-        for i, a in enumerate(clip_anchors):
-            top_maker.add_at(fastener_shape
+        for i, fa in enumerate(clip_anchors):
+            f, a = fa
+            top_maker.add_at(f
                     .named_shape(('clip', i), fastener_mode)
-                    .at('snap'),
+                    .at(*self.SNAP_ANCHOR[1][0], **self.SNAP_ANCHOR[1][1]),
                     post=core.apply_anchor_args(top_maker, a) * -cut_trans)
         
         # Add pry holes
