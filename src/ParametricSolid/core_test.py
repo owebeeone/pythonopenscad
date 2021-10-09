@@ -181,7 +181,9 @@ class CoreTest(unittest.TestCase):
         maker.add_between(
             at_spec('inner', 'face_edge', 2, 3, 0),
             outer_here,
-            lazy_shape(Cone, 'h', other_args=args(r_base=5)).solid('in_between').colour([1, 0, 0]),
+            lazy_shape(Cone, 
+                       'h', other_args=args(r_base=5)
+                       ).solid('in_between').colour([1, 0, 0]),
             at_spec('top'),
             at_spec('base'),
             align_axis=l.X_AXIS,
