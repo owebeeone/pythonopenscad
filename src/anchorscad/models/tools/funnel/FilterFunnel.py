@@ -11,10 +11,7 @@ from ParametricSolid.extrude import PathBuilder, LinearExtrude
 import numpy as np
 from anchorscad.models.basic.cone_ended_prism import ConeEndedHull,\
     ConeEndedPrism
-from anchorscad.models.basic.pipe import Pipe
-
-def sin_cos(angle, radius):
-    return (radius * np.sin(angle), radius * np.cos(angle))
+    
 
 @core.shape('anchorscad.models.tools.funnel.FilterFunnel.ElipticCone')
 @dataclass
@@ -150,9 +147,9 @@ class FilterFunnel(core.CompositeShape):
         epsilon: A small value used to overlapping shapes to avoid aliasing
             tears in the final model.
     '''
-    h: float=110
+    h: float=108
     w: float=50
-    r_base: float=75 * 2 / np.pi
+    r_base: float=78 * 2 / np.pi
     r_top: float=1
     t: float=1.5
     t_top: float=t * 2
@@ -162,7 +159,7 @@ class FilterFunnel(core.CompositeShape):
     
     # Funnel adapter.
     h_adapter: float=25
-    r_adapter: float=12
+    r_adapter: float=11.3
     t_adapter: float=2
     offs_adapter: float=10
     
@@ -171,13 +168,15 @@ class FilterFunnel(core.CompositeShape):
     rib_factory: object=core.lazy_shape(
         core.Cone, 'h', 
         other_args=core.args(r_base=1.5 * 1.3, r_top=1.5, fn=3))
+    rib_overlap_factor: float=0.016
     
     # Tail pipe
-    r_tail: float=9.5
+    r_tail: float=8.5
     l_tail: float=40 
     tail_rib_factory: object=core.lazy_shape(
         lambda x, y, z : core.Box((x, y, z)), 'y', 
         other_args=core.args(x=1.5, z=1.5))
+    tail_rib_h: float=0.75
     
     n_tail_ribs: int= 6
     
@@ -239,23 +238,25 @@ class FilterFunnel(core.CompositeShape):
         max_rh = 1.0
         h = self.t
         rib_pop = self.t * 0.4
-        tran = l.tranX(-rib_pop + self.epsilon)
         for i in range(1, count_conic_side):
             
             angle = degs_per_rib * i + 180
             rh = (1 + delta + ffs(i) * factor) * level_rh
             if rh > max_rh:
                 rh = max_rh
-            
-            for a, rot in (('cone1', l.ROTZ_270), ('cone2', l.ROTZ_90)):
+            adj = 0
+            for a, rot, pop_size in (
+                            ('cone1', l.ROTZ_270, -rib_pop),
+                            ('cone2', l.ROTZ_90, rib_pop)):
         
+                tran = l.tranY(pop_size + self.epsilon)
                 rib_shape = self.rib_factory.solid(('rib', a, i))
                 maker.add_between(
                     core.at_spec('inner', a, 'surface', 0, angle, rh=0),
                     core.at_spec('inner', a, 'surface', h, angle, rh=rh),
                     rib_shape,
-                    core.at_spec('top', pre=tran * rot),
-                    core.at_spec('base', pre=tran * rot),
+                    core.at_spec('top', post=rot * tran),
+                    core.at_spec('base', post=rot * tran),
                     align_axis=l.X_AXIS,
                     align_plane=l.Z_AXIS
                     )
@@ -269,7 +270,10 @@ class FilterFunnel(core.CompositeShape):
             
             w = rs * i
             
-            rl = 1.005 if i > 0 and i < count_flat_side -1 else 0.90
+            # Inner ribs overlap.
+            rl = ((1. + self.rib_overlap_factor) 
+                  if i > 0 and i < count_flat_side -1
+                  else 0.90)
             
             for a, ts, te in (('lside', rl, 0), ('rside', 1-rl, 1)):
         
@@ -284,8 +288,7 @@ class FilterFunnel(core.CompositeShape):
                     align_plane=l.X_AXIS
                     )
                 
-        # Rib cleaner (remove tips of ribs protruding from base).
-        
+        # Rib cleaner (removes tips of ribs protruding from base).
         maker.add_at(rim.hole('rib_cleaner').at('top'),
                      'hull', 'rim', 'base', 
                      post=l.ROTX_180 * l.tranZ(self.epsilon))
@@ -311,7 +314,7 @@ class FilterFunnel(core.CompositeShape):
         for i in range(self.n_tail_ribs):
             degs = tail_degs * i
             
-            rib_shape = core.Box((self.t, self.l_tail, 0.5))
+            rib_shape = core.Box((self.t, self.l_tail, self.tail_rib_h))
             tail_maker.add_at(
                 rib_shape.solid(('tail_rib', i)).at('face_edge', 1, 0),
                         'tail_outer', 'surface', rh=1, degrees=degs,
