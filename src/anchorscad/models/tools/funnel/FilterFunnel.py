@@ -20,7 +20,7 @@ def sin_cos(angle, radius):
 @dataclass
 class ElipticCone(core.CompositeShape):
     '''
-    <description>
+    Cone with an ellipltic cross section on the top side.
     '''
     h: float
     r_base: float
@@ -72,7 +72,7 @@ class ElipticCone(core.CompositeShape):
 @dataclass
 class ElipticConeHull(core.CompositeShape):
     '''
-    <description>
+    A "pipe" with an elliptic cross section on the top end.
     '''
     h: float
     r_base: float
@@ -118,20 +118,37 @@ def ffs(n):
     '''Returns the bit position of the first (lsb) set bit.'''
     return (n & -n).bit_length() - 1
 
-def fls(n):
-    return 
-
 def radians(degs):
+    '''Degrees to radians helper.'''
     return np.pi * degs / 180
-
-def box_factory(x, y, z):
-    return core.Box((x, y, z))
 
 @core.shape('anchorscad.models.tools.funnel.FilterFunnel.FilterFunnel')
 @dataclass
 class FilterFunnel(core.CompositeShape):
-    '''
-    <description>
+    '''Generates a paper filter (classic coffee paper filter) funnel with
+    ribs on the inner surface to allow for efficient use of paper filters.
+    Args:
+        h: Overall paper filter height.
+        w: The width of the non cureved section of the paper filter.
+        r_base: The outer radius of the round section of the filter.
+        r_top: The radius of the small side of the filter.
+        t: Wall thickness of the filter shell.
+        t_top: Thickness at the small end of the funnel.
+        h_rim: Height of the rim on the upper end of the funnel.
+        w_rim: The extra width of the funnel rim. (t + w_rim is actual width)
+        h_adapter: Overall height of the funnel to tail adapter.
+        r_adapter: Radius of the adapter.
+        t_adapter: Thickness of the adapter component.
+        offs_adapter: The depth the adapter is embedded into the funnel.
+        conic_rib_level: Exponent of the number of ribs on the conic sections minus 1.
+        rib_factory: A "lazy shape" for rib shapes.
+        r_tail: Radius of the lower spout.
+        l_tail: Overall length of the tail.
+        tail_rib_factory: Factory for ribs on tail.
+        n_tail_ribs: Number of tail ribs.
+        show_cutaway: Flag for applying a cut section for showing section.
+        epsilon: A small value used to overlapping shapes to avoid aliasing
+            tears in the final model.
     '''
     h: float=110
     w: float=50
