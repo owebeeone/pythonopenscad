@@ -171,7 +171,7 @@ class FilterFunnel(core.CompositeShape):
     rib_overlap_factor: float=0.016
     
     # Tail pipe
-    r_tail: float=8.5
+    r_tail: float=8.0
     l_tail: float=40 
     tail_rib_factory: object=core.lazy_shape(
         lambda x, y, z : core.Box((x, y, z)), 'y', 
