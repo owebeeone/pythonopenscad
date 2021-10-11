@@ -13,12 +13,12 @@ import numpy as np
 FILTER_SIDE_A_LEN=96.578
 FILTER_SIDE_B_LEN=103
 FILTER_FLAT_AB_LEN=155
-FILTER_CIRCUMF=2 * 150
-FILTER_HOLE_HEIGHT=33
+FILTER_CIRCUMF=2 * 160
+FILTER_HOLE_HEIGHT=38
 FILTER_HOLE_CIRCUMF=(
-    FILTER_HOLE_HEIGHT * FILTER_CIRCUMF / FILTER_SIDE_A_LEN)
+    FILTER_HOLE_HEIGHT * FILTER_CIRCUMF / FILTER_SIDE_B_LEN)
 FILTER_HEIGHT=np.sqrt(
-    FILTER_SIDE_A_LEN ** 2 - (FILTER_CIRCUMF / 4) ** 2)
+    FILTER_SIDE_A_LEN ** 2 - (FILTER_CIRCUMF / (np.pi * 4)) ** 2)
 FILTER_FUNNEL_HEIGHT=(FILTER_HEIGHT *
     (FILTER_CIRCUMF - FILTER_HOLE_CIRCUMF) / FILTER_CIRCUMF)
 
@@ -107,6 +107,11 @@ class ResinFilterFunnel(core.CompositeShape):
     l_side: float=FILTER_SIDE_A_LEN
     t: float= 2
     
+    # Mesh clearance
+    h_adapter: float=5
+    r_top_outer_mesh: float=(BOTTLE_OUTER_DIA - 0.5) / 2 + 2
+    r_top_inner_mesh: float=(BOTTLE_OUTER_DIA - 0.5) / 2 
+    
     # Adapter from cone to bottle adapter.
     h_adapter: float=10
     r_top_outer_adapter: float=(BOTTLE_OUTER_DIA - 0.5) / 2 + 2
@@ -126,14 +131,14 @@ class ResinFilterFunnel(core.CompositeShape):
     t_rim: float=5
     
     # Tabs
-    w_tab: float=5
+    w_tab: float=7
     d_tab: float=5
     a_tab1: float=0
     a_tab2: float=180
     
     # Boss for snap fit.
-    r_boss: float=4 / 2
-    h_boss: float=(BOTTLE_OUTER_DIA - BOTTLE_OUTER_LIP_DIA) / 2
+    r_boss: float=3.2 / 2
+    h_boss: float=(BOTTLE_OUTER_DIA - BOTTLE_OUTER_LIP_DIA) / 2 - 0.5
     p_boss: float=7.25
     n_boss: int=3
     fn_boss: int=32
@@ -167,17 +172,30 @@ class ResinFilterFunnel(core.CompositeShape):
         
         maker.add_at(rim_shape.composite('rim').at('base'),
                      'main', 'base')
-        # Adapter
-        adapter_shape = ConePipe(
+        
+        # Mesh clearance
+        mesh_shape = ConePipe(
             h=self.h_adapter,
             r_base=main_shape.r_top,
             t_base=main_shape.t_top,
+            r_top=self.r_top_outer_mesh,
+            r_top_inner=self.r_top_inner_mesh
+            )
+        
+        maker.add_at(mesh_shape.composite('mesh').at('base'),
+                     'main', 'base', rh=1)
+        
+        # Adapter
+        adapter_shape = ConePipe(
+            h=self.h_adapter,
+            r_base=mesh_shape.r_top,
+            t_base=mesh_shape.t_top,
             r_top=self.r_top_outer_adapter,
             r_top_inner=self.r_top_inner_adapter
             )
         
         maker.add_at(adapter_shape.composite('adapter').at('base'),
-                     'main', 'base', rh=1)
+                     'mesh', 'base', rh=1)
             
         # Bottle adapter
         
@@ -230,7 +248,8 @@ class ResinFilterFunnel(core.CompositeShape):
         
         # Debug cut-away
         if self.show_cutaway:
-            overall_h = main_shape.h + adapter_shape.h + bottle_inner_shape.h
+            overall_h = (main_shape.h + mesh_shape.h + adapter_shape.h 
+                         + bottle_inner_shape.h)
             cut = core.Box([main_shape.r_base, 
                             main_shape.r_base, 
                             overall_h + 2 * self.epsilon])
