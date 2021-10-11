@@ -28,9 +28,8 @@ GVector([0.4999999999999999, -0.4999999999999999, 0.7071067811865476, 1.0])
 
 '''
 
-from builtins import isinstance
-
 import numpy as np
+from dataclasses import dataclass
 
 
 # Exceptions for dealing with argument checking.
@@ -54,7 +53,11 @@ class MatrixInvalidError(BaseException):
 
 class VectorInvalidError(BaseException):
     '''Failed consistency check for GVector.'''
+    
 
+def to_radians(degs):
+    '''Convert degrees to radians.'''
+    return degs * np.pi / 180.0
 
 def list_of(typ, len_min_max=(3, 3), fill_to_min=None):
     '''Defines a converter for an iterable to a list of elements of a given type.
@@ -846,4 +849,3 @@ def plane_line_intersect(plane_in, line_in):
     result = line * translate(l_z * t)
     
     return result.I
-

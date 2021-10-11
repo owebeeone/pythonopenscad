@@ -232,7 +232,7 @@ class TestLinear(unittest.TestCase):
 
     def testMirror(self):
         pass
-
+    
 if __name__ == "__main__":
     #import sys;sys.argv = ['', 'Test.testName']
     unittest.main()

@@ -11,7 +11,8 @@ import pathlib
 import re
 import sys
 import textwrap
-import traceback 
+import traceback
+import inspect
 
 from frozendict import frozendict
 
@@ -584,9 +585,11 @@ class Shape(ShapeNamer, ShapeMaker):
             for entry in example_params.anchors:
                 entry[0](maker, entry[1])
         except BaseException:
-            traceback.print_exception(*sys.exc_info()) 
+            traceback.print_exception(*sys.exc_info(), limit=20) 
             sys.stderr.write(
-                f'Error while rendering example for {cls.__name__}:\n{name!r}\n')
+                f'Error while rendering example for {cls.__name__}:{name!r}, see:\n')
+            sys.stderr.write(
+                f'  File "{inspect.getsourcefile(cls)}", {cls.__name__}:{name!r}\n')
             raise
         
         return maker
@@ -1263,8 +1266,10 @@ class Cone(Shape):
         return l.tranZ(h) * transform
     
     @anchor('The top of the cylinder')
-    def top(self):
-        return l.translate([0, 0, self.h])
+    def top(self, h=0, rh=None):
+        if rh:
+            h = h + rh * self.h
+        return l.translate([0, 0, self.h - h])
     
     @anchor('The centre of the cylinder')
     def centre(self):
@@ -1579,6 +1584,7 @@ def render_exmaples(module, render_options, consumer):
                     
                     consumer(poscobj, clz, nameof(e, clz))
                 except BaseException as ex:
+                    traceback.print_exception(*sys.exc_info(), limit=20) 
                     sys.stderr.write(f'Error while rendering {clz.__name__}:\n{ex}\n')
                     traceback.print_exception(*sys.exc_info()) 
     return shape_count, example_count
