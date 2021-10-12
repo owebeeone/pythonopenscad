@@ -13,7 +13,7 @@ import numpy as np
 FILTER_SIDE_A_LEN=96.578
 FILTER_SIDE_B_LEN=103
 FILTER_FLAT_AB_LEN=155
-FILTER_CIRCUMF=2 * 160
+FILTER_CIRCUMF=2 * 160 + 2 * 30
 FILTER_HOLE_HEIGHT=38
 FILTER_HOLE_CIRCUMF=(
     FILTER_HOLE_HEIGHT * FILTER_CIRCUMF / FILTER_SIDE_B_LEN)
@@ -108,7 +108,7 @@ class ResinFilterFunnel(core.CompositeShape):
     t: float= 2
     
     # Mesh clearance
-    h_adapter: float=5
+    h_adapter_mesh: float=15
     r_top_outer_mesh: float=(BOTTLE_OUTER_DIA - 0.5) / 2 + 2
     r_top_inner_mesh: float=(BOTTLE_OUTER_DIA - 0.5) / 2 
     
@@ -139,7 +139,7 @@ class ResinFilterFunnel(core.CompositeShape):
     # Boss for snap fit.
     r_boss: float=3.2 / 2
     h_boss: float=(BOTTLE_OUTER_DIA - BOTTLE_OUTER_LIP_DIA) / 2 - 0.5
-    p_boss: float=7.25
+    p_boss: float=7.25 - 2
     n_boss: int=3
     fn_boss: int=32
 
@@ -175,7 +175,7 @@ class ResinFilterFunnel(core.CompositeShape):
         
         # Mesh clearance
         mesh_shape = ConePipe(
-            h=self.h_adapter,
+            h=self.h_adapter_mesh,
             r_base=main_shape.r_top,
             t_base=main_shape.t_top,
             r_top=self.r_top_outer_mesh,
