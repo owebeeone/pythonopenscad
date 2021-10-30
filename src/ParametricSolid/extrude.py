@@ -4,7 +4,7 @@ Created on 7 Jan 2021
 @author: gianni
 '''
 
-from dataclasses import dataclass
+from dataclasses import dataclass, Field
 
 from frozendict import frozendict
 
@@ -469,7 +469,7 @@ class CircularArc:
     
     def extents(self):
         sa = self.start_angle
-        ea = sa + self.span_ang
+        ea = sa + self.sweep_angle
         r = self.radius
         result = [
             np.array([r * np.sin(sa), r * np.cos(sa) ]) + self.centre,
@@ -512,7 +512,15 @@ class PathBuilder():
     class _LineTo(OpBase):
         '''Line segment from current position.'''
         point: np.array
-        prev_op: object
+        prev_op: object=Field(
+            default=None, 
+            default_factory=False, 
+            init=True, 
+            repr=False, 
+            hash=False, 
+            compare=False, 
+            metadata=None, 
+            kw_only=False)
         name: str=None
             
         def lastPosition(self):
@@ -550,7 +558,15 @@ class PathBuilder():
     class _MoveTo(OpBase):
         '''Move to position.'''
         point: np.array
-        prev_op: object
+        prev_op: object=Field(
+            default=None, 
+            default_factory=False, 
+            init=True, 
+            repr=False, 
+            hash=False, 
+            compare=False, 
+            metadata=None, 
+            kw_only=False)
         name: str=None
             
         def lastPosition(self):
@@ -589,7 +605,15 @@ class PathBuilder():
     class _SplineTo(OpBase):
         '''Cubic Bezier Spline to.'''
         points: np.array
-        prev_op: object
+        prev_op: object=Field(
+            default=None, 
+            default_factory=False, 
+            init=True, 
+            repr=False, 
+            hash=False, 
+            compare=False, 
+            metadata=None, 
+            kw_only=False)
         name: str=None
         meta_data: object=None
         
@@ -648,7 +672,15 @@ class PathBuilder():
         end_point: np.array
         centre: np.array
         path_direction: bool
-        prev_op: object
+        prev_op: object=Field(
+            default=None, 
+            default_factory=False, 
+            init=True, 
+            repr=False, 
+            hash=False, 
+            compare=False, 
+            metadata=None, 
+            kw_only=False)
         name: str=None
         meta_data: object=None
         
@@ -953,7 +985,7 @@ class PathBuilder():
         if direction is None:
             direction = self.last_op().direction_normalized(1.0)
         else:
-            direction = _normalize(direction)
+            direction = _normalize(np.array(direction))
         
         t_dir = (
             l.rotZ(degrees=degrees, radians=radians) * to_gvector(direction))

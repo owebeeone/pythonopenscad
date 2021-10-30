@@ -19,7 +19,9 @@ class ShaftDimensions(object):
     tapping_d: float
     
 SHAFT_MAP = {
-    'M2.6' : ShaftDimensions(2.6, 2.8, 2.61)
+    'M2.6' : ShaftDimensions(2.6, 2.8, 2.61),
+    'M4' : ShaftDimensions(4.0, 4.06, 3.95),
+    'M6' : ShaftDimensions(6.0, 6.14, 6.05),
     }
 
 
@@ -36,21 +38,14 @@ class HeadDimensions(object):
     
     def overall_screw_head_height(self):
         return self.head_countersink_depth + self.head_mid_depth; 
-    
+
+
 @dataclass(frozen=True)
 class HoleDimensions(object):
     '''Contains dimensions for screw holes.
     '''
     thru_dia: float
     tap_dia: float
-
-@dataclass(frozen=True)
-class ShaftDimensions(object):
-    '''Contains dimensions for a screw type.
-    '''
-
-    head_dia: float
-    head_height: float
 
 
 M_HOLE = {

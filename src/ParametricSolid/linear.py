@@ -104,6 +104,7 @@ def strict_float(v):
             'Was provided a string value but expecting a numeric value')
     return np.float64(v)
 
+LIST_2_FLOAT = list_of(strict_float, len_min_max=(2, 2), fill_to_min=1.0)
 LIST_3_FLOAT = list_of(strict_float, len_min_max=(3, 3), fill_to_min=1.0)
 LIST_4_FLOAT = list_of(strict_float, len_min_max=(4, 4), fill_to_min=0.0)
 LIST_3_4_FLOAT = list_of(strict_float, len_min_max=(3, 4), fill_to_min=None)

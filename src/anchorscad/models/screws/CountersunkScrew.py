@@ -43,7 +43,7 @@ class CountersunkScrew(core.CompositeShape):
     size_name: str
     include_thru_shaft: bool=False
     include_tap_shaft: bool=False
-    tap_shaft_dia: float=None
+    tap_shaft_dia_delta: float=None
     access_hole_depth: float=10
     shaft_taper_length: float=0
     shaft_dims: ShaftDimensions=None
@@ -58,10 +58,10 @@ class CountersunkScrew(core.CompositeShape):
     EXAMPLE_SHAPE_ARGS=core.args(
         shaft_overall_length=20, 
         shaft_thru_length=14, 
-        size_name="M2.6",
+        size_name="M6",
         include_tap_shaft=False,
         include_thru_shaft=True,
-        tap_shaft_dia=6,
+        tap_shaft_dia_delta=6 - 2.6,
         fn=36)
     
     EXAMPLE_ANCHORS=(
@@ -85,18 +85,19 @@ class CountersunkScrew(core.CompositeShape):
             ).cage('screw_cage').at('base')
             
         head_dims = self.head_dims
-        if not self.tap_shaft_dia:
-            self.tap_shaft_dia = head_dims.head_top_d
+        if not self.tap_shaft_dia_delta:
+            self.tap_shaft_dia_delta = head_dims.head_top_d - shaft_dims.actual 
         
         tap_y = (self.shaft_overall_length 
                        - self.shaft_thru_length
                        - self.shaft_taper_length)
         taper_y = tap_y + self.shaft_taper_length
         
+        tap_shaft_dia = self.tap_shaft_dia_delta + shaft_dims.actual
         tap_shaft_shape = core.Cone(
             h=taper_y,
-            r_base=self.tap_shaft_dia / 2,
-            r_top=self.tap_shaft_dia / 2,
+            r_base=tap_shaft_dia / 2,
+            r_top=tap_shaft_dia / 2,
             fn=self.fn)
         tap_shaft_func = (tap_shaft_shape.solid 
                           if self.include_tap_shaft
@@ -106,8 +107,8 @@ class CountersunkScrew(core.CompositeShape):
         
         thru_shaft_shape = core.Cone(
             h=self.shaft_overall_length - taper_y,
-            r_base=self.tap_shaft_dia / 2,
-            r_top=self.tap_shaft_dia / 2,
+            r_base=tap_shaft_dia / 2,
+            r_top=tap_shaft_dia / 2,
             fn=self.fn)
         
         # Add the through shaft as a solid or cage.

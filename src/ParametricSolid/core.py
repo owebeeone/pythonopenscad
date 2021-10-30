@@ -67,14 +67,19 @@ def inner_anchor_renderer(maker, anchor_args):
     '''Helper to crate example anchor coordinates inside an object.'''
     maker.add_at(AnnotatedCoordinates().solid(args_to_str(anchor_args)).at('origin'),
                  *anchor_args[0], **anchor_args[1])
-    
+
+class AnchorArgs(tuple):
+    def apply(self, maker):
+        return apply_at_args(
+            maker, *self[1][0], **self[1][1])
+
 def surface_args(*args, **kwds):
     '''Defines an instance of an anchor example.'''
-    return (surface_anchor_renderer, (args, kwds))
+    return AnchorArgs((surface_anchor_renderer, (args, kwds)))
 
 def inner_args(*args, **kwds):
     '''Defines an instance of an anchor example for anchors inside an object.'''
-    return (inner_anchor_renderer, (args, kwds))
+    return AnchorArgs((inner_anchor_renderer, (args, kwds)))
 
 @dataclass(frozen=True)
 class Colour(object):
@@ -231,6 +236,34 @@ def apply_at_args(
 
 def apply_anchor_args(shape, anchor_args): 
     return apply_at_args(shape, *anchor_args[1][0], **anchor_args[1][1])
+
+def find_intersection(maker, plane_anchor, line_anchor):
+    '''Finds intersection of anchors on a maker.
+    Args:
+      maker: The Shape where anchors are found.
+      plane_anchor: The anchor plane in surface_args() format.
+      line_anchor: The anchor line in surface_args() format.
+    Returns:
+      A GMatrix representing the point of intersection or None if 
+      the line and plane don't intersect.
+    '''
+    plane = plane_anchor.apply(maker)
+    line = line_anchor.apply(maker)
+    return l.plane_line_intersect(plane, line)
+
+def find_all_intersect(maker, plane_anchor, *line_anchors):
+    '''Returns a tuple of GMatrix "points" marking the intersection of
+    line_anchors and the plane_anchor. 
+    Args:
+      maker: The Shape where anchors are found.
+      plane_anchor: The anchor plane in surface_args() format.
+      line_anchors: The args list of anchor line in surface_args() format.
+    Returns:
+      A tuple of results of intersections of the plane_anchor and the
+      given line_anchots.
+    '''
+    return tuple(find_intersection(maker, plane_anchor, la) 
+                 for la in line_anchors)
 
 @dataclass(frozen=True)
 class NamedShapeBase(object):
