@@ -24,6 +24,8 @@ class Tnut(core.CompositeShape):
     bevel_shaft: float=8.5 - 6.3
     h_shaft_extension: float=10
     wing_size: tuple=(3.5, 1.2, 6.5)
+    wing_angle: float=70
+    left_handed: bool=True
     fn: int=32
     fa: float=None
     fs: float=None
@@ -66,12 +68,15 @@ class Tnut(core.CompositeShape):
                      'shaft', 'base', rh=1, h=-epsilon)
         
         wing_shape = core.Box(self.wing_size)
+        angle_shift = (-self.wing_angle 
+                       if self.left_handed
+                       else self.wing_angle - 180)
         
         for i in range(4):
             maker.add_at(wing_shape.solid(('wing', i))
                          .colour((1, 0, 1))
                          .at('face_corner', 0, 0, 
-                             pre=l.rotZ(-70) * l.tranZ(-epsilon)),
+                             pre=l.rotZ(angle_shift) * l.tranZ(-epsilon)),
                          'flat', 'surface', degrees=i * 360 / 4
                          )
         

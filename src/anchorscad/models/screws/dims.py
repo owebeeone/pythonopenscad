@@ -20,7 +20,7 @@ class ShaftDimensions(object):
     
 SHAFT_MAP = {
     'M2.6' : ShaftDimensions(2.6, 2.8, 2.61),
-    'M4' : ShaftDimensions(4.0, 4.06, 3.95),
+    'M4' : ShaftDimensions(4.0, 4.06, 3.75),
     'M6' : ShaftDimensions(6.0, 6.14, 6.05),
     }
 

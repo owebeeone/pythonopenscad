@@ -96,7 +96,7 @@ class KitchenDrawerMountHole(core.CompositeShape):
       t_base_cs: Base radius of scre hole (usually same as r).
       h_access: Extra hole to ensure access to hole.
     '''
-    h: float=5
+    h: float=16
     rw: float=SCREW_WIDTH - 1
     r: float=SCREW_HOLE_DIA / 2
     shell_w: float=SCREW_OUTER_OFFS
@@ -407,7 +407,7 @@ class KitchenDrawerBracket(core.CompositeShape):
                   - maker.at('lower_notch') * l.GVector((0, 0, 0)))
         
         height = height_v.z
-        base_upper_x = height/2 + self.expand_base_upper - 6
+        base_upper_x = height/2 + self.expand_base_upper - 0
         base_lower_x = height/2 + self.expand_base_lower - 8
         top_x = height/2 + self.expand_x_top
         top_y = width + self.expand_y_top
@@ -415,7 +415,7 @@ class KitchenDrawerBracket(core.CompositeShape):
         holder_path = (e.PathBuilder()
                   .move([0, 0])
                   .line([-base_lower_x, 0], 'base_l')
-                  .line([-base_lower_x, 6], 'base_l2')
+                  .line([-base_lower_x, 14], 'base_l2')
                   .line([-top_x, top_y], 'side_l')
                   .line([0, top_y], 'top_l')
                   .line([top_x, top_y], 'top_r')
@@ -480,7 +480,8 @@ class KitchenDrawerBracket(core.CompositeShape):
         outer_plane = core.surface_args(
             'outline', 'drawer_side_cage', 'face_centre', 2)
 
-        maker.add_at(Tnut().hole('tnut1').at('base'),
+        maker.add_at(Tnut(left_handed=not self.make_mirror)
+                     .hole('tnut1').at('base'),
                      post=core.find_intersection(
                                 maker, outer_plane, screw1_axis) 
                             * l.ROTX_180
@@ -517,7 +518,7 @@ class KitchenDrawerBracket(core.CompositeShape):
                 shaft_thru_length=self.inner_h,
                 tap_shaft_dia_delta=0,
                 size_name="M4",
-                head_depth_factor=0.7,
+                head_depth_factor=0.1,
                 include_tap_shaft=False,
                 include_thru_shaft=False,
                 as_solid=False,
@@ -546,9 +547,25 @@ class KitchenDrawerBracket(core.CompositeShape):
                 as_solid=False,
                 fn=self.fn)
         
+        # Adjuster fixer screw.
+        
+        adjuster_fixer = self.countersunk_scew_hole_type(
+                shaft_overall_length=25,
+                shaft_thru_length=14,
+                tap_shaft_dia_delta=0,
+                size_name="M2.6",
+                head_depth_factor=0.8,
+                include_tap_shaft=False,
+                include_thru_shaft=False,
+                as_solid=False,
+                fn=self.fn)
+        
+        maker.add_at(adjuster_fixer.composite('adjuster_fixer').at('top'), 
+                     'holder', 'top_l', 0.72, rh=0.71,
+                     post=l.ROTX_180)
+        
         
         # Inner plate transforms
-        
         
         screw1_intersection = core.find_intersection(
             maker, inner_plate_plane, screw1_axis)
