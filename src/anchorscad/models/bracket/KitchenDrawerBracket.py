@@ -312,11 +312,82 @@ class KitchenDrawerSideAdjuster(core.CompositeShape):
 @dataclass
 class KitchenDrawerBracket(core.CompositeShape):
     '''
-    <description>
+    An alternative bracket for Hettich drawers. These brackets are made with
+    a cast alloy that seems to always fatigue fail. Also I have not been able
+    to find replacement part.
+    
+    Features:
+    This bracket is comprised of 3 parts.
+    a) Main (outer) bracket.
+    b) The inner plate.
+    c) Adjustment knob.
+    
+    
+    This bracket well need the following fasteners.
+    a) 6mm T-nut
+    b) M6 14mm counter sunk machine screw (mates with T-nut)
+    c) M4 14mm self tapping flat head screw.
+    d) M2.6 20mm counter sunk self tapping screw (for locking adjuster knob.)
+    e) 1x25mm 6G self tapping screw to replace one of the original 
+       12.5mm 6G screws.
+    
+    Unlike the original bracket, the main holding component is on the outside
+    of the drawer. The drawer has a locking lip that is slots into the 
+    main bracket. The inner plate holds the lip in the slot preventing the
+    drawer from slipping away. This arrangement provides for substantially
+    more material allowing for a 3D printed part to handle the load.
+    
+    Note that the upper screw mounting hole on the drawer front cannot be raised 
+    without interfering with the drawer roller, hence the original screw is for
+    the upper mounting hole but a new longer screw is used for the lower mounting
+    hole.
+    
+    The M6 screw provides most of stabilization forces for the bracket and
+    with the associated T-nut can be tightened substantially. Unlike the 
+    original Hettich bracket, the bracket maintains a stiffer grip on the
+    drawer front panel and it feels much nicer.
+    
+    Assembly:
+    a) Insert T-nut into main (outer) bracket.
+    b) Without inserting the adjustment knob, align the inner bracket
+       over the t-nut hole and screw the M6 screw to fully press the
+       t-nut in place then remove the M6 screw.
+    c) Remove the old Hettich bracket.
+    d) Insert the adjuster knob and attach the outer bracket and do not tighten
+       the fasting screws completely (allow for movement).
+    e) Attach the outer bracket and align the drawer lip with the corresponding
+       hole.
+    f) Insert and loosely tighten the M6 and M4 screws to hold the inner bracket
+       in place.
+    g) Close the drawer and turn the adjuster with a blade screw driver to 
+       achieve the desired alignment.
+    h) Tighten all the screws and insert the M2.6 locking screw to lock the
+       adjuster knob.
+    i) Enjoy a hassle free drawer.
+    
+    
+    Note this is replacement for the Hettich 08855, 08856, 08857 08858 parts.
+    
+    This anchorcad model generates 6 OpenScad files for each of the different 
+    component for left and right versions of the drawer bracket.
+    
+    Args:
+      outline: The "outline" model used to locate the mounting holes and 
+              to cut any interference with the side panel of the drawer.
+      front_bevel_radius: The radius of the front bevel.
+      mount_hole_lower: The Shape model for the lower front drawer mounting hole.
+      mount_hole_lower: The Shape model for the upper front drawer mounting hole.
+      expand_base_lower: The lower size of the base of the outer plate.
+      expand_base_upper: The upper size of the base of the outer plate.
+      screw_top_offs: Upper mount hole offset.
+      screw_hole_seps: Lower mount hole offset from top hole.
+      show_outline: Debugging setting for showing the drawer outline.
+      adjuster: The shape type for theadjuster knob.
     '''
     outline: core.Shape=KitchenDrawerOutline()
     front_bevel_radius: float=RADIUS_TOP
-    mount_hole: core.Shape=KitchenDrawerMountHole()
+    mount_hole_lower: core.Shape=KitchenDrawerMountHole(h=17)
+    mount_hole_upper: core.Shape=KitchenDrawerMountHole(h=5)
     expand_base_lower: float=30
     expand_base_upper: float=20
     expand_x_top: float=2
@@ -407,7 +478,7 @@ class KitchenDrawerBracket(core.CompositeShape):
                   - maker.at('lower_notch') * l.GVector((0, 0, 0)))
         
         height = height_v.z
-        base_upper_x = height/2 + self.expand_base_upper - 0
+        base_upper_x = height/2 + self.expand_base_upper - 7
         base_lower_x = height/2 + self.expand_base_lower - 8
         top_x = height/2 + self.expand_x_top
         top_y = width + self.expand_y_top
@@ -438,13 +509,13 @@ class KitchenDrawerBracket(core.CompositeShape):
         
         screw_post = l.ROTZ_90 * l.translate(
                          [self.screw_top_offs, 
-                          self.mount_hole.centre_offs(),
+                          self.mount_hole_upper.centre_offs(),
                           0])
-        maker.add_at(self.mount_hole.composite('upper_hole').at('base'),
+        maker.add_at(self.mount_hole_upper.composite('upper_hole').at('base'),
                      'front', 'face_edge', 1, 2, 1,
                      post=screw_post)
         
-        maker.add_at(self.mount_hole.composite('lower_hole').at('base'),
+        maker.add_at(self.mount_hole_lower.composite('lower_hole').at('base'),
                      'front', 'face_edge', 1, 2, 1,
                      post=screw_post * l.tranX(self.screw_hole_seps))
         
@@ -574,7 +645,6 @@ class KitchenDrawerBracket(core.CompositeShape):
                      post=screw1_intersection)
         
         if self.show_adjuster:
-            print(self.adjuster_solid.h_outer + self.adjuster_solid.h_inner)
             self.maker = self.adjuster_solid.solid('adjuster').at('base')
         else:
             if self.make_mirror:
