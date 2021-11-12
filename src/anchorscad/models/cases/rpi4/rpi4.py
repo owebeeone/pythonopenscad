@@ -7,7 +7,8 @@ Created on 25 Jan 2021
 from dataclasses import dataclass
 
 import ParametricSolid.core as core
-from ParametricSolid.linear import tranX, tranY, tranZ, ROTX_180
+from ParametricSolid.linear import tranX, tranY, tranZ, ROTX_180, \
+                                   translate, GVector
 import ParametricSolid.linear as l
 import anchorscad.models.basic.box_side_bevels as bbox
 from anchorscad.models.screws.holes import SelfTapHole
@@ -16,124 +17,12 @@ from anchorscad.models.grille.case_vent.basic import RectangularGrilleHoles
 from anchorscad.models.fastners.snaps import Snap
 from anchorscad.models.vent.fan.fan_vent import FanVent
 from anchorscad.models.screws.screw_tab import ScrewTab
+import anchorscad.models.cases.outline_tools as ot 
 from time import time
 
 
 # The time of life.
 MODEL_V0=1632924118
-
-Z_DELTA=tranZ(-0.01)
-
-SIDE_ANCHOR=core.args('face_corner', 4, 0)
-FRONT_ANCHOR=core.args('face_corner', 4, 1)
-BOX_ANCHOR=core.args('face_edge', 1, 0)
-OBOX_ANCHOR=core.args('face_centre', 3)
-IBOX_ANCHOR=core.args('face_centre', 4)
-CYL_ANCHOR=core.args('surface', 0, -90)
-OCYL_ANCHOR=core.args('base')
-
-def box_expander(expansion_size, post=None):
-    '''
-    '''
-    def expander(maker, name, anchor, box):
-        expanded_size = l.GVector(expansion_size) + box.size
-        new_shape = core.Box(expanded_size)
-        post_xform = Z_DELTA * l.ROTX_180
-        if post:
-            post_xform = post *  post_xform
-        maker.add_at(new_shape.solid((name, 'outer')).at(*anchor[0], **anchor[1]),
-                     name, *anchor[0], **anchor[1], post=post_xform)
-    return expander
-
-
-def cyl_expander(expansion_r, post=None):
-    def expander(maker, name, anchor, cyl):
-        expanded_r = expansion_r + cyl.r_base
-        params = core.non_defaults_dict(cyl, include=('fn', 'fa', 'fs'))
-        new_shape = core.Cylinder(h=cyl.h, r=expanded_r, **params)
-        post_xform = Z_DELTA * l.ROTX_180
-        if post:
-            post_xform = post *  post_xform
-        maker.add_at(new_shape.solid((name, 'outer')).at(*anchor[0], **anchor[1]),
-                     name, *anchor[0], **anchor[1], post=post_xform)
-    return expander
-
-def no_op(*args):
-    pass
-
-@dataclass
-class ShapeFactory:
-    clazz: type
-    shape_args: tuple
-    offset: tuple
-    anchor1: tuple
-    anchor2: tuple
-    expander: tuple
-    
-    def create(self, extra_params: dict):
-        params = (dict(((k, v) 
-                        for k, v in extra_params.items() 
-                        if hasattr(self.clazz, k))))
-        
-        params.update(self.shape_args[1])
-        return self.clazz(*self.shape_args[0], **params)
-    
-        
-ETHERNET = ShapeFactory(
-    core.Box, core.args([16, 21.25, 13.7]), 
-    [0, 3.0, 0], 
-    BOX_ANCHOR, 
-    OBOX_ANCHOR, 
-    box_expander([0.3] * 3))
-
-USBA=ShapeFactory(
-    core.Box, core.args([14.9,  17.5, 16.4]), 
-    [0, 3.0, 0], 
-    BOX_ANCHOR,
-    OBOX_ANCHOR, 
-    box_expander([0.3] * 3))
-
-MICRO_HDMI=ShapeFactory(
-    core.Box, core.args([7.1,  8, 3.6]), 
-    [0, 1.8, -0.5], 
-    BOX_ANCHOR, 
-    OBOX_ANCHOR, 
-    box_expander([5, 0, 4.5]))
-
-USBC=ShapeFactory(
-    core.Box, core.args([9,  7.5, 3.3]), 
-    [0, 1.8, 0], 
-    BOX_ANCHOR, 
-    OBOX_ANCHOR, 
-    box_expander([5, 0, 4]))
-
-AUDIO=ShapeFactory(
-    core.Cylinder, core.args(h=15, r=3), 
-    [0, 2.7, 0], 
-    CYL_ANCHOR, 
-    OCYL_ANCHOR, 
-    cyl_expander(2))
-
-MICRO_SD=ShapeFactory(
-    core.Box, core.args([12,  11.35, 1.4]), 
-    [0, -3, 0], 
-    BOX_ANCHOR, 
-    OBOX_ANCHOR, 
-    box_expander([1, 1, 6], post=l.translate([0, -3, 0])))
-
-CPU_PACKAGE=ShapeFactory(
-    core.Box, 
-    core.args([15,  15, 2.4]), [0, -25, 0], 
-    core.args('face_edge', 1, 0, 1), 
-    IBOX_ANCHOR, 
-    no_op)
-
-HEADER_100=ShapeFactory(
-    core.Box, 
-    core.args([51,  5.1, 8.7]), [0, -1.75, 0], 
-    core.args('face_edge', 1, 0, 1), 
-    IBOX_ANCHOR, 
-    no_op)
 
 DELTA=0.02
 
@@ -155,25 +44,25 @@ class RaspberryPi4Outline(core.CompositeShape):
         (3.5, 3.5), (3.5, 3.5 + 49), (3.5 + 58, 3.5), (3.5 + 58, 3.5 + 49))
     
     SIDE_ACCESS=(core.args('face_corner', 4, 0), (
-        ('usbC', USBC, tranX(3.5 + 7.7)),
-        ('hdmi1', MICRO_HDMI, tranX(3.5 + 7.7 + 14.8)),
-        ('hdmi2', MICRO_HDMI, tranX(3.5 + 7.7 + 14.8 + 13.5)),
-        ('audio', AUDIO, tranX(3.5 + 7.7 + 14.8 + 13.5 + 7 + 7.5)),
-        ('cpu', CPU_PACKAGE, tranX(22.0)),
+        ('usbC', ot.USBC, tranX(3.5 + 7.7)),
+        ('hdmi1', ot.MICRO_HDMI, tranX(3.5 + 7.7 + 14.8)),
+        ('hdmi2', ot.MICRO_HDMI, tranX(3.5 + 7.7 + 14.8 + 13.5)),
+        ('audio', ot.AUDIO, tranX(3.5 + 7.7 + 14.8 + 13.5 + 7 + 7.5)),
+        ('cpu', ot.CPU_PACKAGE, translate((22.0, 25, 0))),
         ))
 
     OSIDE_ACCESS=(core.args('face_corner', 4, 2), (
-        ('header100', HEADER_100, tranX(27.0)),
+        ('header100', ot.HEADER_100, tranX(27.0)),
         ))
     
     FRONT_ACCESS=(core.args('face_corner', 4, 1), (
-        ('usbA2', USBA, tranX(9)),
-        ('usbA3', USBA, tranX(27)),
-        ('rj45', ETHERNET, tranX(45.75)),
+        ('usbA2', ot.USBA, tranX(9)),
+        ('usbA3', ot.USBA, tranX(27)),
+        ('rj45', ot.ETHERNET, tranX(45.75)),
         ))
     
     BOTTOM_ACCESS=(core.args('face_corner', 1, 3), (
-        ('micro_sd', MICRO_SD, tranX((34.15 + 22.15) / 2)),
+        ('micro_sd', ot.MICRO_SD, tranX((34.15 + 22.15) / 2)),
         ))
     
     ALL_ACCESS_ITEMS=(SIDE_ACCESS, FRONT_ACCESS, BOTTOM_ACCESS, OSIDE_ACCESS)
