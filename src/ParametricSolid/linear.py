@@ -28,8 +28,9 @@ GVector([0.4999999999999999, -0.4999999999999999, 0.7071067811865476, 1.0])
 
 '''
 
-import numpy as np
 from dataclasses import dataclass
+
+import numpy as np
 
 
 # Exceptions for dealing with argument checking.
@@ -77,7 +78,7 @@ def list_of(typ, len_min_max=(3, 3), fill_to_min=None):
         '''
         converted_value = []
         for v in value:
-            if len_min_max[1] and len(converted_value) > len_min_max[1]:
+            if len_min_max[1] and len(converted_value) >= len_min_max[1]:
                 raise ConversionException(
                     'provided length too large, max is %d' % len_min_max[1])
             converted_value.append(typ(v))

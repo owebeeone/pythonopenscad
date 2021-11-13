@@ -519,8 +519,7 @@ class PathBuilder():
             repr=False, 
             hash=False, 
             compare=False, 
-            metadata=None, 
-            kw_only=False)
+            metadata=None)
         name: str=None
             
         def lastPosition(self):
@@ -565,8 +564,7 @@ class PathBuilder():
             repr=False, 
             hash=False, 
             compare=False, 
-            metadata=None, 
-            kw_only=False)
+            metadata=None)
         name: str=None
             
         def lastPosition(self):
@@ -612,8 +610,7 @@ class PathBuilder():
             repr=False, 
             hash=False, 
             compare=False, 
-            metadata=None, 
-            kw_only=False)
+            metadata=None)
         name: str=None
         meta_data: object=None
         
@@ -679,8 +676,7 @@ class PathBuilder():
             repr=False, 
             hash=False, 
             compare=False, 
-            metadata=None, 
-            kw_only=False)
+            metadata=None)
         name: str=None
         meta_data: object=None
         

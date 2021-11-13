@@ -168,6 +168,23 @@ class CoreTest(unittest.TestCase):
                      'box2', 'face_centre', 3, post=l.rotX(180))
         self.write(maker, 'BoxStack')
         
+#     def testIntersect(self):
+#         box = Box([4, 4, 4])
+#         sph = Sphere(3, fn = 32)
+#         
+#         shape1 = box.solid('box').colour(Colour([0, 0, 1])).at('face_centre', 0)
+#         shape2 = sph.solid('sphere').colour(Colour([0, 1, 0])).at('centre')
+#         
+#         #shape = intersector(shape1).add(shape2, 'box', 'centre')
+#         shape = shape1
+#         shape1.add_at(shape2, 'centre')
+#         
+#         box2 = Box([40, 40, 40])
+#         shape1.add_at(box2.solid('box2').at('centre'), 'centre')
+#         
+#         
+#         self.write(shape.intersection('intersection').at(), 'Intersect')
+        
     
     def testAddBetween(self):
         shape1 = Box([30, 30, 30])
