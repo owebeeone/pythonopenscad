@@ -1,5 +1,7 @@
 '''
+Created on 5 Jan 2021
 
+@author: gianni
 '''
 
 import argparse
@@ -365,7 +367,7 @@ class ShapeNamer:
     def named_shape(self, name, model_shape_frame):
         assert False, 'This method needs to be overridden in child classes.'
         
-        # Shape like functions.    
+    # Shape like functions.    
     def solid(self, name):
         return self.named_shape(name, ModeShapeFrame.SOLID)
     
@@ -1183,7 +1185,6 @@ class Text(Shape):
         text_obj = renderer.model.Translate([0, 0, -0.5])(
              renderer.model.Linear_Extrude(1)(
                  renderer.model.Text(**params)))
-        #text_obj = renderer.model.Text(**params)
         if self.depth == 1:
             return renderer.add(text_obj)
         
