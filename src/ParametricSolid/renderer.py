@@ -163,7 +163,7 @@ class Container():
             parent_container.add_solid(*solids)
             parent_container.add_hole(*holes)
         elif mode.mode == core.ModeShapeFrame.CAGE.mode:
-            self.propagate(mode, parent_container)
+            pass
         elif mode.mode == core.ModeShapeFrame.INTERSECT.mode:
             self.propagate(mode, parent_container)
         elif mode.mode == core.ModeShapeFrame.HULL.mode:
