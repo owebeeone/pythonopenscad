@@ -26,7 +26,8 @@ SOLID_CONTAINER=2
 HOLE_CONTAINER=3
 
 class Container():
-    def __init__(self, model, shape_name):
+    def __init__(self, mode, model, shape_name):
+        self.mode = mode
         self.model = model
         self.shape_name = shape_name
         self.containers = {}
@@ -137,7 +138,12 @@ class Container():
         
     def createNamedUnion(self, name):
         result = self.model.Union()
-        result.setMetadataName('_combine_solids_and_holes')
+        result.setMetadataName(name)
+        return result
+    
+    def createNamedContainer(self, name):
+        result = self.mode.make_container(self.model)
+        result.setMetadataName(name)
         return result
     
     def get_or_create_first_head(self):
@@ -149,8 +155,7 @@ class Container():
     
     def close(self, mode, parent_container):
         if mode.mode == core.ModeShapeFrame.SOLID.mode:
-            solids = self.build_combine()
-            parent_container.add_solid(*solids)
+            self.propagate(mode, parent_container)
         elif mode.mode == core.ModeShapeFrame.HOLE.mode:
             holes = self.build_combine()
             parent_container.add_hole(*holes)
@@ -159,7 +164,18 @@ class Container():
             parent_container.add_solid(*solids)
             parent_container.add_hole(*holes)
         elif mode.mode == core.ModeShapeFrame.CAGE.mode:
-            pass # Drop these. They are not part of the model.
+            self.propagate(mode, parent_container)
+        elif mode.mode == core.ModeShapeFrame.INTERSECT.mode:
+            self.propagate(mode, parent_container)
+        elif mode.mode == core.ModeShapeFrame.HULL.mode:
+            self.propagate(mode, parent_container)
+        elif mode.mode == core.ModeShapeFrame.MINKOWSKI.mode:
+            self.propagate(mode, parent_container)
+        
+    def propagate(self, mode, parent_container):
+        solids = self.build_combine()
+        parent_container.add_solid(*solids)
+        
             
 
 @dataclass(frozen=True)
@@ -182,7 +198,8 @@ class Context():
              reference_frame: l.GMatrix, 
              attributes: core.ModelAttributes,
              shape_name: str=None):
-        container = Container(model=self.model, shape_name=shape_name)
+        container = Container(
+            mode, model=self.model, shape_name=shape_name)
         last_attrs = self.get_last_attributes()
         merged_attrs = last_attrs.merge(attributes)
         diff_attrs = last_attrs.diff(merged_attrs)
@@ -220,15 +237,15 @@ class Context():
         else:
             objs = last.container.build_combine()
             if not objs:
-                return self.createNamedUnion('pop')
+                return self.createNamedContainer(last.mode, 'pop')
             if len(objs) > 1:
-                return self.createNamedUnion('pop').append(*objs)
+                return self.createNamedContainer(last.mode, 'pop').append(*objs)
             return objs[0]
             
         
-    def createNamedUnion(self, name):
-        result = self.model.Union()
-        result.setMetadataName('_combine_solids_and_holes')
+    def createNamedContainer(self, mode, name):
+        result = mode.make_container(self.model)
+        result.setMetadataName(name)
         return result
     
     def get_last_attributes(self):

@@ -8,13 +8,13 @@ import argparse
 import copy
 from dataclasses import dataclass, field
 import fnmatch
+import inspect
 import os
 import pathlib
 import re
 import sys
 import textwrap
 import traceback
-import inspect
 
 from frozendict import frozendict
 
@@ -379,6 +379,15 @@ class ShapeNamer:
     
     def composite(self, name):
         return self.named_shape(name, ModeShapeFrame.COMPOSITE)
+    
+    def intersect(self, name):
+        return self.named_shape(name, ModeShapeFrame.INTERSECT)
+    
+    def hull(self, name):
+        return self.named_shape(name, ModeShapeFrame.HULL)
+    
+    def minkowski(self, name):
+        return self.named_shape(name, ModeShapeFrame.MINKOWSKI)
 
 
 class ShapeMaker:
@@ -396,6 +405,15 @@ class ShapeMaker:
     
     def as_composite(self, name, reference_frame):
         return self.as_maker(name, ModeShapeFrame.COMPOSITE, reference_frame)
+    
+    def as_intersect(self, name, reference_frame):
+        return self.as_maker(name, ModeShapeFrame.INTERSECT, reference_frame)
+    
+    def as_hull(self, name, reference_frame):
+        return self.as_maker(name, ModeShapeFrame.HULL, reference_frame)
+    
+    def as_minkowski(self, name, reference_frame):
+        return self.as_maker(name, ModeShapeFrame.MINKOWSKI, reference_frame)
 
 
 class LazyNamedShape(NamedShapeBase):
@@ -671,6 +689,9 @@ class Shape(ShapeNamer, ShapeMaker):
 @dataclass()
 class _Mode():
     mode : str
+    
+    def make_container(self, model):
+        return model.Union()
 
 @dataclass()
 class SolidMode(_Mode):
@@ -678,8 +699,7 @@ class SolidMode(_Mode):
         super().__init__('solid')
         
     def pick_rendererx(self, renderer):
-        return renderer.solid()
-    
+        return renderer.solid()    
 
 @dataclass()
 class HoleMode(_Mode):
@@ -689,7 +709,6 @@ class HoleMode(_Mode):
     def pick_rendererx(self, renderer):
         return renderer.hole()
     
-    
 @dataclass()
 class CompositeMode(_Mode):
     def __init__(self):
@@ -697,6 +716,7 @@ class CompositeMode(_Mode):
         
     def pick_rendererx(self, renderer):
         return renderer.hole()
+
     
 
 @dataclass()
@@ -706,6 +726,39 @@ class CageMode(_Mode):
         
     def pick_rendererx(self, renderer):
         return renderer.null()
+
+@dataclass()
+class IntersectMode(_Mode):
+    def __init__(self):
+        super().__init__('intersect')
+        
+    def pick_rendererx(self, renderer):
+        return renderer.intersect()
+    
+    def make_container(self, model):
+        return model.Intersection()
+
+@dataclass()
+class HullMode(_Mode):
+    def __init__(self):
+        super().__init__('hull')
+        
+    def pick_rendererx(self, renderer):
+        return renderer.hull()
+    
+    def make_container(self, model):
+        return model.Hull()
+
+@dataclass()
+class MinkowskiMode(_Mode):
+    def __init__(self):
+        super().__init__('minkowski')
+        
+    def pick_rendererx(self, renderer):
+        return renderer.minkowski()
+    
+    def make_container(self, model):
+        return model.Minkowski()
     
 class Renderer:
     POSC = posc
@@ -722,6 +775,15 @@ class Renderer:
     def null(self):
         pass
     
+    def intersect(self):
+        pass
+    
+    def hull(self):
+        pass
+    
+    def minkowski(self):
+        pass
+    
     
 @dataclass(frozen=True)
 class ModeShapeFrame():
@@ -729,6 +791,9 @@ class ModeShapeFrame():
     HOLE=HoleMode()
     CAGE=CageMode()
     COMPOSITE=CompositeMode()
+    INTERSECT=IntersectMode()
+    HULL=HullMode()
+    MINKOWSKI=MinkowskiMode()
     
     mode: _Mode
     shapeframe: ShapeFrame
@@ -876,6 +941,15 @@ class Maker(Shape):
     
     def add_cage(self, shape_frame, attributes=None):
         return self.add_shape(ModeShapeFrame.CAGE, shape_frame, attributes)
+    
+    def add_intersect(self, shape_frame, attributes=None):
+        return self.add_shape(ModeShapeFrame.INTERSECT, shape_frame, attributes)
+    
+    def add_hull(self, shape_frame, attributes=None):
+        return self.add_shape(ModeShapeFrame.HULL, shape_frame, attributes)
+    
+    def add_minkowski(self, shape_frame, attributes=None):
+        return self.add_shape(ModeShapeFrame.MINKOWSKI, shape_frame, attributes)
     
     def add_composite(self, shape_frame, attributes=None):
         return self.add_shape(ModeShapeFrame.COMPOSITE, shape_frame, attributes)
