@@ -11,15 +11,19 @@ from ParametricSolid.linear import tranX, tranY, tranZ, ROTX_180, \
                                    translate, GVector
 import ParametricSolid.core as core
 import numpy as np
+import anchorscad.models.basic.connector.hdmi.hdmi_outline as hdmi
 
 
 Z_DELTA=tranZ(-0.01)
 
-def box_expander(expansion_size, post=None):
+def box_expander(expansion_size=None, actual_size=None, post=None):
     '''
     '''
     def expander(maker, name, anchor, box):
-        expanded_size = GVector(expansion_size) + box.size
+        if actual_size:
+            expanded_size = GVector(actual_size)
+        else:
+            expanded_size = GVector(expansion_size) + box.size
         new_shape = core.Box(expanded_size)
         post_xform = Z_DELTA * ROTX_180
         if post:
@@ -91,9 +95,23 @@ MICRO_HDMI=ShapeFactory(
     OBOX_ANCHOR, 
     box_expander([5, 0, 4.5]))
 
+HDMI_A=ShapeFactory(
+    hdmi.HdmiOutline, core.args(), 
+    [0, 1.8, -0.5], 
+    BOX_ANCHOR, 
+    OBOX_ANCHOR, 
+    box_expander(actual_size=[21, 0, 10.6]))
+
 USBC=ShapeFactory(
     core.Box, core.args([9,  7.5, 3.3]), 
-    [0, 1.8, 0], 
+    [0, 1.8, -(4.14 - 2.83 - 1.44)], 
+    BOX_ANCHOR, 
+    OBOX_ANCHOR, 
+    box_expander([5, 0, 4]))
+
+USBCMICRO=ShapeFactory(
+    core.Box, core.args([7.6, 5.6, 2.9]), 
+    [0, 1.02, 0], 
     BOX_ANCHOR, 
     OBOX_ANCHOR, 
     box_expander([5, 0, 4]))

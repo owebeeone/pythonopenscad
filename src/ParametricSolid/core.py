@@ -688,7 +688,8 @@ class Shape(ShapeNamer, ShapeMaker):
 
 @dataclass()
 class _Mode():
-    mode : str
+    mode: str
+    has_operator_container: bool=False
     
     def make_container(self, model):
         return model.Union()
@@ -717,8 +718,6 @@ class CompositeMode(_Mode):
     def pick_rendererx(self, renderer):
         return renderer.hole()
 
-    
-
 @dataclass()
 class CageMode(_Mode):
     def __init__(self):
@@ -730,7 +729,7 @@ class CageMode(_Mode):
 @dataclass()
 class IntersectMode(_Mode):
     def __init__(self):
-        super().__init__('intersect')
+        super().__init__('intersect', True)
         
     def pick_rendererx(self, renderer):
         return renderer.intersect()
@@ -741,7 +740,7 @@ class IntersectMode(_Mode):
 @dataclass()
 class HullMode(_Mode):
     def __init__(self):
-        super().__init__('hull')
+        super().__init__('hull', True)
         
     def pick_rendererx(self, renderer):
         return renderer.hull()
@@ -752,7 +751,7 @@ class HullMode(_Mode):
 @dataclass()
 class MinkowskiMode(_Mode):
     def __init__(self):
-        super().__init__('minkowski')
+        super().__init__('minkowski', True)
         
     def pick_rendererx(self, renderer):
         return renderer.minkowski()

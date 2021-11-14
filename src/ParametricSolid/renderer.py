@@ -131,18 +131,17 @@ class Container():
                 return [], []
    
             return [
-                    head_copies[0][0] if head_copies[0] else self.createNamedUnion('build_composite')],  [
-                    head_copies[1][0] if head_copies[1] else self.createNamedUnion('build_composite')]
+                    head_copies[0][0] 
+                      if head_copies[0] 
+                      else self.createNamedUnion('build_composite')],  [
+                    head_copies[1][0] 
+                      if head_copies[1] 
+                      else self.createNamedUnion('build_composite')]
         else:
             return solids, holes
         
     def createNamedUnion(self, name):
         result = self.model.Union()
-        result.setMetadataName(name)
-        return result
-    
-    def createNamedContainer(self, name):
-        result = self.mode.make_container(self.model)
         result.setMetadataName(name)
         return result
     
@@ -215,6 +214,11 @@ class Context():
         if diff_attrs.colour:
             container.add_head(self.model.Color(c=diff_attrs.colour.value))
         
+        if mode.has_operator_container:
+            operator = mode.make_container(self.model)
+            operator.setMetadataName(shape_name)
+            container.add_head(operator)
+            
         if diff_attrs.disable:
             head = container.get_or_create_first_head()
             head.add_modifier(self.model.DISABLE)
@@ -227,6 +231,7 @@ class Context():
         if diff_attrs.transparent:
             head = container.get_or_create_first_head()
             head.add_modifier(self.model.TRANSPARENT)
+        
             
     def pop(self):
         last = self.stack[-1]
@@ -237,14 +242,14 @@ class Context():
         else:
             objs = last.container.build_combine()
             if not objs:
-                return self.createNamedContainer(last.mode, 'pop')
+                return self.createNamedUnion(last.mode, 'pop')
             if len(objs) > 1:
-                return self.createNamedContainer(last.mode, 'pop').append(*objs)
+                return self.createNamedUnion(last.mode, 'pop').append(*objs)
             return objs[0]
             
         
-    def createNamedContainer(self, mode, name):
-        result = mode.make_container(self.model)
+    def createNamedUnion(self, mode, name):
+        result = self.model.Union()
         result.setMetadataName(name)
         return result
     
