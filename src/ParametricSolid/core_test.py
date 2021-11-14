@@ -172,19 +172,13 @@ class CoreTest(unittest.TestCase):
         box = Box([4, 4, 4])
         sph = Sphere(3, fn = 32)
          
-        shape1 = box.solid('box').colour(Colour([0, 0, 1])).at('face_centre', 0)
+        shape = box.solid('box').colour(Colour([0, 0, 1])).at('face_centre', 0)
         shape2 = sph.solid('sphere').colour(Colour([0, 1, 0])).at('centre')
+        shape.add_at(shape2, 'centre')
          
-        #shape = intersector(shape1).add(shape2, 'box', 'centre')
-        shape = shape1
-        shape1.add_at(shape2, 'centre')
+        intersected = shape.intersect('intersection1').at()
          
-        box2 = Box([40, 40, 40])
-        shape1.add_at(box2.solid('box2').at('centre'), 'centre')
-         
-        shapen = shape.intersect('intersection1').at()
-         
-        self.write(shapen.intersect('intersection2').at(), 'Intersect')
+        self.write(intersected, 'Intersect')
         
     
     def testAddBetween(self):
