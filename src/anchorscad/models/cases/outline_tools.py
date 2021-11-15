@@ -8,10 +8,12 @@ Tools for building outlines and access holes.
 
 from dataclasses import dataclass
 from ParametricSolid.linear import tranX, tranY, tranZ, ROTX_180, \
-                                   translate, GVector
+                                   ROTY_180, translate, GVector
 import ParametricSolid.core as core
 import numpy as np
 import anchorscad.models.basic.connector.hdmi.hdmi_outline as hdmi
+from anchorscad.models.screws.holes import SelfTapHole
+import anchorscad.models.basic.box_side_bevels as bbox
 
 
 Z_DELTA=tranZ(-0.01)
@@ -144,4 +146,104 @@ HEADER_100=ShapeFactory(
     core.args('face_edge', 1, 0, 1), 
     IBOX_ANCHOR, 
     no_op)
+
+DELTA=0.02
+
+@dataclass
+class OutlineLayout:
+    main_anchor: core.AnchorArgs
+    accessor_specs: tuple
+    
+@dataclass
+class OutlineHoleSpec:
+    r: float
+    r_support: float
+    base_anchor_args: core.AnchorArgs
+    
+    
+    def mount_hole(self, depth, params):
+        return core.Cylinder(h=depth * 2 * DELTA, r=self.r, **params)
+    
+    def screw_hole(self, tap_len, dia, thru_len, params):
+        return SelfTapHole(
+            thru_len=thru_len, 
+            tap_len=tap_len,
+            outer_dia=self.r_support * 2,
+            dia=dia,
+            **params)
+
+@dataclass
+class OutlineHolePos:
+    spec: OutlineHoleSpec
+    p: tuple
+    
+
+@dataclass
+class BaseOutline(core.CompositeShape):
+    '''
+    A generic board outline.
+    '''
+    board_size: tuple
+    bevel_radius: float
+    fn: int=None
+    fa: float=None
+    fs: float=None
+    
+    HOLE_POSITIONS=()
+    
+    ALL_ACCESS_ITEMS=()
+    
+    @classmethod
+    def make_access_anchors(cls, all_items):
+        anchor_specs = []
+        for outline_layout in all_items:
+            for name, model, xform in outline_layout.accessor_specs:
+                o_anchor = model.anchor2
+                anchor_specs.append(
+                    core.surface_args(name, *o_anchor[0], **o_anchor[1]))
+        return tuple(anchor_specs)
+    
+    @classmethod
+    def mount_hole_anchor_spec(cls, i):
+        return core.surface_args(('mount_hole', i), 'top')
+    
+    @classmethod
+    def get_default_example_params(cls):
+        return core.ExampleParams(
+                cls.EXAMPLE_SHAPE_ARGS,
+                tuple(
+                    cls.mount_hole_anchor_spec(i)
+                      for i in range(len(cls.HOLE_POSITIONS))
+                ) + cls.make_access_anchors(cls.ALL_ACCESS_ITEMS))
+
+    def __post_init__(self):
+        maker = bbox.BoxSideBevels(
+            size=self.board_size, 
+            bevel_radius=self.bevel_radius, 
+            fn=self.fn).solid('board').at('face_centre', 4)
+        
+        self.maker = maker
+        
+        params = core.non_defaults_dict_include(self, include=('fn', 'fa', 'fs'))
+
+        for i, t in enumerate(self.HOLE_POSITIONS):
+            mount_hole = t.spec.mount_hole(self.board_size[2], params)
+            anchor_args = t.spec.base_anchor_args.args
+            
+            maker.add_at(
+                mount_hole.hole(self.mount_hole_anchor_spec(i).name).at('base'), 
+                *anchor_args[0], **anchor_args[1], 
+                post=translate(t.p + (DELTA,)))
+
+        for outline_layout in self.ALL_ACCESS_ITEMS:
+            for name, model, xform in outline_layout.accessor_specs:
+                shape = model.create(params)
+                maker.add_at(
+                    shape.solid(name).colour([0, 1, 0.5]).at(
+                        args=model.anchor1, post=translate(model.offset)),
+                    args=outline_layout.main_anchor.args, post=xform * ROTY_180
+                    )
+                # Add the outer hole.
+                model.expander(maker, name, model.anchor2, shape)
+
 

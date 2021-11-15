@@ -8,10 +8,9 @@ from dataclasses import dataclass
 
 import ParametricSolid.core as core
 from ParametricSolid.linear import tranX, tranY, tranZ, ROTX_180, \
-                                   translate, GVector
+                                   translate
 import ParametricSolid.linear as l
 import anchorscad.models.basic.box_side_bevels as bbox
-from anchorscad.models.screws.holes import SelfTapHole
 from anchorscad.models.basic.TriangularPrism import TriangularPrism
 from anchorscad.models.grille.case_vent.basic import RectangularGrilleHoles
 from anchorscad.models.fastners.snaps import Snap
@@ -24,26 +23,26 @@ from time import time
 # The time of life.
 MODEL_V0=1632924118
 
-DELTA=0.02
+DELTA=ot.DELTA
 
-@core.shape('anchorscad/models/cases/rpi4_model')
+
+@core.shape('anchorscad/models/cases/rpi4_outline')
 @dataclass
-class RaspberryPi4Outline(core.CompositeShape):
-    '''
-    A Raspberry Pi 4 outline model.
-    '''
+class RaspberryPi4Outline(ot.BaseOutline):
+
     board_size: tuple=(85, 56, 1.5)
     bevel_radius: float=3.0
-    fn: int=None
-    fa: float=None
-    fs: float=None
     
-    HOLE_RADIUS=2.7/2
-    HOLE_SUPPORT_RADIUS=5.5/2
-    HOLE_POSITIONS=(
-        (3.5, 3.5), (3.5, 3.5 + 49), (3.5 + 58, 3.5), (3.5 + 58, 3.5 + 49))
+    HOLE_POSITIONS=tuple(
+        ot.OutlineHolePos(ot.OutlineHoleSpec(
+            2.7/2, 
+            5.5/2, 
+            core.surface_args('face_corner', 4, 0)), 
+            pos)
+        for pos in
+            ((3.5, 3.5), (3.5, 3.5 + 49), (3.5 + 58, 3.5), (3.5 + 58, 3.5 + 49)))
     
-    SIDE_ACCESS=(core.args('face_corner', 4, 0), (
+    SIDE_ACCESS=ot.OutlineLayout(core.surface_args('face_corner', 4, 0), (
         ('usbC', ot.USBC, tranX(3.5 + 7.7)),
         ('hdmi1', ot.MICRO_HDMI, tranX(3.5 + 7.7 + 14.8)),
         ('hdmi2', ot.MICRO_HDMI, tranX(3.5 + 7.7 + 14.8 + 13.5)),
@@ -51,67 +50,23 @@ class RaspberryPi4Outline(core.CompositeShape):
         ('cpu', ot.CPU_PACKAGE, translate((22.0, 25, 0))),
         ))
 
-    OSIDE_ACCESS=(core.args('face_corner', 4, 2), (
+    OSIDE_ACCESS=ot.OutlineLayout(core.surface_args('face_corner', 4, 2), (
         ('header100', ot.HEADER_100, tranX(27.0)),
         ))
     
-    FRONT_ACCESS=(core.args('face_corner', 4, 1), (
+    FRONT_ACCESS=ot.OutlineLayout(core.surface_args('face_corner', 4, 1), (
         ('usbA2', ot.USBA, tranX(9)),
         ('usbA3', ot.USBA, tranX(27)),
         ('rj45', ot.ETHERNET, tranX(45.75)),
         ))
     
-    BOTTOM_ACCESS=(core.args('face_corner', 1, 3), (
+    BOTTOM_ACCESS=ot.OutlineLayout(core.surface_args('face_corner', 1, 3), (
         ('micro_sd', ot.MICRO_SD, tranX((34.15 + 22.15) / 2)),
         ))
     
     ALL_ACCESS_ITEMS=(SIDE_ACCESS, FRONT_ACCESS, BOTTOM_ACCESS, OSIDE_ACCESS)
 
-    def make_access_anchors(all_items):
-        anchor_specs = []
-        for _, items in all_items:
-            for name, model, xform in items:
-                o_anchor = model.anchor2
-                anchor_specs.append(
-                    core.surface_args(name, *o_anchor[0], **o_anchor[1]))
-        return tuple(anchor_specs)
-    
-    EXAMPLE_SHAPE_ARGS=core.args(fn=36)
-    EXAMPLE_ANCHORS=tuple(
-            core.surface_args(('mount_hole', i), 'top') for i in range(4)
-        ) + make_access_anchors(ALL_ACCESS_ITEMS)
-        
-        
-    def __post_init__(self):
-        maker = bbox.BoxSideBevels(
-            size=self.board_size, 
-            bevel_radius=self.bevel_radius, 
-            fn=self.fn).solid('board').at('face_centre', 4)
-        
-        self.maker = maker
-        
-#         for i in range(6):
-#             maker.add_at(core.Text(str(i)).solid(('face_label', i)).at(), 'face_centre', i)  
-             
-        params = core.non_defaults_dict(self, include=('fn', 'fa', 'fs'))
-        mount_hole = core.Cylinder(
-            h=self.board_size[2] + 2 * DELTA, r=self.HOLE_RADIUS, **params)
-        
-        for i, t in enumerate(self.HOLE_POSITIONS):
-            maker.add_at(
-                mount_hole.hole(('mount_hole', i)).at('base'), 
-                'face_corner', 4, 0, post=l.translate(t + (DELTA,)))
-
-        for base_anchor, items in self.ALL_ACCESS_ITEMS:
-            for name, model, xform in items:
-                shape = model.create(params)
-                maker.add_at(
-                    shape.solid(name).colour([0, 1, 0.5]).at(
-                        args=model.anchor1, post=l.translate(model.offset)),
-                    args=base_anchor, post=xform * l.ROTY_180
-                    )
-                # Add the outer hole.
-                model.expander(maker, name, model.anchor2, shape)
+    EXAMPLE_SHAPE_ARGS=core.args(fn=32)
 
 
 @core.shape('anchorscad/models/cases/rpi4_case')
@@ -119,12 +74,14 @@ class RaspberryPi4Outline(core.CompositeShape):
 class RaspberryPi4Case(core.CompositeShape):
     '''A Raspberry Pi 4 Case.'''
     outline_model: core.Shape=None
+    outline_model_class: type=RaspberryPi4Outline
     inner_size_delta: tuple=(3, 2, 22)
     inner_offset: tuple=(-1.5, 1, 3)
     wall_thickness: float=2
     inner_bevel_radius: float=None
     screw_clearannce: float=0.2
     board_screw_min_len: float=6
+    board_screw_size: float=2.6
     front_flange_depth: float=20
     vent_hole: tuple= (50, 10)
     show_outline: bool=False
@@ -215,7 +172,7 @@ class RaspberryPi4Case(core.CompositeShape):
     def __post_init__(self):
         params = core.non_defaults_dict(self, include=('fn', 'fa', 'fs'))
         if self.outline_model is None:
-            self.outline_model = RaspberryPi4Outline(**params)
+            self.outline_model = self.outline_model_class(**params)
         if self.inner_bevel_radius is None:
             self.inner_bevel_radius = self.outline_model.bevel_radius + (-self.inner_offset[0] - self.inner_offset[1]) / 2
         inner_size = l.GVector(self.inner_size_delta) + l.GVector(self.outline_model.board_size)
@@ -335,14 +292,14 @@ class RaspberryPi4Case(core.CompositeShape):
         # Add screw holes.
         
         params = core.non_defaults_dict(self, include=('fn', 'fa', 'fs'))
-        board_screw_hole = SelfTapHole(
-            thru_len=1, 
-            tap_len=max_allowable_screw_hole_height -1,
-            outer_dia=self.outline_model.HOLE_SUPPORT_RADIUS * 2,
-            dia=2.6,
-            **params)
-        
-        for i in range(4):
+
+        for i, t in enumerate(self.outline_model.HOLE_POSITIONS):
+            board_screw_hole = t.spec.screw_hole(
+                tap_len=max_allowable_screw_hole_height -1,
+                dia=self.board_screw_size, 
+                thru_len=1,
+                params=params)
+            
             maker.add_at(board_screw_hole
                          .composite(('support', i))
                          .at('start', post=ROTX_180),

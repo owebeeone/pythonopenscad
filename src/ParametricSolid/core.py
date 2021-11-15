@@ -74,6 +74,16 @@ class AnchorArgs(tuple):
     def apply(self, maker):
         return apply_at_args(
             maker, *self[1][0], **self[1][1])
+        
+    @property
+    def name(self):
+        return self[1][0][0]
+        
+    @property
+    def args(self):
+        return self[1]
+    
+    
 
 def surface_args(*args, **kwds):
     '''Defines an instance of an anchor example.'''
@@ -566,7 +576,7 @@ class Shape(ShapeNamer, ShapeMaker):
     EXAMPLE_VERSION=None
     EXAMPLE_ANCHORS=()
     EXAMPLE_SHAPE_ARGS=args()
-    EXAMPLES_EXTENDED=dict()
+    EXAMPLES_EXTENDED=frozendict()
     
     def __init__(self):
         pass
@@ -614,19 +624,32 @@ class Shape(ShapeNamer, ShapeMaker):
     def examples(cls):
         '''Returns a list of available examples.'''
         non_str_keys = tuple(
-            repr(s) for s in cls.EXAMPLES_EXTENDED.keys() if not isinstance(s, str))
+            repr(s) for s in cls.get_extended_example_keys() if not isinstance(s, str))
         assert not non_str_keys, (f'Shpae examples in "{cls.__name__}" contains non string keys: '
                                   f'{non_str_keys}. Recast these to strings.')
-        assert not 'default' in cls.EXAMPLES_EXTENDED, (f'Shpae examples in "{cls.__name__}" '
+        assert not 'default' in cls.get_extended_example_keys(), (f'Shpae examples in "{cls.__name__}" '
                                                         f'must not contain key "default".')
-        return ('default',) + tuple(cls.EXAMPLES_EXTENDED.keys())
+        return ('default',) + tuple(cls.get_extended_example_keys())
+    
+    @classmethod
+    def get_default_example_params(cls):
+        return ExampleParams(
+                cls.EXAMPLE_SHAPE_ARGS, cls.EXAMPLE_ANCHORS)
+        
+    @classmethod
+    def get_extended_example_keys(cls):
+        return cls.EXAMPLES_EXTENDED.keys()
+    
+    @classmethod
+    def get_extended_example_params(cls, name):
+        return cls.EXAMPLES_EXTENDED[name]
     
     @classmethod
     def example(cls, name='default'):
         if name == 'default':
-            example_params = ExampleParams(cls.EXAMPLE_SHAPE_ARGS, cls.EXAMPLE_ANCHORS)
+            example_params = cls.get_default_example_params()
         else:
-            example_params = cls.EXAMPLES_EXTENDED[name]
+            example_params = cls.get_extended_example_params(name)
 
         try:
             entryname = (f'{cls.__name__}' + example_params.args_str())
@@ -1191,6 +1214,18 @@ def non_defaults_dict(dataclas_obj, include=None, exclude=()):
                 for k in dataclas_obj.__annotations__.keys() 
                 if (not k in exclude) and (
                     include is None or k in include) and not getattr(dataclas_obj, k) is None)
+
+def non_defaults_dict_include(dataclas_obj, include, exclude=()):
+    if not (include is None or isinstance(include, tuple) or isinstance(include, dict)):
+        raise IllegalParameterException(
+            f'Expected parameter \'include\' to be a tuple but is a {include.__class__.__name__}')
+    if not (exclude is None or isinstance(exclude, tuple) or isinstance(exclude, dict)):
+        raise IllegalParameterException(
+            f'Expected parameter \'exclude\' to be a tuple but is a {exclude.__class__.__name__}')
+    return dict((k, getattr(dataclas_obj, k)) 
+                for k in include 
+                if (not k in exclude) and not getattr(dataclas_obj, k) is None)
+    
     
 
 def values_dict(targetclas, dataclas_obj, exclude=()):
