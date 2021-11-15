@@ -24,7 +24,7 @@ def box_expander(expansion_size=None, actual_size=None, post=None):
             expanded_size = GVector(actual_size)
         else:
             expanded_size = GVector(expansion_size) + box.size
-        new_shape = core.Box(expanded_size)
+        new_shape = core.Box(expanded_size.A3)
         post_xform = Z_DELTA * ROTX_180
         if post:
             post_xform = post *  post_xform

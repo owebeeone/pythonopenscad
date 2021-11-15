@@ -67,13 +67,17 @@ class Container():
         holes = self._get_container(HOLE_CONTAINER)
         solids = self._get_container(SOLID_CONTAINER)
         
+        force_container = self.mode.has_operator_container
+        
         if holes:
             if not solids:
-                solid_obj = self.createNamedUnion('_combine_solids_and_holes')
-            elif len(solids) == 1:
+                solid_obj = self.createNamedModeContainer(
+                    '_combine_solids_and_holes')
+            elif len(solids) == 1 and not force_container:
                 solid_obj = solids[0]
             else:
-                solid_obj = self.createNamedUnion('_combine_solids_and_holes')(*solids)
+                solid_obj = self.createNamedModeContainer(
+                    '_combine_solids_and_holes')(*solids)
             
             result = self.model.Difference()(solid_obj, *holes)
             result.setMetadataName('_combine_solids_and_holes')
@@ -81,7 +85,11 @@ class Container():
         
         # No holes.
         if solids:
-            return solids
+            if force_container:
+                return [self.createNamedModeContainer(
+                    '_combine_solids_and_holes')(*solids)]
+            else:
+                return solids
         return []
     
     def _combine_heads(self, heads):
@@ -142,7 +150,12 @@ class Container():
         
     def createNamedUnion(self, name):
         result = self.model.Union()
-        result.setMetadataName(name)
+        result.setMetadataName(f'{self.shape_name} : {name}')
+        return result
+    
+    def createNamedModeContainer(self, name):
+        result = self.mode.make_container(self.model)
+        result.setMetadataName(f'{self.shape_name} : {name}')
         return result
     
     def get_or_create_first_head(self):
@@ -213,11 +226,6 @@ class Context():
             
         if diff_attrs.colour:
             container.add_head(self.model.Color(c=diff_attrs.colour.value))
-        
-        if mode.has_operator_container:
-            operator = mode.make_container(self.model)
-            operator.setMetadataName(shape_name)
-            container.add_head(operator)
             
         if diff_attrs.disable:
             head = container.get_or_create_first_head()

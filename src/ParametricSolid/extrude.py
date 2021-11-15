@@ -4,7 +4,7 @@ Created on 7 Jan 2021
 @author: gianni
 '''
 
-from dataclasses import dataclass, Field
+from dataclasses import dataclass, field
 
 from frozendict import frozendict
 
@@ -512,9 +512,8 @@ class PathBuilder():
     class _LineTo(OpBase):
         '''Line segment from current position.'''
         point: np.array
-        prev_op: object=Field(
+        prev_op: object=field(
             default=None, 
-            default_factory=False, 
             init=True, 
             repr=False, 
             hash=False, 
@@ -557,9 +556,8 @@ class PathBuilder():
     class _MoveTo(OpBase):
         '''Move to position.'''
         point: np.array
-        prev_op: object=Field(
+        prev_op: object=field(
             default=None, 
-            default_factory=False, 
             init=True, 
             repr=False, 
             hash=False, 
@@ -603,9 +601,8 @@ class PathBuilder():
     class _SplineTo(OpBase):
         '''Cubic Bezier Spline to.'''
         points: np.array
-        prev_op: object=Field(
+        prev_op: object=field(
             default=None, 
-            default_factory=False, 
             init=True, 
             repr=False, 
             hash=False, 
@@ -669,9 +666,8 @@ class PathBuilder():
         end_point: np.array
         centre: np.array
         path_direction: bool
-        prev_op: object=Field(
+        prev_op: object=field(
             default=None, 
-            default_factory=False, 
             init=True, 
             repr=False, 
             hash=False, 
