@@ -1656,8 +1656,6 @@ class AnnotatedCoordinates(CompositeShape):
     
 def get_shape_class(module, name):
     mv = getattr(module, name)
-    if not mv:
-        return None
     
     if not isinstance(mv, type):
         return False
