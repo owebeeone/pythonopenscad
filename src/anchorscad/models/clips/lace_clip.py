@@ -16,8 +16,7 @@ MAX_ACTUAL = np.array((22.75, 10.42, 1.45))
 @core.shape('anchorscad/models/clips/lace_clip/LaceClip')
 @dataclass
 class LaceClip(core.CompositeShape):
-    '''
-    <description>
+    '''A clip for holding shoe laces when using magnetic shoe lace ties. 
     '''
     
     size: np.ndarray=MAX_ACTUAL
@@ -82,10 +81,6 @@ class LaceClip(core.CompositeShape):
         maker.add_at(shape.solid('lhs').at('centre_upper', rh=0.5),
                      'centre', post=l.ROTY_180 * l.ROTZ_90 * l.ROTX_90)
 
-
-    @core.anchor('An example anchor')
-    def origin(self):
-        return self.maker.at('centre')
 
     
 if __name__ == "__main__":
