@@ -25,7 +25,7 @@ class HdmiOutline(core.CompositeShape):
     r: float=0.7
     plug_cutout: tuple=(18.2, 10, 8.2)
     tolerance:float=0.4
-    show_cage: bool=True
+    show_cage: bool=False
         
     EXAMPLE_SHAPE_ARGS=core.args()
     NOEXAMPLE_ANCHORS=(
@@ -60,8 +60,10 @@ class HdmiOutline(core.CompositeShape):
     def cage_shape(self):
         shape = core.Box(self.size)
         if self.show_cage:
-            return shape.cage(
+            return shape.solid(
                 'cage').transparent(1).colour([0, 1, 0, 0.5])
+        else:
+            return shape.cage('cage')
         
         return shape.cage('cage')
 

@@ -31,7 +31,7 @@ DELTA=ot.DELTA
 class RaspberryPiCase(core.CompositeShape):
     '''A Generic Raspberry Pi Case.'''
     outline_model: core.Shape=None
-    outline_model_class: type=None
+    outline_model_class: type=RaspberryPi4Outline
     inner_size_delta: tuple=(3, 2, 22)
     inner_offset: tuple=(-1.5, 1, 3)
     wall_thickness: float=2
@@ -57,15 +57,14 @@ class RaspberryPiCase(core.CompositeShape):
         text=f'-{int(time())-1632924118:X}', 
         size=5, 
         depth=0.3 if wall_thickness > 0.5 else wall_thickness * 0.5)
+    do_versioned_example: bool=False
     split_box_delta: float=40
     fn: int=None
     fa: float=None
     fs: float=None
     
-    #EXAMPLE_VERSION=version.text
     EXAMPLE_ANCHORS=(core.surface_args('shell', 'face_centre', 1),)
-    EXAMPLE_SHAPE_ARGS=core.args(
-        fn=36, outline_model_class=RaspberryPi4Outline)
+    EXAMPLE_SHAPE_ARGS=core.args(fn=36)
     
     # Some anchor locations for locating flange position and sizes.
     USBA2_A2 = core.surface_args(
@@ -76,8 +75,11 @@ class RaspberryPiCase(core.CompositeShape):
         'outline', ('usbA3', 'outer'), 'face_edge', 1, 0, 0)
     ETH_A1 = core.surface_args(
         'outline', ('rj45', 'outer'), 'face_edge', 1, 0, 1)
+    BOUND_LINES = (USBA2_A2, USBA3_A1, USBA3_A2, ETH_A1)
+    
     BOX_TOP = core.surface_args('inner', 'face_centre', 4)
     CUT_PLANE = core.surface_args('outline', 'audio', 'base', post=ROTX_270)
+    
     
     HEADER_CORNER = core.surface_args(
         'outline', 'header100', 'face_edge', 3, 0, 0.5,
@@ -122,12 +124,10 @@ class RaspberryPiCase(core.CompositeShape):
         'shell', 'face_edge', 1, 1, 0.15, post=translate([0, 2, epsilon]))
     
     EXAMPLES_EXTENDED={'bottom': core.ExampleParams(
-                            shape_args=core.args(fn=36, 
-                                                 outline_model_class=RaspberryPi4Outline)),
+                            shape_args=core.args(fn=36)),
                        'top': core.ExampleParams(
                             core.args(make_case_top=True, 
-                                      fn=36, 
-                                      outline_model_class=RaspberryPi4Outline),
+                                      fn=36),
                             anchors=())}
 
     def __post_init__(self):
@@ -176,8 +176,7 @@ class RaspberryPiCase(core.CompositeShape):
         # points between the top and bottom planes to find the dimensions
         # of the flange.
         support_bound_planes = (self.BOX_TOP, self.CUT_PLANE)
-        support_bound_lines = (self.USBA2_A2, self.USBA3_A1, 
-            self.USBA3_A2, self.ETH_A1)
+        support_bound_lines = self.BOUND_LINES
         
         top_points = self.find_all_intersect(
             maker, support_bound_planes[0], *support_bound_lines)
@@ -346,6 +345,8 @@ class RaspberryPiCase(core.CompositeShape):
             maker, *line_anchor[1][0], **line_anchor[1][1])
         return plane_line_intersect(plane, line)
 
+    def example_version(self):
+        return self.version.text if self.do_versioned_example else None
 
 if __name__ == "__main__":
     core.anchorscad_main(False)

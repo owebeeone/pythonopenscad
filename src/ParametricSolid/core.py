@@ -636,6 +636,9 @@ class Shape(ShapeNamer, ShapeMaker):
         return ExampleParams(
                 cls.EXAMPLE_SHAPE_ARGS, cls.EXAMPLE_ANCHORS)
         
+    def get_example_version(self):
+        return self.EXAMPLE_VERSION
+        
     @classmethod
     def get_extended_example_keys(cls):
         return cls.EXAMPLES_EXTENDED.keys()
@@ -653,10 +656,11 @@ class Shape(ShapeNamer, ShapeMaker):
 
         try:
             entryname = (f'{cls.__name__}' + example_params.args_str())
-            maker = cls(
+            shape = cls(
                 *example_params.shape_args[0], 
                 **example_params.shape_args[1]
-                ).solid(name).projection(l.IDENTITY)            
+                )
+            maker = shape.solid(name).projection(l.IDENTITY)            
             
             for entry in example_params.anchors:
                 entry[0](maker, entry[1])
@@ -668,7 +672,7 @@ class Shape(ShapeNamer, ShapeMaker):
                 f'  File "{inspect.getsourcefile(cls)}", {cls.__name__}:{name!r}\n')
             raise
         
-        return maker
+        return maker, shape
     
     def add_between(
             self,
@@ -1656,7 +1660,6 @@ class AnnotatedCoordinates(CompositeShape):
     
 def get_shape_class(module, name):
     mv = getattr(module, name)
-    
     if not isinstance(mv, type):
         return False
     
@@ -1699,9 +1702,9 @@ class RenderOptions:
     def match_name(self, cname):
         return self.class_name_re.match(cname)
                 
-def nameof(name, shape_clazz):
-    if shape_clazz.EXAMPLE_VERSION:
-        return ''.join((name, shape_clazz.EXAMPLE_VERSION))
+def nameof(name, example_version):
+    if example_version:
+        return ''.join((name, example_version))
     return name
 
 def render_exmaples(module, render_options, consumer):
@@ -1718,11 +1721,11 @@ def render_exmaples(module, render_options, consumer):
             for e in clz.examples():
                 example_count += 1
                 try:
-                    obj = clz.example(e)
+                    maker, shape = clz.example(e)
                     poscobj = renderer.render(
-                        obj, initial_frame=None, initial_attrs=render_options.render_attributes)
+                        maker, initial_frame=None, initial_attrs=render_options.render_attributes)
                     
-                    consumer(poscobj, clz, nameof(e, clz))
+                    consumer(poscobj, clz, nameof(e, shape.example_version()))
                 except BaseException as ex:
                     traceback.print_exception(*sys.exc_info(), limit=20) 
                     sys.stderr.write(f'Error while rendering {clz.__name__}:\n{ex}\n')

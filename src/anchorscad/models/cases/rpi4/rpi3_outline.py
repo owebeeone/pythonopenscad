@@ -38,11 +38,10 @@ class RaspberryPi3Outline(ot.BaseOutline):
             ((3.5, 3.5), (3.5, 3.5 + 49), (3.5 + 58, 3.5), (3.5 + 58, 3.5 + 49)))
     
     SIDE_ACCESS=ot.OutlineLayout(core.surface_args('face_corner', 4, 0), (
-        ('usbC', ot.USBC, tranX(3.5 + 7.7)),
-        ('hdmi1', ot.MICRO_HDMI, tranX(3.5 + 7.7 + 14.8)),
-        ('hdmi2', ot.MICRO_HDMI, tranX(3.5 + 7.7 + 14.8 + 13.5)),
-        ('audio', ot.AUDIO, tranX(3.5 + 7.7 + 14.8 + 13.5 + 7 + 7.5)),
-        ('cpu', ot.CPU_PACKAGE, translate((22.0, 25, 0))),
+        ('usbM', ot.USBMICRO, tranX(10.6)),
+        ('hdmi1', ot.HDMI_A, tranX(32)),
+        ('audio', ot.AUDIO, tranX(53.5)),
+        ('cpu', ot.CPU_PACKAGE, translate((20.0, 24.5, 0))),
         ))
 
     OSIDE_ACCESS=ot.OutlineLayout(core.surface_args('face_corner', 4, 2), (
@@ -50,13 +49,13 @@ class RaspberryPi3Outline(ot.BaseOutline):
         ))
     
     FRONT_ACCESS=ot.OutlineLayout(core.surface_args('face_corner', 4, 1), (
-        ('usbA2', ot.USBA, tranX(9)),
-        ('usbA3', ot.USBA, tranX(27)),
-        ('rj45', ot.ETHERNET, tranX(45.75)),
+        ('usbA2', ot.USBA, tranX(29)),
+        ('usbA3', ot.USBA, tranX(47)),
+        ('rj45', ot.ETHERNET, tranX(10.25)),
         ))
     
     BOTTOM_ACCESS=ot.OutlineLayout(core.surface_args('face_corner', 1, 3), (
-        ('micro_sd', ot.MICRO_SD, tranX((34.15 + 22.15) / 2)),
+        ('micro_sd', ot.MICRO_SD, tranX((34.0 + 22.0) / 2)),
         ))
     
     ALL_ACCESS_ITEMS=(SIDE_ACCESS, FRONT_ACCESS, BOTTOM_ACCESS, OSIDE_ACCESS)

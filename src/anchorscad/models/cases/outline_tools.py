@@ -99,10 +99,10 @@ MICRO_HDMI=ShapeFactory(
 
 HDMI_A=ShapeFactory(
     hdmi.HdmiOutline, core.args(), 
-    [0, 1.8, -0.5], 
+    [0, 1.8, 0], 
     BOX_ANCHOR, 
     OBOX_ANCHOR, 
-    box_expander(actual_size=[21, 0, 10.6]))
+    box_expander(actual_size=[21, 10, 10.6]))
 
 USBC=ShapeFactory(
     core.Box, core.args([9,  7.5, 3.3]), 
@@ -111,9 +111,9 @@ USBC=ShapeFactory(
     OBOX_ANCHOR, 
     box_expander([5, 0, 4]))
 
-USBCMICRO=ShapeFactory(
-    core.Box, core.args([7.6, 5.6, 2.9]), 
-    [0, 1.02, 0], 
+USBMICRO=ShapeFactory(
+    core.Box, core.args([7.6, 5.6, 3]), 
+    [0, 1.8, 0], 
     BOX_ANCHOR, 
     OBOX_ANCHOR, 
     box_expander([5, 0, 4]))
