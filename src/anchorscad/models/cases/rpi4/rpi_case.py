@@ -345,7 +345,7 @@ class RaspberryPiCase(core.CompositeShape):
             maker, *line_anchor[1][0], **line_anchor[1][1])
         return plane_line_intersect(plane, line)
 
-    def example_version(self):
+    def get_example_version(self):
         return self.version.text if self.do_versioned_example else None
 
 if __name__ == "__main__":

@@ -48,10 +48,11 @@ class RaspberryPi3Outline(ot.BaseOutline):
         ('header100', ot.HEADER_100, tranX(27.0)),
         ))
     
-    FRONT_ACCESS=ot.OutlineLayout(core.surface_args('face_corner', 4, 1), (
+    FRONT_ACCESS=ot.OutlineLayout(
+        core.surface_args('face_corner', 4, 1, post=tranY(1)), (
         ('usbA2', ot.USBA, tranX(29)),
         ('usbA3', ot.USBA, tranX(47)),
-        ('rj45', ot.ETHERNET, tranX(10.25)),
+        ('rj45', ot.ETHERNET, tranX(10.4)),
         ))
     
     BOTTOM_ACCESS=ot.OutlineLayout(core.surface_args('face_corner', 1, 3), (

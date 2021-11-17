@@ -12,13 +12,15 @@ from anchorscad.models.cases.rpi4.rpi_case import RaspberryPiCase
 from ParametricSolid.linear import translate
 
 
-@core.shape('anchorscad/models/cases/rpi4_case')
+@core.shape('anchorscad/models/cases/rpi3_case')
 @dataclass
 class RaspberryPi3Case(RaspberryPiCase):
     '''A Raspberry Pi 3 Case.'''
     outline_model_class: type=RaspberryPi3Outline
+    inner_size_delta: tuple=(1, 2, 22)
+    inner_offset: tuple=(-0.5, 1, 3)
     rhs_grille_y_offs: float=5
-    do_versioned_example: bool=True
+    do_versioned_example: bool=False
     fn: int=None
     
     HEADER_CORNER = core.surface_args(

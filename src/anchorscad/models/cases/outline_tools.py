@@ -77,14 +77,14 @@ CYL_ANCHOR=core.args('surface', 0, -90)
 OCYL_ANCHOR=core.args('base')
         
 ETHERNET = ShapeFactory(
-    core.Box, core.args([16, 21.25, 13.7]), 
+    core.Box, core.args([16.2, 21.25, 13.7]), 
     [0, 3.0, 0], 
     BOX_ANCHOR, 
     OBOX_ANCHOR, 
     box_expander([0.3] * 3))
 
 USBA=ShapeFactory(
-    core.Box, core.args([14.9,  17.5, 16.4]), 
+    core.Box, core.args([15,  17.5, 16.4]), 
     [0, 3.0, 0], 
     BOX_ANCHOR,
     OBOX_ANCHOR, 
@@ -99,7 +99,7 @@ MICRO_HDMI=ShapeFactory(
 
 HDMI_A=ShapeFactory(
     hdmi.HdmiOutline, core.args(), 
-    [0, 1.8, 0], 
+    [0, 1.8, 0.2], 
     BOX_ANCHOR, 
     OBOX_ANCHOR, 
     box_expander(actual_size=[21, 10, 10.6]))
@@ -112,7 +112,7 @@ USBC=ShapeFactory(
     box_expander([5, 0, 4]))
 
 USBMICRO=ShapeFactory(
-    core.Box, core.args([7.6, 5.6, 3]), 
+    core.Box, core.args([8.0, 5.6, 3]), 
     [0, 1.8, 0], 
     BOX_ANCHOR, 
     OBOX_ANCHOR, 

@@ -941,7 +941,7 @@ class Maker(Shape):
         alter_post = None
         if args:
             pargs = args[0]
-            kwds = args[1]
+            kwds = dict(args[1])
             alter_pre = kwds.pop('pre', None)
             alter_post = kwds.pop('post', None)
             
