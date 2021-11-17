@@ -1725,7 +1725,7 @@ def render_exmaples(module, render_options, consumer):
                     poscobj = renderer.render(
                         maker, initial_frame=None, initial_attrs=render_options.render_attributes)
                     
-                    consumer(poscobj, clz, nameof(e, shape.example_version()))
+                    consumer(poscobj, clz, nameof(e, shape.get_example_version()))
                 except BaseException as ex:
                     traceback.print_exception(*sys.exc_info(), limit=20) 
                     sys.stderr.write(f'Error while rendering {clz.__name__}:\n{ex}\n')
