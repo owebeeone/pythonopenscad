@@ -113,6 +113,7 @@ class ModelAttributes(object):
     show_only: bool = None
     debug: bool = None
     transparent: bool = None
+    use_polyhedrons: bool = None
     
     def _merge_of(self, attr, other):
         self_value = getattr(self, attr)
@@ -180,6 +181,9 @@ class ModelAttributes(object):
     
     def with_transparent(self, transparent):
         return self._with('transparent', transparent)
+    
+    def with_use_polyhedrons(self, as_polyhedrons):
+        return self._with('use_polyhedrons', as_polyhedrons)
     
     def fill_dict(self, out_dict, field_names=('fn', 'fs', 'fa')):
         for field_name in field_names:
@@ -333,6 +337,10 @@ class NamedShapeBase(object):
     def transparent(self, transparent):
         return self._with(
             'attributes', self.get_attributes_or_default().with_transparent(transparent))
+
+    def use_polyhedrons(self, as_polyhedrons):
+        return self._with(
+            'attributes', self.get_attributes_or_default().with_use_polyhedrons(as_polyhedrons))
 
 
 class NamedShape(NamedShapeBase):

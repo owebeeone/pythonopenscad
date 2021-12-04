@@ -12,6 +12,8 @@ import ParametricSolid.core as core
 import ParametricSolid.linear as l
 import numpy as np
 import pyclipper as pc
+from collections.abc import Iterable
+from ParametricSolid.linear import GVector
 
 
 class DuplicateNameException(Exception):
@@ -31,6 +33,9 @@ class UnknownOperationException(Exception):
     
 class UnableToFitCircleWithGivenParameters(Exception):
     '''There was no solution to the requested arc. Try a spline.'''
+    
+class TooFewPointsInPath(Exception):
+    '''There were too few points in the given path.'''
 
 
 EPSILON=1e-12
@@ -251,7 +256,8 @@ class Path():
         
         indexes = start_indexes + [len(points),]
         return (points, 
-                (tuple(tuple(range(indexes[i], indexes[i+1])) for i in range(len(start_indexes)))))
+                (tuple(tuple(range(indexes[i], indexes[i+1])) 
+                           for i in range(len(start_indexes)))))
 
     def transform_to_builder(self, 
                              m, 
@@ -1058,7 +1064,85 @@ class ExtrudedShape(core.Shape):
         
     def eval_z_vector(self, h):
         return l.GVector([0, 0, h])
+
+@dataclass
+class PolyhedronBuilderContext:
+    points: tuple
+    path: tuple=None
     
+    def __post_init__(self):
+        if not self.path:
+            self.path = tuple(range(0, len(self.path)))
+        if len(self.path) < 3:
+            raise TooFewPointsInPath()
+        unique_indexes = sorted(set(self.path))
+        # Create a set of points with only the points used in path.
+        self.vec_points = tuple(to_gvector(self.points[i]) for i in unique_indexes)
+        reverse_map = dict((p, i) for i, p in enumerate(self.path))
+        # Re-map the path to the new indexes.
+        self.vec_path = tuple(reverse_map[p] for p in self.path)
+
+
+def quad(prev_offs, curr_offs, pi, pj):
+    return (
+        prev_offs + pi,
+        curr_offs + pi,  
+        curr_offs + pj,
+        prev_offs + pj,
+        )
+    
+@dataclass
+class PolyhedronBuilder:
+    ctxt: PolyhedronBuilderContext
+    
+    def __post_init__(self):
+        self.points = []
+        self.faces = []
+        
+    def add_transformed(self, tansform):
+        new_points = list(tansform * p for p in self.ctxt.vec_points)
+        offset = len(self.points)
+        self.points.extend(new_points)
+        return offset
+        
+    def add_end_face(self, offset, reverse):
+        face = tuple(offset + p for 
+                     p in (reversed(self.ctxt.vec_path) 
+                           if reverse 
+                           else self.ctxt.vec_path))
+        self.faces.append(face)
+        
+    def add_sequence(self, transforms):
+        t0 = transforms[0]
+        offset0 = self.add_transformed(t0)
+        prev_offs = offset0
+        for t in transforms[1:]:
+            next_offset = self.add_transformed(t)
+            self.join_layers(prev_offs, next_offset)
+            prev_offs = next_offset
+        return offset0, next_offset
+
+    def join_layers(self, prev_offs, next_offset):
+        path = self.ctxt.vec_path
+        path_end = len(path) - 1
+        for i in range(path_end):
+            self.faces.append(quad(prev_offs, next_offset, path[i], path[i + 1]))
+        # Add the last quad only if it's not empty.
+        if path[path_end] != path[0]:
+            self.faces.append(quad(prev_offs, next_offset, path[path_end], path[0]))
+        
+    def make_two_ended(self, transforms):
+        first_offs, last_offs = self.add_sequence(transforms)
+        self.add_end_face(first_offs, True)
+        self.add_end_face(last_offs, False)
+
+    def make_loop(self, transforms):
+        first_offs, last_offs = self.add_sequence(transforms)
+        self.join_layers(last_offs, first_offs)
+        
+    def get_points_3d(self):
+        return tuple(p.A3 for p in self.points)
+        
 
 @core.shape('linear_extrude')
 @dataclass
@@ -1067,9 +1151,10 @@ class LinearExtrude(ExtrudedShape):
     path: Path
     h: float=100
     twist: float=0.0
-    slices: int=None
+    slices: int=4
     scale: float=(1.0, 1.0)  # (x, y)
     fn: int=None
+    use_polyhedrons: bool=False
     
     SCALE=2
     
@@ -1086,7 +1171,8 @@ class LinearExtrude(ExtrudedShape):
         fn=30,
         twist=45,
         slices=40,
-        scale=(1, 0.3)
+        scale=(1, 0.3),
+        use_polyhedrons=False
         )
 
     EXAMPLE_ANCHORS=(
@@ -1154,12 +1240,69 @@ class LinearExtrude(ExtrudedShape):
                 ))
         }
 
+
     def render(self, renderer):
+        if self.use_polyhedrons or (self.use_polyhedrons is None and
+            renderer.get_current_attributes().use_polyhedrons):
+            return self.render_as_polyhedron(renderer)
+        else:
+            return self.render_as_linear_extrude(renderer)
+
+    def render_as_linear_extrude(self, renderer):
         polygon = renderer.model.Polygon(*self.path.polygons(
             self if self.fn else renderer.get_current_attributes()))
         params = core.fill_params(
-            self, renderer, ('fn',), exclude=('path',), xlation_table={'h': 'height'})
+            self, 
+            renderer, 
+            ('fn',), 
+            exclude=('path', 'use_polyhedrons'), 
+            xlation_table={'h': 'height'})
         return renderer.add(renderer.model.linear_extrude(**params)(polygon))
+    
+    
+    def generate_transforms(self):
+        '''Generates a list of transforms for the given set of parameters.'''
+        slices = self.slices if self.twist != 0 else 1
+        sx = (self.scale[0] - 1) / slices
+        sy = (self.scale[1] - 1) / slices
+        rot = self.twist / slices
+        return (l.IDENTITY,) + tuple(
+            l.tranZ(self.h * i / slices) 
+              * l.scale([1 + sx * i, 1 + sy * i, 1])
+                * l.rotZ(-rot * i)
+            for i in range(1, slices + 1))
+        
+    
+    def render_as_polyhedron(self, renderer):
+        points_paths = self.path.polygons(
+            self if self.fn else renderer.get_current_attributes())
+        points = points_paths[0]
+        paths = None if len(points_paths) == 1 else points_paths[1]
+        
+        builders = []
+        # paths can be a single path or be a collection of paths.
+        if not paths:
+            builders.append(PolyhedronBuilder(
+                PolyhedronBuilderContext(
+                    points,
+                    tuple(i for i in range(len(points))))))
+        else:
+            if isinstance(paths[0], Iterable):
+                for path in paths:
+                    builders.append(PolyhedronBuilder(
+                        PolyhedronBuilderContext(points, path)))
+            else:
+                builders.append(PolyhedronBuilder(
+                    PolyhedronBuilderContext(points, path)))
+                
+        transforms = self.generate_transforms()
+        for builder in builders:
+            builder.make_two_ended(transforms)
+            renderer.add(
+                renderer.model.polyhedron(
+                    points=builder.get_points_3d(),
+                    faces=builder.faces))
+        return renderer
     
     def _z_radians_scale_align(self, rel_h, twist_vector):
         xelipse_max = self.scale[0] * rel_h + (1 - rel_h)

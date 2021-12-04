@@ -41,7 +41,7 @@ class ElipticCone(core.CompositeShape):
         
         builder.arc_centre_sweep(
             (0.0, 0.0), 
-            sweep_angle_degrees=360.0, 
+            sweep_angle_degrees=-360.0, 
             name='surface')
 
         path = builder.build()
