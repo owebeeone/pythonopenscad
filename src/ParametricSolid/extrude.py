@@ -1082,13 +1082,13 @@ class PolyhedronBuilderContext:
         # Re-map the path to the new indexes.
         self.vec_path = tuple(reverse_map[p] for p in self.path)
 
-
-def quad(prev_offs, curr_offs, pi, pj):
+def quad(prev_offs, curr_offs, pi, pj, direction):
+    i, j = (pi, pj) if direction else (pj, pi)
     return (
-        prev_offs + pi,
-        curr_offs + pi,  
-        curr_offs + pj,
-        prev_offs + pj,
+        prev_offs + j,
+        curr_offs + j,  
+        curr_offs + i,
+        prev_offs + i,
         )
     
 @dataclass
@@ -1112,37 +1112,61 @@ class PolyhedronBuilder:
                            else self.ctxt.vec_path))
         self.faces.append(face)
         
-    def add_sequence(self, transforms):
+    def add_sequence(self, transforms, direction):
         t0 = transforms[0]
         offset0 = self.add_transformed(t0)
         prev_offs = offset0
         for t in transforms[1:]:
             next_offset = self.add_transformed(t)
-            self.join_layers(prev_offs, next_offset)
+            self.join_layers(prev_offs, next_offset, direction)
             prev_offs = next_offset
         return offset0, next_offset
 
-    def join_layers(self, prev_offs, next_offset):
+    def join_layers(self, prev_offs, next_offset, direction):
         path = self.ctxt.vec_path
         path_end = len(path) - 1
         for i in range(path_end):
-            self.faces.append(quad(prev_offs, next_offset, path[i], path[i + 1]))
+            self.faces.append(
+                quad(prev_offs, next_offset, path[i], path[i + 1], direction))
         # Add the last quad only if it's not empty.
         if path[path_end] != path[0]:
-            self.faces.append(quad(prev_offs, next_offset, path[path_end], path[0]))
+            self.faces.append(
+                quad(prev_offs, next_offset, path[path_end], path[0], direction))
         
-    def make_two_ended(self, transforms):
-        first_offs, last_offs = self.add_sequence(transforms)
-        self.add_end_face(first_offs, True)
-        self.add_end_face(last_offs, False)
+    def make_two_ended(self, transforms, direction=True):
+        first_offs, last_offs = self.add_sequence(transforms, direction)
+        self.add_end_face(first_offs, True == direction)
+        self.add_end_face(last_offs, False == direction)
 
-    def make_loop(self, transforms):
-        first_offs, last_offs = self.add_sequence(transforms)
-        self.join_layers(last_offs, first_offs)
+    def make_loop(self, transforms, direction):
+        first_offs, last_offs = self.add_sequence(transforms, direction)
+        self.join_layers(last_offs, first_offs, direction)
         
     def get_points_3d(self):
         return tuple(p.A3 for p in self.points)
+    
+    @classmethod
+    def create_builders_from_paths(cls, points_paths):
+        points = points_paths[0]
+        paths = None if len(points_paths) == 1 else points_paths[1]
         
+        builders = []
+        # paths can be a single path or be a collection of paths.
+        if not paths:
+            builders.append(cls(
+                PolyhedronBuilderContext(
+                    points,
+                    tuple(i for i in range(len(points))))))
+        else:
+            if isinstance(paths[0], Iterable):
+                for path in paths:
+                    builders.append(cls(
+                        PolyhedronBuilderContext(points, path)))
+            else:
+                builders.append(cls(
+                    PolyhedronBuilderContext(points, path)))
+
+        return builders
 
 @core.shape('linear_extrude')
 @dataclass
@@ -1154,7 +1178,7 @@ class LinearExtrude(ExtrudedShape):
     slices: int=4
     scale: float=(1.0, 1.0)  # (x, y)
     fn: int=None
-    use_polyhedrons: bool=False
+    use_polyhedrons: bool=None
     
     SCALE=2
     
@@ -1240,7 +1264,6 @@ class LinearExtrude(ExtrudedShape):
                 ))
         }
 
-
     def render(self, renderer):
         if self.use_polyhedrons or (self.use_polyhedrons is None and
             renderer.get_current_attributes().use_polyhedrons):
@@ -1259,7 +1282,6 @@ class LinearExtrude(ExtrudedShape):
             xlation_table={'h': 'height'})
         return renderer.add(renderer.model.linear_extrude(**params)(polygon))
     
-    
     def generate_transforms(self):
         '''Generates a list of transforms for the given set of parameters.'''
         slices = self.slices if self.twist != 0 else 1
@@ -1271,30 +1293,12 @@ class LinearExtrude(ExtrudedShape):
               * l.scale([1 + sx * i, 1 + sy * i, 1])
                 * l.rotZ(-rot * i)
             for i in range(1, slices + 1))
-        
-    
+
     def render_as_polyhedron(self, renderer):
         points_paths = self.path.polygons(
             self if self.fn else renderer.get_current_attributes())
-        points = points_paths[0]
-        paths = None if len(points_paths) == 1 else points_paths[1]
+        builders = PolyhedronBuilder.create_builders_from_paths(points_paths)
         
-        builders = []
-        # paths can be a single path or be a collection of paths.
-        if not paths:
-            builders.append(PolyhedronBuilder(
-                PolyhedronBuilderContext(
-                    points,
-                    tuple(i for i in range(len(points))))))
-        else:
-            if isinstance(paths[0], Iterable):
-                for path in paths:
-                    builders.append(PolyhedronBuilder(
-                        PolyhedronBuilderContext(points, path)))
-            else:
-                builders.append(PolyhedronBuilder(
-                    PolyhedronBuilderContext(points, path)))
-                
         transforms = self.generate_transforms()
         for builder in builders:
             builder.make_two_ended(transforms)
@@ -1387,11 +1391,12 @@ class RotateExtrude(ExtrudedShape):
     degrees: float=360
     radians: float=None
     convexity: int=10
+    path_fn: int=None
     fn: int=None
     fa: float=None
     fs: float=None
+    use_polyhedrons: bool=None
 
-    
     SCALE=1.0
     
     EXAMPLE_SHAPE_ARGS=core.args(
@@ -1404,6 +1409,7 @@ class RotateExtrude(ExtrudedShape):
             .build(),
         degrees=120,
         fn=80,
+        use_polyhedrons=False
         )
 
     EXAMPLE_ANCHORS=(
@@ -1450,18 +1456,79 @@ class RotateExtrude(ExtrudedShape):
                 core.surface_args('curve', 0.2),
                 core.surface_args('curve', 1),))
         }
-
+    
+    def select_attrs(self, renderer):
+        if self.path_fn:
+            return core.ModelAttributes(fn=self.path_fn)
+        if self.fn:
+            return core.ModelAttributes(fn=self.fn)
+        return renderer.get_current_attributes()
+    
+    def select_path_attrs(self, renderer):
+        if self.path_fn:
+            return core.ModelAttributes(fn=self.path_fn)
+        return self.select_attrs(renderer)
+    
     def render(self, renderer):
-        polygon = renderer.model.Polygon(*self.path.polygons(
-            self if self.fn else renderer.get_current_attributes()))
+        if self.use_polyhedrons or (self.use_polyhedrons is None and
+            renderer.get_current_attributes().use_polyhedrons):
+            return self.render_as_polyhedron(renderer)
+        else:
+            return self.render_rotate_extrude(renderer)
+
+    def render_rotate_extrude(self, renderer):
+        polygon = renderer.model.Polygon(
+            *self.path.polygons(self.select_path_attrs(renderer)))
         params = core.fill_params(
-            self, renderer, tuple(core.ARGS_XLATION_TABLE.keys()), exclude=('path', 'degrees', 'radians'))
+            self, 
+            renderer, 
+            tuple(core.ARGS_XLATION_TABLE.keys()), 
+            exclude=('path', 'path_fn', 'degrees', 'radians', 'use_polyhedrons'))
         angle = self.degrees
         if self.radians:
             angle = self.radians * 180 / np.pi
         params['angle'] = angle
         
         return renderer.add(renderer.model.rotate_extrude(**params)(polygon))
+    
+    def generate_transforms(self, renderer):
+        '''Generates a list of transforms for the given set of parameters.'''
+        fn = self.select_attrs(renderer).fn
+        segments = fn if fn else 16
+        radians = self.radians
+        if radians is None:
+            radians = np.pi * self.degrees / 180.0
+        
+        rotations = radians / (np.pi * 2)
+        if np.abs(rotations) > 1:
+            rotations = np.sign(rotations)
+        
+        segments = int(np.abs(rotations) * segments)
+        if segments < 4:
+            segments = 4
+            
+        rot = np.pi * 2 * rotations / segments
+        return rotations, (l.ROTX_90,) + tuple(
+            l.rotZ(radians=rot * i) * l.ROTX_90
+            for i in range(1, segments + 1))
+        
+    def render_as_polyhedron(self, renderer):
+        builders = PolyhedronBuilder.create_builders_from_paths(
+            self.path.polygons(self.select_path_attrs(renderer)))
+        
+        rotations, transforms = self.generate_transforms(renderer)
+        pos_dir = rotations < 0
+        is_one_revolution = (np.absolute(rotations) + EPSILON) > 1
+        for builder in builders:
+            if is_one_revolution:
+                builder.make_loop(transforms, pos_dir)
+            else:
+                builder.make_two_ended(transforms, pos_dir)
+            renderer.add(
+                renderer.model.polyhedron(
+                    points=builder.get_points_3d(),
+                    faces=builder.faces))
+        return renderer
 
     def to_3d_from_2d(self, vec_2d, angle=0., degrees=0, radians=None):
         return l.rotZ(
