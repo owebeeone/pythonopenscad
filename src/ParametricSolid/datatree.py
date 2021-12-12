@@ -9,7 +9,6 @@ Provides dataclass like functionality across a composition of datatree objects.
 from dataclasses import dataclass, field, Field, MISSING
 from frozendict import frozendict
 import inspect
-from debugpy.common.json import object
 
 FIELD_FIELD_NAMES=tuple(inspect.signature(field).parameters.keys())
 DATATREE_SENTIENEL_NAME='__datatree_nodes__'
