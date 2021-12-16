@@ -6,6 +6,7 @@ Created on 8 Dec 2021
 
 import unittest
 from ParametricSolid.datatree import datatree, args, override, Node
+from dataclasses import dataclass
 
 @datatree
 class LeafType1():
@@ -93,7 +94,34 @@ class Test(unittest.TestCase):
         
     def test_l5(self):
         self.assertEqual(OVERRIDER1.l5, LeafType5(a=1111, b=3333))
-
+        
+    def test_inherits(self):
+        
+        @dataclass
+        class A:
+            a: int = 1
+            
+        @datatree
+        class B(A):
+            b: int = 2
+            
+        ab = B(10, 20)
+        self.assertEqual(ab.a, 10)
+        self.assertEqual(ab.b, 20)
+        
+    def test_name_map(self):
+        
+        @datatree
+        class A:
+            anode: Node=Node(LeafType1, {'leaf_a': 'aa'}, expose_all=True)
+            
+            def __post_init__(self):
+                self.lt1 = self.anode()
+        
+        ao = A()
+        self.assertEqual(ao.lt1, LeafType1())
+        self.assertEqual(ao.aa, LeafType1().leaf_a)
+        self.assertEqual(ao.leaf_b, LeafType1().leaf_b)
 
 if __name__ == "__main__":
     #import sys;sys.argv = ['', 'Test.testName']

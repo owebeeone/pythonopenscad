@@ -89,7 +89,7 @@ class Node:
         
         fields_specified = tuple(f for f in expose_spec if isinstance(f, str))
         maps_specified = tuple(f for f in expose_spec if not isinstance(f, str))
-        fields_in_maps = tuple(f for f in (m.values() for m in maps_specified))
+        fields_in_maps = tuple(f for m in maps_specified for f in m.keys())
         dupes, all_specified = _dupes_and_allset(fields_specified + fields_in_maps) 
         if dupes:
             raise NameCollision(f'Field names have multiple specifiers {dupes:r}')
@@ -180,8 +180,6 @@ def _make_dataclass_field(field_obj):
 
 def _apply_node_fields(clz):
     '''Adds new fields from Node annotations.'''
-    if hasattr(clz, '__dataclass_fields__'):
-        raise DataclassAlreadyApplied('The class {clz.__name__) already has dataclass applied.')
     annotations = clz.__annotations__
     new_annos = {}  # New set of annos to build.
     
@@ -224,7 +222,9 @@ class BoundNode:
         # 3. Parent field values
         passed_bind = self.node.init_signature.bind_partial(*args, **kwds).arguments
         clz = self.node.clz
-        ovrde = self.parent.override.get_override(self.name)
+        ovrde = (self.parent.override.get_override(self.name)
+                 if self.parent.override
+                 else MISSING)
         if not ovrde is MISSING:
             ovrde_bind = ovrde.bind_signature(self.node.init_signature)
             
