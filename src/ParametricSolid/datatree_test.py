@@ -117,11 +117,34 @@ class Test(unittest.TestCase):
             
             def __post_init__(self):
                 self.lt1 = self.anode()
-        
+            
         ao = A()
         self.assertEqual(ao.lt1, LeafType1())
         self.assertEqual(ao.aa, LeafType1().leaf_a)
         self.assertEqual(ao.leaf_b, LeafType1().leaf_b)
+        
+    def test_ignore_default_bad(self):
+        
+        try:
+            @datatree
+            class A:
+                anode: Node=Node(LeafType1, use_defaults=False)
+            self.fail("Expected field order issue.")
+        except TypeError:
+            pass
+        
+    def test_ignore_default(self):
+        @datatree
+        class A:
+            anode: Node=Node(LeafType1)
+            leaf_a: float=51
+            leaf_b: float
+            
+        lt1 = A().anode()
+        
+        self.assertEqual(lt1, LeafType1(51, 2))
+      
+        
 
 if __name__ == "__main__":
     #import sys;sys.argv = ['', 'Test.testName']

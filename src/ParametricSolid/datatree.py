@@ -174,8 +174,11 @@ class Node:
     def get_rev_map(self):
         return self.expose_rev_map
     
-def _make_dataclass_field(field_obj):
+def _make_dataclass_field(field_obj, use_default):
     value_map = dict((name, getattr(field_obj, name)) for name in FIELD_FIELD_NAMES)
+    if not use_default:
+        value_map.pop('default', None)
+        value_map.pop('default_factory', None)
     return field(**value_map)
 
 def _apply_node_fields(clz):
@@ -200,7 +203,10 @@ def _apply_node_fields(clz):
             for rev_map_name, anno_detail in rev_map.items():
                 if not rev_map_name in new_annos:
                     new_annos[rev_map_name] = anno_detail.anno_type
-                    setattr(clz, rev_map_name, _make_dataclass_field(anno_detail.field))
+                    if not hasattr(clz, rev_map_name):
+                        setattr(clz, rev_map_name, 
+                                _make_dataclass_field(anno_detail.field, 
+                                                      anno_default.use_defaults))
     clz.__annotations__ = new_annos
     setattr(clz, DATATREE_SENTIENEL_NAME, nodes)
     return clz
