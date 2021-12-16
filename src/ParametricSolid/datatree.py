@@ -287,6 +287,9 @@ def _initialize_node_instances(clz, instance):
         bound_node = BoundNode(instance, name, node, cur_value)
         setattr(instance, name, bound_node)
 
+# Default values for the dataclass function post Python 3.8.
+_POST_38_DEFAULTS=args(match_args=True, kw_only=False, slots=False).kwds
+
 def _process_datatree(clz, init, repr, eq, order, unsafe_hash, frozen,
                    match_args, kw_only, slots):
 
@@ -311,10 +314,13 @@ def _process_datatree(clz, init, repr, eq, order, unsafe_hash, frozen,
         clz.__post_init__ = override_post_init
 
     _apply_node_fields(clz)
+    
+    values_post_38 = args(match_args=match_args, kw_only=kw_only, slots=slots).kwds
+    values_post_38_differ = dict(
+        ((k, v) for k, v in values_post_38.items() if v != _POST_38_DEFAULTS[k]))
         
     dataclass(clz, init=init, repr=repr, eq=eq, order=order,
-              unsafe_hash=unsafe_hash, frozen=frozen, match_args=match_args,
-              kw_only=kw_only, slots=slots)
+              unsafe_hash=unsafe_hash, frozen=frozen, **values_post_38_differ)
 
     return clz
 
