@@ -40,6 +40,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
 
 import copy
 import sys
+from dataclasses import dataclass, field
 
 
 # Exceptions for dealing with argument checking.
@@ -137,6 +138,12 @@ class Arg(object):
         self.default_value = default_value
         self.docstring = docstring
         self.required = required
+        
+    def to_dataclass_field(self):
+        return field(default=self.default_value)
+    
+    def annotation(self):
+        return (self.name, self.typ)
 
     def default_value_str(self):
         '''Returns the default value as a string otherwise '' if no default provided.'''
@@ -678,48 +685,15 @@ class CodeDumperForPython(CodeDumper):
 
 
 class PoscBase(PoscModifiers):
-    '''Base class for PythonOpenScad public classes. This is a value class that
-    is used to generate an OpenScad primitive.
 
-    Class variable OSC_API_SPEC must be set to a OpenScadApiSpecifier() in
-    derived classes. This will be used to set all attributes. Attributes that are
-    not specified or have no default will be set to None.
-    '''
-    def __init__(self, *values, **kwds):
-        '''Constructor for all PythonOpenScad based classes.
-        '''
-        posc_args = self.OSC_API_SPEC.args
-        if len(values) > len(posc_args):
-            raise TooManyParameters(
-                '%d parameters provided but only %d parameters are specified' %
-                (len(values), len(posc_args)))
-        # Add positional values.
-        for i in range(len(values)):
-            arg = posc_args[i]
-            value = None if values[i] is None else arg.typ(values[i])
-            setattr(self, arg.attr_name, value)
-
-        # Add values from kwds.
-        args_map = self.OSC_API_SPEC.args_map
-        for key, in_value in kwds.items():
-            arg = args_map.get(key, None)
-            if arg is None:
-                raise ParameterNotDefined('Undefined parameter "%s" passed' %
-                                          key)
-            attr_name = arg.attr_name
-            if hasattr(self, attr_name):
-                raise ParameterDefinedMoreThanOnce(
-                    'Parameter "%s" is defined at least twice' % key)
-            value = None if in_value is None else arg.typ(in_value)
-            setattr(self, attr_name, value)
-
-        # Add default values.
-        for arg in posc_args:
-            if not hasattr(self, arg.attr_name):
-                setattr(
-                    self, arg.attr_name, None if arg.default_value is None else
-                    arg.typ(arg.default_value))
-
+    def __post_init__(self):
+        for arg in self.OSC_API_SPEC.args:
+            value = getattr(self, arg.name)
+            if not value is None:
+                if arg.name != arg.attr_name:
+                    delattr(self, arg.name)
+                setattr(self, arg.attr_name, arg.typ(value))
+        
         self.init_children()
         # Object should be fully constructed now.
         self.check_valid()
@@ -919,12 +893,12 @@ def apply_posc_attributes(clazz):
             raise NameCollissionFieldNameReserved(
                 'There exists an attribute \'%s\' for class %s that collides with an arg.'
                 % (arg.name, clazz.__name__))
-    # Create a documented __init__ method with generated doc string.
-    def __init__(self, *args, **kwds):
-        super(clazz, self).__init__(*args, **kwds)
-
-    __init__.__doc__ = clazz.OSC_API_SPEC.generate_init_doc()
-    clazz.__init__ = __init__
+    annotations = dict((arg.annotation() for arg in clazz.OSC_API_SPEC.args))
+    clazz.__annotations__ = annotations
+    for arg in clazz.OSC_API_SPEC.args:
+        setattr(clazz, arg.name, arg.to_dataclass_field())
+    dataclass(repr=False)(clazz)
+    clazz.__init__.__doc__ = clazz.OSC_API_SPEC.generate_init_doc()
     strs = []
     if clazz.__doc__:
         strs.append(clazz.__doc__)
@@ -1124,7 +1098,7 @@ class Sphere(PoscBase):
 class Cube(PoscBase):
     '''Creates a cube with it's bottom corner centered at the origin.'''
     OSC_API_SPEC = OpenScadApiSpecifier('cube', (
-        Arg('size', one_of(float, VECTOR3_FLOAT_DEFAULT_1), [1, 1, 1],
+        Arg('size', one_of(float, VECTOR3_FLOAT_DEFAULT_1), (1, 1, 1),
             'The x, y and z sizes of the cube or rectangular prism', required=True),
         Arg('center', bool_strict, None, 'If true places the center of the cube at the origin.'),),
         OPEN_SCAD_URL_TAIL_PRIMITIVES)
@@ -1134,7 +1108,7 @@ class Cube(PoscBase):
 class Scale(PoscParentBase):
     '''Scales the child nodes. scale'''
     OSC_API_SPEC = OpenScadApiSpecifier('scale', (
-        Arg('v', VECTOR3_FLOAT_DEFAULT_1, [1, 1, 1], 'The (x,y,z) scale factors.'),),
+        Arg('v', one_of(float, VECTOR3_FLOAT_DEFAULT_1), (1, 1, 1), 'The (x,y,z) scale factors.'),),
         OPEN_SCAD_URL_TAIL_TRANSFORMS)
 
 
