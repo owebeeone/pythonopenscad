@@ -919,7 +919,7 @@ def apply_posc_attributes(clazz):
             raise NameCollissionFieldNameReserved(
                 'There exists an attribute \'%s\' for class %s that collides with an arg.'
                 % (arg.name, clazz.__name__))
-    # Create a documented __init__ method witg generated doc string.
+    # Create a documented __init__ method with generated doc string.
     def __init__(self, *args, **kwds):
         super(clazz, self).__init__(*args, **kwds)
 
