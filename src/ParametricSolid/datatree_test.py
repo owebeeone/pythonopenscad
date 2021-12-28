@@ -133,7 +133,7 @@ class Test(unittest.TestCase):
         except TypeError:
             pass
         
-    def test_ignore_default(self):
+    def test_additive_default(self):
         @datatree
         class A:
             anode: Node=Node(LeafType1)

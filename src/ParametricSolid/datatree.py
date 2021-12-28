@@ -3,7 +3,15 @@ Created on 8 Dec 2021
 
 @author: gianni
 
-Provides dataclass like functionality across a composition of datatree objects.
+Provides dataclass functionality with additional fields from other Node
+classes. This is useful when composing a dataclass type from other dataclass
+types but a number of fields are shared and hence there are a large number
+of repeated fields. datatree will pull constructor field definitions and
+add annotations to the enclosed datatree class including any default values
+or other dataclasses.field properties.
+
+This is particularly useful when composing complex object trees that share
+similar concepts.
 '''
 
 from dataclasses import dataclass, field, Field, MISSING
