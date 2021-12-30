@@ -13,6 +13,7 @@ import ParametricSolid.extrude as e
 import ParametricSolid.linear as l
 import numpy as np
 
+EPSILON = 1.e-10
 
 @core.shape('anchorscad/models/basic/box_side_bevels')
 @dataclass
@@ -84,27 +85,31 @@ class BoxSideBevels(core.CompositeShape):
              core.inner_args('centre'),)
 
     def __post_init__(self):
-        maker = core.Box(self.size).cage('shell').at('centre')
+        shape = core.Box(self.size)
+        maker = shape.cage('shell').colour([0, 1, 0, 0.5]).transparent(True).at('centre')
         
         r = self.bevel_radius
-        sx = self.size[0]
-        sy = self.size[1]
-        sz = self.size[2]
-        path = (e.PathBuilder()
-                .move([r, 0])
-                .line([sx - r, 0], 'face_0')
-                .arc_tangent_point([sx, r], name='edge_0_5', metadata=self)
-                .line([sx, sy - r], 'face_5')
-                .arc_tangent_point([sx - r, sy], name='edge_5_3', metadata=self)
-                .line([r, sy], 'face_3')
-                .arc_tangent_point([0, sy - r], name='edge_3_2', metadata=self)
-                .line([0, r], 'face_2')
-                .arc_tangent_point([r, 0], name='edge_3_0', metadata=self)
-                .build())
-        
-        maker.add_at(
-            e.LinearExtrude(path, h=sz).solid('hull').at('face_0', 0.5, 0),
-            'face_edge', 0, 0)
+        if r <= EPSILON:
+            maker.add_at(shape.solid('hull').at('centre'), 'centre')
+        else: 
+            sx = self.size[0]
+            sy = self.size[1]
+            sz = self.size[2]
+            path = (e.PathBuilder()
+                    .move([r, 0])
+                    .line([sx - r, 0], 'face_0')
+                    .arc_tangent_point([sx, r], name='edge_0_5', metadata=self)
+                    .line([sx, sy - r], 'face_5')
+                    .arc_tangent_point([sx - r, sy], name='edge_5_3', metadata=self)
+                    .line([r, sy], 'face_3')
+                    .arc_tangent_point([0, sy - r], name='edge_3_2', metadata=self)
+                    .line([0, r], 'face_2')
+                    .arc_tangent_point([r, 0], name='edge_3_0', metadata=self)
+                    .build())
+            
+            maker.add_at(
+                e.LinearExtrude(path, h=sz).solid('hull').at('face_0', 0.5, 0),
+                'face_edge', 0, 0)
         self.maker = maker
 
 

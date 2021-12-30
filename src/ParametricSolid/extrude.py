@@ -12,8 +12,6 @@ import ParametricSolid.core as core
 import ParametricSolid.linear as l
 import numpy as np
 import pyclipper as pc
-from collections.abc import Iterable
-from ParametricSolid.linear import GVector
 
 
 class DuplicateNameException(Exception):
@@ -38,7 +36,7 @@ class TooFewPointsInPath(Exception):
     '''There were too few points in the given path.'''
 
 
-EPSILON=1e-12
+EPSILON=1e-6
 
 def strict_t_or_none(v, t):
     if v is None or v == 'None':
@@ -82,7 +80,6 @@ class CubicSpline():
         [ -3,  3,  0,  0 ],
         [  1,  0,  0,  0 ]])
     
-    @staticmethod
     def _dcoeffs_builder(dims):
         zero_order_derivative_coeffs=np.array([[1.] * dims, [1] * dims, [1] * dims, [1] * dims])
         derivative_coeffs=np.array([[3.] * dims, [2] * dims, [1] * dims, [0] * dims])

@@ -67,7 +67,7 @@ class Container():
         holes = self._get_container(HOLE_CONTAINER)
         solids = self._get_container(SOLID_CONTAINER)
         
-        force_container = self.mode.has_operator_container
+        force_container = self.mode.has_operator_container or True
         
         if holes:
             if not solids:

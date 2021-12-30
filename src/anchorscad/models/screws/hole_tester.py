@@ -30,10 +30,10 @@ class HoleTester(core.CompositeShape):
     fs: float=None
     
     
-    EXAMPLE_SHAPE_ARGS=core.args(4.00, 
+    EXAMPLE_SHAPE_ARGS=core.args(2.00, 
                                  count=10, 
                                  outer_dia_delta=6, 
-                                 size_range=(-0.05 / 2, 0.2 / 2),
+                                 size_range=(-0.0 / 2, 0.3 / 2),
                                  fn=64)
         
     def __post_init__(self):
