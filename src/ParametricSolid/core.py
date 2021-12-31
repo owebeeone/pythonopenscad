@@ -1715,7 +1715,7 @@ def nameof(name, example_version):
         return ''.join((name, example_version))
     return name
 
-def render_exmaples(module, render_options, consumer):
+def render_exmaples(module, render_options, consumer, graph_consumer):
     '''Scans a module for all Anchorscad shape classes and renders examples.'''
     classes = find_all_shape_classes(module)
     # Lazy import renderer since renderer depends on this.
@@ -1730,10 +1730,11 @@ def render_exmaples(module, render_options, consumer):
                 example_count += 1
                 try:
                     maker, shape = clz.example(e)
-                    poscobj = renderer.render(
+                    poscobj, graph = renderer.render_graph(
                         maker, initial_frame=None, initial_attrs=render_options.render_attributes)
-                    
-                    consumer(poscobj, clz, nameof(e, shape.get_example_version()))
+                    name = nameof(e, shape.get_example_version())
+                    consumer(poscobj, clz, name)
+                    graph_consumer(graph, clz, name)
                 except BaseException as ex:
                     traceback.print_exception(*sys.exc_info(), limit=20) 
                     sys.stderr.write(f'Error while rendering {clz.__name__}:\n{ex}\n')
@@ -1802,11 +1803,31 @@ class ExampleCommandLineRenderer():
         argp.set_defaults(write_files=False)
 
         argp.add_argument(
+            '--no-graph_write', 
+            dest='write_graph_files',
+            action='store_false',
+            help='Produces a graph of shape_names in .dot GraphViz format.')
+        
+        argp.add_argument(
+            '--graph_write', 
+            dest='write_graph_files',
+            action='store_true',
+            help='Produces a graph of shape_names in .dot GraphViz format.')
+        argp.set_defaults(write_graph_files=False)
+        
+        argp.add_argument(
             '--out_file_name', 
             type=str,
             default=os.path.join(
                 'examples_out', 'anchorcad_{class_name}_{example}_example.scad'),
-            help='The python module to be loaded..')
+            help='The OpenSCAD formatted output filename.')
+        
+        argp.add_argument(
+            '--graph_file_name', 
+            type=str,
+            default=os.path.join(
+                'examples_out', 'anchorcad_{class_name}_{example}_example.dot'),
+            help='The GraphViz shape_name graph output filename.')
         
         argp.add_argument(
             '--level', 
@@ -1861,9 +1882,28 @@ class ExampleCommandLineRenderer():
             strv = obj.dumps()
             sys.stdout.write(
                 f'Shape: {clz.__name__} {example_name} {len(strv)}\n')
+
+    def graph_file_writer(self, graph, clz, example_name):
+        fname = self.argp.graph_file_name.format(
+            class_name=clz.__name__, example=example_name)
+        path = pathlib.Path(fname)
+        if self.argp.write_graph_files:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            graph.write(path, example_name)
+        else:
+            if not path.parent in self.set_mkdir and not path.parent.exists():
+                self.set_mkdir.add(path.parent)
+                sys.stderr.write(f'directory "{path.parent}" does not exist. Will be created.\n')
+            strv = repr(graph)
+            sys.stdout.write(
+                f'Shape graph: {clz.__name__} {example_name} {len(strv)}\n')
         
     def invoke_render_examples(self):
-        self.counts = render_exmaples(self.module, self.options, self.file_writer)
+        self.counts = render_exmaples(
+            self.module, 
+            self.options, 
+            self.file_writer,
+            self.graph_file_writer)
     
     def list_shapes(self):
         classes = find_all_shape_classes(self.module)

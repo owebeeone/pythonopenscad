@@ -6,8 +6,9 @@ Created on 4 Jan 2021
 
 import copy
 from dataclasses import dataclass
+from pygments.lexers import graph
 
-from ParametricSolid import core
+from ParametricSolid import core, graph_model
 from ParametricSolid import linear as l
 import pythonopenscad as posc
 
@@ -197,6 +198,7 @@ class ContextEntry():
     mode: core.ModeShapeFrame
     reference_frame: l.GMatrix
     attributes: core.ModelAttributes = None
+    graph_node: object = None
 
 class Context():
 
@@ -209,14 +211,15 @@ class Context():
              mode: core.ModeShapeFrame, 
              reference_frame: l.GMatrix, 
              attributes: core.ModelAttributes,
-             shape_name: str=None):
+             shape_name: str=None,
+             graph_node: object=None):
         container = Container(
             mode, model=self.model, shape_name=shape_name)
         last_attrs = self.get_last_attributes()
         merged_attrs = last_attrs.merge(attributes)
         diff_attrs = last_attrs.diff(merged_attrs)
         
-        entry = ContextEntry(container, mode, reference_frame, merged_attrs)
+        entry = ContextEntry(container, mode, reference_frame, merged_attrs, graph_node)
 
         self.stack.append(entry)
         
@@ -255,6 +258,10 @@ class Context():
                 return self.createNamedUnion(last.mode, 'pop').append(*objs)
             return objs[0]
             
+    def get_current_graph_node(self):
+        if self.stack:
+            return self.stack[-1].graph_node
+        return None
         
     def createNamedUnion(self, mode, name):
         result = self.model.Union()
@@ -281,8 +288,10 @@ class Renderer():
     def __init__(self, initial_frame=None, initial_attrs=None):
         self.context = Context(self)
         self.result = None
+        self.graph = graph_model.DirectedGraph()
+        root_node = self.graph.new_node('root') 
         # Push an item on the stack that will collect the final objects.
-        self.context.push(core.ModeShapeFrame.SOLID, initial_frame, initial_attrs, None)
+        self.context.push(core.ModeShapeFrame.SOLID, initial_frame, initial_attrs, None, root_node)
         
     def close(self):
         count = len(self.context.stack)
@@ -294,7 +303,9 @@ class Renderer():
         return self.result
 
     def push(self, mode, reference_frame, attributes, shape_name):
-        self.context.push(mode, reference_frame, attributes, shape_name)
+        graph_node = self.graph.new_node(shape_name)
+        self.graph.add_edge(self.context.get_current_graph_node(), graph_node)
+        self.context.push(mode, reference_frame, attributes, shape_name, graph_node)
 
     def pop(self):
         self.context.pop()
@@ -309,9 +320,12 @@ class Renderer():
         self.context.get_last_container().add_solid(*object)
 
 
-def render(shape, initial_frame=None, initial_attrs=None):
+def render_graph(shape, initial_frame=None, initial_attrs=None):
     '''Renders a shape and returns the model root object.'''
     renderer = Renderer(initial_frame, initial_attrs)
     shape.render(renderer)
-    return renderer.close()
+    return renderer.close(), renderer.graph
 
+def render(shape, initial_frame=None, initial_attrs=None):
+    '''Renders a shape and returns the model root object.'''
+    return render_graph(shape, initial_frame, initial_attrs)[0]

@@ -14,7 +14,7 @@ from frozendict import frozendict
 from ParametricSolid import linear as l
 from ParametricSolid.core import Box, Colour, Text, Cone, Arrow, Coordinates, \
     Sphere, AnnotatedCoordinates, at_spec, lazy_shape, args, CoordinatesCage
-from ParametricSolid.renderer import render
+from ParametricSolid.renderer import render, render_graph
 import numpy as np
 import pythonopenscad as posc
 
@@ -36,10 +36,13 @@ class CoreTest(unittest.TestCase):
         self.points = []
 
     def write(self, maker, test):
-        obj = render(maker)
+        obj, graph = render_graph(maker)
         filename = f'test_{test}.scad'
         obj.write(filename)
         print(f'written scad file: {filename}')
+        dot_filename = f'test_{test}.dot'
+        graph.write(dot_filename)
+        print(f'written graphviz file: {dot_filename}')
 
     def testSimple(self):
         b1 = Box([1, 1, 1])
@@ -108,13 +111,13 @@ class CoreTest(unittest.TestCase):
         self.write(maker, 'Diff')
         
     def testExamples(self):
-        self.write(Box.example(), 'BoxExample')
-        self.write(Text.example(), 'TextExample')
-        self.write(Sphere.example(), 'SphereExample')
-        self.write(Cone.example(), 'ConeExample')
-        self.write(Arrow.example(), 'ArroeExample')
-        self.write(Coordinates.example(), 'CoordinatesExample')
-        self.write(AnnotatedCoordinates.example(), 'AnnotatedCoordinatesExample')
+        self.write(Box.example()[0], 'BoxExample')
+        self.write(Text.example()[0], 'TextExample')
+        self.write(Sphere.example()[0], 'SphereExample')
+        self.write(Cone.example()[0], 'ConeExample')
+        self.write(Arrow.example()[0], 'ArrowExample')
+        self.write(Coordinates.example()[0], 'CoordinatesExample')
+        self.write(AnnotatedCoordinates.example()[0], 'AnnotatedCoordinatesExample')
         
         
     def testColour(self):
