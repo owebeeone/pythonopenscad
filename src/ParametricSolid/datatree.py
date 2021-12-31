@@ -127,8 +127,8 @@ class Node:
                         f'{clz.__name__}.__init__ parameter name')
                 _update_name_map(
                     clz, expose_dict, from_id, to_id, 'Field name')
-                anno_detail = AnnotationDetails(
-                    clz.__dataclass_fields__[from_id], clz.__annotations__[from_id])
+                anno_detail = self.make_anno_detail(
+                        from_id, clz.__dataclass_fields__[from_id], clz.__annotations__)
                 _update_name_map(
                     clz, expose_rev_dict, to_id, anno_detail, 
                     'Mapped field name')
@@ -142,8 +142,8 @@ class Node:
                             f'is not an {clz.__name__}.__init__ parameter name')
                     _update_name_map(
                         clz, expose_dict, from_id, to_id, 'Field name')
-                    anno_detail = AnnotationDetails(
-                        clz.__dataclass_fields__[from_id], clz.__annotations__[from_id])
+                    anno_detail = self.make_anno_detail(
+                        from_id, clz.__dataclass_fields__[from_id], clz.__annotations__)
                     _update_name_map(
                         clz, expose_rev_dict, to_id, anno_detail,
                         'Mapped field name')
@@ -178,6 +178,11 @@ class Node:
             
         self.expose_map = frozendict(expose_dict)
         self.expose_rev_map = frozendict(expose_rev_dict)
+        
+    def make_anno_detail(self, from_id, dataclass_field, annotations):
+        if from_id in annotations:
+            return AnnotationDetails(dataclass_field, annotations[from_id])
+        return AnnotationDetails(dataclass_field, dataclass_field.type)
         
     def get_rev_map(self):
         return self.expose_rev_map
@@ -298,14 +303,17 @@ def _initialize_node_instances(clz, instance):
     for name, node in nodes.items():
         # The cur-value may contain args specifically for this node.
         cur_value = getattr(instance, name)
-        bound_node = BoundNode(instance, name, node, cur_value)
+        try:
+            bound_node = BoundNode(instance, name, node, cur_value)
+        except RecursionError as e:
+            print(e)
         setattr(instance, name, bound_node)
 
 # Default values for the dataclass function post Python 3.8.
 _POST_38_DEFAULTS=args(match_args=True, kw_only=False, slots=False).kwds
 
 def _process_datatree(clz, init, repr, eq, order, unsafe_hash, frozen,
-                   match_args, kw_only, slots):
+                   match_args, kw_only, slots, chain_post_init):
 
     if OVERRIDE_FIELD_NAME in clz.__annotations__:
         raise ReservedFieldNameException(
@@ -313,19 +321,22 @@ def _process_datatree(clz, init, repr, eq, order, unsafe_hash, frozen,
     clz.__annotations__['override'] = Overrides
     setattr(clz, OVERRIDE_FIELD_NAME, None)
     
-    
+    post_init_chain = ()
+    if chain_post_init and hasattr(clz, '__post_init_chain__'):
+        post_init_chain = clz.__post_init_chain__
+
     if hasattr(clz, '__post_init__'):
-        clz.__multi_post_init__ = clz.__post_init__
+        post_init_func = getattr(clz, '__post_init__')
+        if not hasattr(post_init_func, '__is_datatree_override_post_init__'):
+            post_init_chain = post_init_chain + (post_init_func,)
+    clz.__post_init_chain__ = post_init_chain
         
-    if hasattr(clz, '__multi_post_init__'):    
-        def override_post_init(self):
-            _initialize_node_instances(clz, self)
-            self.__multi_post_init__()
-        clz.__post_init__ = override_post_init
-    else:   
-        def override_post_init(self):
-            _initialize_node_instances(clz, self)
-        clz.__post_init__ = override_post_init
+    def override_post_init(self):
+        _initialize_node_instances(clz, self)
+        for post_init_func in self.__post_init_chain__:
+            post_init_func(self)
+    override_post_init.__is_datatree_override_post_init__ = True
+    clz.__post_init__ = override_post_init
 
     _apply_node_fields(clz)
     
@@ -341,7 +352,7 @@ def _process_datatree(clz, init, repr, eq, order, unsafe_hash, frozen,
 
 def datatree(clz=None, /, *, init=True, repr=True, eq=True, order=False,
               unsafe_hash=False, frozen=False, match_args=True,
-              kw_only=False, slots=False):
+              kw_only=False, slots=False, chain_post_init=True):
     '''Decroator similar to dataclasses.dataclass providing for relaying
     parameters deeper inside a tree of dataclass objects.
     The __post_tree_init()
@@ -350,7 +361,7 @@ def datatree(clz=None, /, *, init=True, repr=True, eq=True, order=False,
     
     def wrap(clz):
         return _process_datatree(clz, init, repr, eq, order, unsafe_hash,
-                              frozen, match_args, kw_only, slots)
+                              frozen, match_args, kw_only, slots, chain_post_init)
 
     # See if we're being called as @datatree or @datatree().
     if clz is None:

@@ -4,7 +4,7 @@ Created on 16 Nov 2021
 @author: gianni
 '''
 
-from dataclasses import dataclass
+from ParametricSolid.datatree import datatree, Node
 
 import ParametricSolid.core as core
 from ParametricSolid.linear import tranY, tranZ, ROTX_180, ROTX_270, \
@@ -27,11 +27,11 @@ DELTA=ot.DELTA
 
 
 @core.shape('anchorscad/models/cases/rpi_case')
-@dataclass
+@datatree
 class RaspberryPiCase(core.CompositeShape):
     '''A Generic Raspberry Pi Case.'''
     outline_model: core.Shape=None
-    outline_model_class: type=RaspberryPi4Outline
+    outline_model_class: Node=Node(RaspberryPi4Outline)
     inner_size_delta: tuple=(3, 2, 22)
     inner_offset: tuple=(-1.5, 1, 3)
     wall_thickness: float=2
@@ -133,7 +133,7 @@ class RaspberryPiCase(core.CompositeShape):
     def __post_init__(self):
         params = core.non_defaults_dict(self, include=('fn', 'fa', 'fs'))
         if self.outline_model is None:
-            self.outline_model = self.outline_model_class(**params)
+            self.outline_model = self.outline_model_class()
         if self.inner_bevel_radius is None:
             self.inner_bevel_radius = self.outline_model.bevel_radius + (-self.inner_offset[0] - self.inner_offset[1]) / 2
         inner_size = GVector(self.inner_size_delta) + GVector(self.outline_model.board_size)
