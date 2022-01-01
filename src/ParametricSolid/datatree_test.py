@@ -6,7 +6,7 @@ Created on 8 Dec 2021
 
 import unittest
 from ParametricSolid.datatree import datatree, args, override, Node
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 @datatree
 class LeafType1():
@@ -144,7 +144,91 @@ class Test(unittest.TestCase):
         
         self.assertEqual(lt1, LeafType1(51, 2))
       
+    def test_inheritance(self):
         
+        @datatree
+        class A():
+            a: float=1
+            leaf: Node=Node(LeafType2)
+            s: list=field(default_factory=lambda : list())
+            
+            def __post_init__(self):
+                self.s.append('A')
+                
+        
+        @datatree
+        class B(A):
+            b: float=1
+            leaf: Node=Node(LeafType2)
+            s: list=field(default_factory=lambda : list())
+            
+            def __post_init__(self):
+                self.s.append('B')
+                
+        self.assertEqual(B().s, ['A', 'B'])
+        self.assertEqual(B().leaf(), LeafType2(leaf_a=10, leaf_b=20, override=None))
+      
+    def test_multiple_inheritance(self):
+        
+        @datatree
+        class A1():
+            a1: float=1
+            s: list=field(default_factory=lambda : list())
+            
+            def __post_init__(self):
+                self.s.append('A1')
+                  
+        @datatree
+        class A2():
+            a2: float=1
+            leaf: Node=Node(LeafType2)
+            s: list=field(default_factory=lambda : list())
+            
+            def __post_init__(self):
+                self.s.append('A2')
+                
+        @datatree
+        class B(A1, A2):
+            b: float=1
+            s: list=field(default_factory=lambda : list())
+            
+            def __post_init__(self):
+                self.s.append('B')
+                
+        self.assertEqual(B().s, ['A1', 'A2', 'B'])
+        self.assertEqual(B().leaf(), LeafType2(leaf_a=10, leaf_b=20, override=None))
+        
+    def test_multiple_inheritance_mix_dataclass_datatree(self):
+        
+        @datatree
+        class A1():
+            a1: float=1
+            leaf: Node=Node(LeafType2)
+            s: list=field(default_factory=lambda : list())
+            
+            def __post_init__(self):
+                self.s.append('A1')
+                  
+        @dataclass
+        class A2():
+            a2: float=1
+            s: list=field(default_factory=lambda : list())
+            
+            def __post_init__(self):
+                self.s.append('A2')
+
+        @datatree
+        class B(A1, A2):
+            b: float=1
+            s: list=field(default_factory=lambda : list())
+            
+            def __post_init__(self):
+                self.s.append('B')
+                
+        self.assertEqual(B().s, ['A1', 'A2', 'B'])
+        self.assertEqual(B().leaf(), LeafType2(leaf_a=10, leaf_b=20, override=None))
+        
+    
 
 if __name__ == "__main__":
     #import sys;sys.argv = ['', 'Test.testName']

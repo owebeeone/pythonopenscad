@@ -221,6 +221,13 @@ def _apply_node_fields(clz):
                                 _make_dataclass_field(anno_detail.field, 
                                                       anno_default.use_defaults))
     clz.__annotations__ = new_annos
+    
+    for bclz in clz.__mro__[-1:0:-1]:
+        bnodes = getattr(bclz, DATATREE_SENTIENEL_NAME, {})
+        for name, val in bnodes.items():
+            if not name in nodes:
+                nodes[name] = val
+    
     setattr(clz, DATATREE_SENTIENEL_NAME, nodes)
     return clz
 
@@ -303,12 +310,10 @@ def _initialize_node_instances(clz, instance):
     for name, node in nodes.items():
         # The cur-value may contain args specifically for this node.
         cur_value = getattr(instance, name)
-        try:
-            bound_node = BoundNode(instance, name, node, cur_value)
-        except RecursionError as e:
-            print(e)
+        bound_node = BoundNode(instance, name, node, cur_value)
         setattr(instance, name, bound_node)
 
+# Provide dataclass compatiability post python 3.8.
 # Default values for the dataclass function post Python 3.8.
 _POST_38_DEFAULTS=args(match_args=True, kw_only=False, slots=False).kwds
 
@@ -322,17 +327,32 @@ def _process_datatree(clz, init, repr, eq, order, unsafe_hash, frozen,
     setattr(clz, OVERRIDE_FIELD_NAME, None)
     
     post_init_chain = ()
-    if chain_post_init and hasattr(clz, '__post_init_chain__'):
-        post_init_chain = clz.__post_init_chain__
+    if chain_post_init:
+        # Collect all the __post_init__ functions being inherited and place
+        # them in a tuple of functions to call.
+        for bclz in clz.__mro__[1:-1]:
+            if hasattr(bclz, '__post_init_chain__'):
+                post_init_chain = post_init_chain + bclz.__post_init_chain__
+
+            if hasattr(bclz, '__post_init__'):
+                post_init_func = getattr(bclz, '__post_init__')
+                if not hasattr(post_init_func, '__is_datatree_override_post_init__'):
+                    if not post_init_func in post_init_chain:
+                        post_init_chain = post_init_chain + (post_init_func,)
 
     if hasattr(clz, '__post_init__'):
         post_init_func = getattr(clz, '__post_init__')
         if not hasattr(post_init_func, '__is_datatree_override_post_init__'):
-            post_init_chain = post_init_chain + (post_init_func,)
+            if not post_init_func in post_init_chain:
+                post_init_chain = post_init_chain + (post_init_func,)
+    
     clz.__post_init_chain__ = post_init_chain
+    clz.__initialize_node_instances_done__ = False
         
     def override_post_init(self):
-        _initialize_node_instances(clz, self)
+        if not self.__initialize_node_instances_done__:
+            self.__initialize_node_instances_done__ = True
+            _initialize_node_instances(clz, self)
         for post_init_func in self.__post_init_chain__:
             post_init_func(self)
     override_post_init.__is_datatree_override_post_init__ = True
