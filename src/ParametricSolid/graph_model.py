@@ -124,7 +124,7 @@ class DirectedGraph:
             tip = node.get_clazz_name()
             tipd = {'tooltip': tip} if tip else {}
             escape_path = cgi.html.escape(node.get_path_str())
-            url=f'javascript:alert(&quot;{escape_path}\\n{tip}&quot;)'
+            url=f'javascript:s=&quot;{escape_path}\\n{tip}&quot;; console.log(s); alert(s);'
             dot.node(node.get_id(), label, href=url, **tipd)
         for edge in self.edges:
             dot.edge(edge.start.get_id(), edge.end.get_id())
