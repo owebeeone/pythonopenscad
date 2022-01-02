@@ -1715,7 +1715,7 @@ def nameof(name, example_version):
         return ''.join((name, example_version))
     return name
 
-def render_exmaples(module, render_options, consumer, graph_consumer):
+def render_examples(module, render_options, consumer, graph_consumer):
     '''Scans a module for all Anchorscad shape classes and renders examples.'''
     classes = find_all_shape_classes(module)
     # Lazy import renderer since renderer depends on this.
@@ -1816,6 +1816,19 @@ class ExampleCommandLineRenderer():
         argp.set_defaults(write_graph_files=False)
         
         argp.add_argument(
+            '--no-svg_write', 
+            dest='write_graph_svg_files',
+            action='store_false',
+            help='Produces a graph of shape_names in .dot and .svg formats.')
+        
+        argp.add_argument(
+            '--svg_write', 
+            dest='write_graph_svg_files',
+            action='store_true',
+            help='Produces a graph of shape_names in .dot and .svg formats.')
+        argp.set_defaults(write_graph_svg_files=False)
+        
+        argp.add_argument(
             '--out_file_name', 
             type=str,
             default=os.path.join(
@@ -1887,9 +1900,12 @@ class ExampleCommandLineRenderer():
         fname = self.argp.graph_file_name.format(
             class_name=clz.__name__, example=example_name)
         path = pathlib.Path(fname)
-        if self.argp.write_graph_files:
+        if self.argp.write_graph_files or self.argp.write_graph_svg_files:
             path.parent.mkdir(parents=True, exist_ok=True)
-            graph.write(path, example_name)
+            if self.argp.write_graph_svg_files:
+                graph.write_svg(path, example_name)
+            else:    
+                graph.write(path, example_name)
         else:
             if not path.parent in self.set_mkdir and not path.parent.exists():
                 self.set_mkdir.add(path.parent)
@@ -1899,7 +1915,7 @@ class ExampleCommandLineRenderer():
                 f'Shape graph: {clz.__name__} {example_name} {len(strv)}\n')
         
     def invoke_render_examples(self):
-        self.counts = render_exmaples(
+        self.counts = render_examples(
             self.module, 
             self.options, 
             self.file_writer,

@@ -3,8 +3,10 @@ Created on 31 Dec 2021
 
 @author: gianni
 '''
+import cgi
 from dataclasses import dataclass, field
 import re
+
 try:
     import graphviz
     _graphviz_imported = True
@@ -99,7 +101,10 @@ class DirectedGraph:
                             'To install, run "pip3 install graphviz" in shell. ')
         dot = graphviz.Digraph(name=name)
         for node in self.nodes:
-            dot.node(node.get_id(), node.get_label())
+            label = node.get_label()
+            escape_label = cgi.html.escape(label)
+            url=f'javascript:alert(&quot;{escape_label}&quot;)'
+            dot.node(node.get_id(), label, href=url)
         for edge in self.edges:
             dot.edge(edge.start.get_id(), edge.end.get_id())
         
