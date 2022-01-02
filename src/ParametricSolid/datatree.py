@@ -326,27 +326,26 @@ def _process_datatree(clz, init, repr, eq, order, unsafe_hash, frozen,
     clz.__annotations__['override'] = Overrides
     setattr(clz, OVERRIDE_FIELD_NAME, None)
     
-    post_init_chain = ()
+    post_init_chain = dict()
     if chain_post_init:
         # Collect all the __post_init__ functions being inherited and place
         # them in a tuple of functions to call.
         for bclz in clz.__mro__[1:-1]:
             if hasattr(bclz, '__post_init_chain__'):
-                post_init_chain = post_init_chain + bclz.__post_init_chain__
+                post_init_chain.update(dict().fromkeys(bclz.__post_init_chain__))
 
             if hasattr(bclz, '__post_init__'):
                 post_init_func = getattr(bclz, '__post_init__')
                 if not hasattr(post_init_func, '__is_datatree_override_post_init__'):
-                    if not post_init_func in post_init_chain:
-                        post_init_chain = post_init_chain + (post_init_func,)
+                    post_init_chain[post_init_func] = None
 
     if hasattr(clz, '__post_init__'):
         post_init_func = getattr(clz, '__post_init__')
         if not hasattr(post_init_func, '__is_datatree_override_post_init__'):
             if not post_init_func in post_init_chain:
-                post_init_chain = post_init_chain + (post_init_func,)
+                post_init_chain[post_init_func] = None
     
-    clz.__post_init_chain__ = post_init_chain
+    clz.__post_init_chain__ = tuple(post_init_chain.keys())
     clz.__initialize_node_instances_done__ = False
         
     def override_post_init(self):

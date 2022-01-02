@@ -228,6 +228,41 @@ class Test(unittest.TestCase):
         self.assertEqual(B().s, ['A1', 'A2', 'B'])
         self.assertEqual(B().leaf(), LeafType2(leaf_a=10, leaf_b=20, override=None))
         
+       
+    def test_multiple_inheritance_mix_dataclass_datatree_no_pi(self):
+        
+        @datatree
+        class A1():
+            a1: float=1
+            leaf: Node=Node(LeafType2)
+            s: list=field(default_factory=lambda : list())
+            
+            def __post_init__(self):
+                self.s.append('A1')
+                  
+        @dataclass
+        class A2():
+            a2: float=1
+            s: list=field(default_factory=lambda : list())
+            
+            def __post_init__(self):
+                self.s.append('A2')
+
+        @datatree
+        class B(A1, A2):
+            b: float=1
+            s: list=field(default_factory=lambda : list())
+            
+        @datatree
+        class C(B):
+            b: float=1
+            
+            def __post_init__(self):
+                self.s.append('C')
+                
+        self.assertEqual(C().s, ['A1', 'A2', 'C'])
+        self.assertEqual(C().leaf(), LeafType2(leaf_a=10, leaf_b=20, override=None))
+        
     
 
 if __name__ == "__main__":
