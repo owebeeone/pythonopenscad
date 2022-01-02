@@ -302,8 +302,8 @@ class Renderer():
         self.context = Context(self) # Prepare for the next object just in case.
         return self.result
 
-    def push(self, mode, reference_frame, attributes, shape_name):
-        graph_node = self.graph.new_node(shape_name)
+    def push(self, mode, reference_frame, attributes, shape_name, clazz_name=None):
+        graph_node = self.graph.new_node(shape_name, clazz_name)
         self.graph.add_edge(self.context.get_current_graph_node(), graph_node)
         self.context.push(mode, reference_frame, attributes, shape_name, graph_node)
 

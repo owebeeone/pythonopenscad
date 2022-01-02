@@ -24,7 +24,9 @@ def _num_gen():
 @dataclass
 class Node:
     label: str
+    clazz_name: str=None
     ident: str=field(default_factory=_num_gen)
+    parent: object=None
     
     def __repr__(self):
         return f'{self.get_id()} [label="{self.get_label()}"];'
@@ -33,6 +35,11 @@ class Node:
         l = str(self.label)
         return re.escape(l)
     
+    def get_clazz_name(self):
+        if not self.clazz_name:
+            return None
+        return re.escape(self.clazz_name)
+    
     def get_id(self):
         label = self.label
         if isinstance(label, tuple):
@@ -40,6 +47,17 @@ class Node:
         if isinstance(label, str) and label.isidentifier():
             return f'{label}_{self.ident}'
         return self.ident
+    
+    def set_parent(self, parent):
+        self.parent = parent
+        
+    def get_path(self):
+        if not self.parent:
+            return ()
+        return self.parent.get_path() + (self.label,)
+    
+    def get_path_str(self):
+        return re.escape(str(self.get_path()))
         
 @dataclass
 class Edge:
@@ -59,13 +77,14 @@ class DirectedGraph:
     nodes: list=field(default_factory=lambda:list())
     edges: list=field(default_factory=lambda:list())
     
-    def new_node(self, label):
-        node = Node(label)
+    def new_node(self, label, clazz_name=None):
+        node = Node(label, clazz_name)
         self.nodes.append(node)
         return node
     
     def add_edge(self, start, end):
         self.edges.append(Edge(start, end))
+        end.set_parent(start)
     
     def get_last_node(self):
         return self.nodes[-1]
@@ -102,9 +121,11 @@ class DirectedGraph:
         dot = graphviz.Digraph(name=name)
         for node in self.nodes:
             label = node.get_label()
-            escape_label = cgi.html.escape(label)
-            url=f'javascript:alert(&quot;{escape_label}&quot;)'
-            dot.node(node.get_id(), label, href=url)
+            tip = node.get_clazz_name()
+            tipd = {'tooltip': tip} if tip else {}
+            escape_path = cgi.html.escape(node.get_path_str())
+            url=f'javascript:alert(&quot;{escape_path}\\n{tip}&quot;)'
+            dot.node(node.get_id(), label, href=url, **tipd)
         for edge in self.edges:
             dot.edge(edge.start.get_id(), edge.end.get_id())
         

@@ -1041,7 +1041,11 @@ class Maker(Shape):
     def render(self, renderer):
         for v in self.entries.values():
             renderer.push(
-                v.mode, v.reference_frame(), v.attributes, v.shapeframe.name)
+                v.mode, 
+                v.reference_frame(), 
+                v.attributes, 
+                v.shapeframe.name,
+                v.shapeframe.shape.__class__.__name__)
             try:
                 v.shape().render(renderer)
             finally:
