@@ -5,7 +5,11 @@ Created on 31 Dec 2021
 '''
 from dataclasses import dataclass, field
 import re
-
+try:
+    import graphviz
+    _graphviz_imported = True
+except:
+    _graphviz_imported = False
     
 _num = 0
 
@@ -81,7 +85,25 @@ class DirectedGraph:
             filename: The filename to create.
         '''
         with open(filename, 'w') as fp:
-            fp.write(self.dump(name))    
+            fp.write(self.dump(name))  
+            
+    def write_svg(self, filename, name='D'):  
+        '''Writes an SVG and DOT files to the given file name.
+        Args:
+            filename: The DOT filename to create, with SVG created
+            by appending ".svg" to this filename.
+        '''
+        if not _graphviz_imported:
+            raise Exception('Unable to generate SVG file. '
+                            'GraphViz must be installed. '
+                            'To install, run "pip3 install graphviz" in shell. ')
+        dot = graphviz.Digraph(name=name)
+        for node in self.nodes:
+            dot.node(node.get_id(), node.get_label())
+        for edge in self.edges:
+            dot.edge(edge.start.get_id(), edge.end.get_id())
+        
+        dot.render(filename, format='svg')
     
     
     
