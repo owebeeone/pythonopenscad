@@ -93,7 +93,7 @@ class Node:
         self.expose_all = not expose_spec if expose_all is None else expose_all
         self.suffix = suffix
         self.prefix = prefix
-        self.init_signature = inspect.signature(clz.__init__)
+        self.init_signature = inspect.signature(clz)
         
         fields_specified = tuple(f for f in expose_spec if isinstance(f, str))
         maps_specified = tuple(f for f in expose_spec if not isinstance(f, str))
@@ -103,9 +103,7 @@ class Node:
             raise NameCollision(f'Field names have multiple specifiers {dupes:r}')
         
         params = self.init_signature.parameters
-        pi = iter(params.keys())
-        next(pi)
-        init_fields = set(pi)
+        init_fields = set(params.keys())
         if self.expose_all:
             # Add all the fields not already specified.
             all_fields = set(name 
@@ -147,7 +145,7 @@ class Node:
                     _update_name_map(
                         clz, expose_rev_dict, to_id, anno_detail,
                         'Mapped field name')
-        else:  # Not a dataclass type.
+        else:  # Not a dataclass type, can be a function.
             
             for from_id in fields_specified:
                 to_id = prefix + from_id + suffix

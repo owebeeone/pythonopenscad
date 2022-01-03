@@ -53,18 +53,22 @@ class RaspberryPiCase(core.CompositeShape):
     upper_fan: object=FanVent(grille_as_cutout=True,
                               vent_thickness=wall_thickness + epsilon,
                               screw_hole_extension=wall_thickness-0.5)
+    
     version: object=core.Text(
         text=f'-{int(time())-1632924118:X}', 
         size=5, 
         depth=0.3 if wall_thickness > 0.5 else wall_thickness * 0.5)
     do_versioned_example: bool=False
     split_box_delta: float=40
+    cageof_node: Node=Node(core.cageof, prefix='rpi_cage_')
+    rpi_cage_properties: core.CageOfProperties=core.CageOfProperties(
+        name='split_box_cage')
     fn: int=None
     fa: float=None
     fs: float=None
     
     EXAMPLE_ANCHORS=(core.surface_args('shell', 'face_centre', 1),)
-    EXAMPLE_SHAPE_ARGS=core.args(fn=36)
+    EXAMPLE_SHAPE_ARGS=core.args(fn=36, rpi_cage_as_cage=False)
     
     # Some anchor locations for locating flange position and sizes.
     USBA2_A2 = core.surface_args(
@@ -149,7 +153,7 @@ class RaspberryPiCase(core.CompositeShape):
         maker.add_at(self.outline_model.hole('outline').at('face_corner', 5, 0),
                      'inner', 'face_corner', 5, 0, pre=translate(self.inner_offset))
 
-        split_box_cage = core.Box(outer_size).cage('split_box_cage').at('centre')
+        split_box_cage = self.cageof_node(core.Box(outer_size)).at('centre')
         split_box_size = outer_size + self.split_box_delta
         split_box = core.Box(split_box_size).solid('split_box').at('centre')
         split_box_cage.add(split_box)

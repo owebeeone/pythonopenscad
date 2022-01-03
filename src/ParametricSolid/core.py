@@ -881,7 +881,46 @@ class ModeShapeFrame():
             ')'
             )
         return ''.join(parts + attr_parts + projectopm_parts)
-        
+    
+@dataclass(frozen=True)
+class CageOfProperties:
+    '''Properties used by
+      shape: Shape to be made a cage.
+      name: The name to be applied to the shape.
+      colour: The colour applied to the shape.
+    '''
+    
+    name: str='cage'
+    colour: tuple=(0.0, 1.0, 0.35, 0.4)
+    
+    def apply(self, shape, as_cage):
+        '''Apply this object's properties to shape.
+        Args:
+              shape: Shape to be made a cage.
+              as_cage: If true, the shape will be treated as a cage and not rendered
+                       If false, it will be rendered transparent with the given colour.
+        '''
+        if as_cage:
+            return shape.cage(self.name)
+        return (shape.solid(self.name)
+                    .colour(self.colour)
+                    .transparent(True))
+
+
+def cageof(shape: Shape=None, 
+           as_cage: bool=True,
+           properties: CageOfProperties=CageOfProperties()):
+    '''Conditionally returns either a cage mode or solid (but transparent)
+    Maker. This can be used as a datateee Node and parameters will become
+    encapsulating class fields.
+    Args:
+      shape: Shape to be made a cage.
+      as_cage: If true, the shape will be treated as a cage and not rendered
+               If false, it will be rendered transparent with the given colour.
+      cage_properties: to be applied.
+    '''
+    return properties.apply(shape, as_cage)
+
 
 @dataclass
 class Maker(Shape):

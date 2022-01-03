@@ -262,7 +262,38 @@ class Test(unittest.TestCase):
                 
         self.assertEqual(C().s, ['A1', 'A2', 'C'])
         self.assertEqual(C().leaf(), LeafType2(leaf_a=10, leaf_b=20, override=None))
+    
+    def test_function(self):
+        al = []
+        bl = []
+        def func(a:set='a', b:str='b'):
+            al.append(a)
+            bl.append(b)
+            
+        @datatree
+        class A:
+            b: str='clzA-b'
+            funcNode: Node=Node(func)
+            
+        A().funcNode()
+        self.assertEqual(al, ['a'])
+        self.assertEqual(bl, ['clzA-b'])
         
+    def test_prefix_node(self):
+        al = []
+        bl = []
+        def func(a:set='a', b:str='b'):
+            al.append(a)
+            bl.append(b)
+            
+        @datatree
+        class A:
+            fb: str='clzA-b'
+            funcNode: Node=Node(func, prefix='f')
+            
+        A().funcNode()
+        self.assertEqual(al, ['a'])
+        self.assertEqual(bl, ['clzA-b'])
     
 
 if __name__ == "__main__":
