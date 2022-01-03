@@ -118,7 +118,9 @@ class DirectedGraph:
             raise Exception('Unable to generate SVG file. '
                             'GraphViz must be installed. '
                             'To install, run "pip3 install graphviz" in shell. ')
-        dot = graphviz.Digraph(name=name)
+        dot = graphviz.Digraph(
+            name=name,
+            graph_attr=(('rankdir', 'LR'),))
         for node in self.nodes:
             label = node.get_label()
             tip = node.get_clazz_name()

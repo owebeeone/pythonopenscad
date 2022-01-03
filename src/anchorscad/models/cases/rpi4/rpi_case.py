@@ -139,7 +139,9 @@ class RaspberryPiCase(core.CompositeShape):
         if self.outline_model is None:
             self.outline_model = self.outline_model_class()
         if self.inner_bevel_radius is None:
-            self.inner_bevel_radius = self.outline_model.bevel_radius + (-self.inner_offset[0] - self.inner_offset[1]) / 2
+            self.inner_bevel_radius = (
+                self.outline_model.bevel_radius 
+                + (-self.inner_offset[0] - self.inner_offset[1]) / 2)
         inner_size = GVector(self.inner_size_delta) + GVector(self.outline_model.board_size)
         outer_size = (inner_size + (self.wall_thickness * 2,) * 3).A[0:3]
         bevel_radius = self.inner_bevel_radius + self.wall_thickness
