@@ -294,6 +294,42 @@ class Test(unittest.TestCase):
         A().funcNode()
         self.assertEqual(al, ['a'])
         self.assertEqual(bl, ['clzA-b'])
+        
+        
+    def test_nested_node(self):
+        
+        @datatree
+        class A():
+            a1: float=1
+            leaf: Node=Node(LeafType2)
+            s: list=field(default_factory=lambda : list())
+            
+            def __post_init__(self):
+                self.s.append('A')
+                
+
+        @datatree
+        class B():
+            node_A: Node=Node(A)
+            
+            def __post_init__(self):
+                self.s.append('B')    
+
+        @datatree
+        class C():
+            node_B: Node=Node(B)
+            
+            def __post_init__(self):
+                self.s.append('C')   
+                
+        c = C()
+        self.assertEqual(c.leaf(), LeafType2(leaf_a=10, leaf_b=20, override=None))
+        self.assertEqual(c.s, ['C'])
+        c.node_B()
+        self.assertEqual(c.s, ['C', 'B'])
+        c.node_A()
+        self.assertEqual(c.s, ['C', 'B', 'A'])
+   
     
 
 if __name__ == "__main__":

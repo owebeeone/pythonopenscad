@@ -59,7 +59,7 @@ class RaspberryPiCase(core.CompositeShape):
         size=5, 
         depth=0.3 if wall_thickness > 0.5 else wall_thickness * 0.5)
     do_versioned_example: bool=False
-    split_box_delta: float=40
+    split_box_delta: float=0
     cageof_node: Node=Node(core.cageof, prefix='rpi_cage_')
     rpi_cage_properties: core.CageOfProperties=core.CageOfProperties(
         name='split_box_cage')

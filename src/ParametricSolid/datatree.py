@@ -187,10 +187,14 @@ class Node:
     
 def _make_dataclass_field(field_obj, use_default):
     value_map = dict((name, getattr(field_obj, name)) for name in FIELD_FIELD_NAMES)
+    default_val = value_map['default']
+    if isinstance(default_val, Node):
+        return field(**value_map), default_val
+        
     if not use_default:
         value_map.pop('default', None)
         value_map.pop('default_factory', None)
-    return field(**value_map)
+    return field(**value_map), None
 
 def _apply_node_fields(clz):
     '''Adds new fields from Node annotations.'''
@@ -215,9 +219,12 @@ def _apply_node_fields(clz):
                 if not rev_map_name in new_annos:
                     new_annos[rev_map_name] = anno_detail.anno_type
                     if not hasattr(clz, rev_map_name):
-                        setattr(clz, rev_map_name, 
-                                _make_dataclass_field(anno_detail.field, 
-                                                      anno_default.use_defaults))
+                        field_default, node_default = _make_dataclass_field(
+                            anno_detail.field, anno_default.use_defaults)
+                        setattr(clz, rev_map_name, field_default)
+                        if node_default:
+                            nodes[rev_map_name] = node_default
+
     clz.__annotations__ = new_annos
     
     for bclz in clz.__mro__[-1:0:-1]:
