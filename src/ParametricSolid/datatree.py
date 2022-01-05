@@ -3,20 +3,24 @@ Created on 8 Dec 2021
 
 @author: gianni
 
-Provides dataclass functionality with additional fields from other Node
-classes. This is useful when composing a dataclass type from other dataclass
-types but a number of fields are shared and hence there are a large number
-of repeated fields. datatree will pull constructor field definitions and
-add annotations to the enclosed datatree class including any default values
-or other dataclasses.field properties.
+Extends dataclass functionality with 'Node' fields pulling fields from 
+classes of members. This is useful when composing a class from other
+classes or functions where the fields or constructor or function parameters 
+become member fields of the composing class. datatree will automate the
+generation of these fields to become dataclass members. datatree will pull 
+constructor field definitions of Node declarations and add annotations to 
+the enclosed datatree class including any default values or other 
+dataclasses.field properties.
 
-This is particularly useful when composing complex object trees that share
-similar concepts.
+Datatree is particularly useful when composing complex object trees that 
+share similar concepts. Especially when constructing complex relationships
+that require the ability to specify a wide range of parameters.
 '''
 
 from dataclasses import dataclass, field, Field, MISSING
 from frozendict import frozendict
 import inspect
+import builtins
 
 FIELD_FIELD_NAMES=tuple(inspect.signature(field).parameters.keys())
 DATATREE_SENTIENEL_NAME='__datatree_nodes__'
@@ -76,24 +80,56 @@ class AnnotationDetails:
         return AnnotationDetails(this_field, anno)
         
 
-@dataclass
+def _field_assign(obj, name, value):
+    builtins.object.__setattr__(obj, name, value)
+
+@dataclass(frozen=True)
 class Node:
     '''A specifier for a datatree node. This allows the specification of how fields
-    from a class initializer is translated from fields in the parent class.'''
-    clz: type
+    from a class initializer is translated from fields in the parent class.
+    '''
+    clz_or_func: type
     use_defaults: bool
     suffix: str
     prefix: str
     expose_all: bool
-    init_signature: tuple
+    init_signature: tuple=field(repr=False)
+    expose_map: dict=field(repr=False)
+    expose_rev_map: dict=field(repr=False)
     
-    def __init__(self, clz, *expose_spec, use_defaults=True, suffix='', prefix='', expose_all=None):
-        self.clz = clz
-        self.use_defaults = use_defaults
-        self.expose_all = not expose_spec if expose_all is None else expose_all
-        self.suffix = suffix
-        self.prefix = prefix
-        self.init_signature = inspect.signature(clz)
+    DEFAULT_PRESERVE_SET=frozendict()
+    
+    def __init__(self, 
+                 clz_or_func, 
+                 *expose_spec, 
+                 use_defaults=True, 
+                 suffix='', 
+                 prefix='', 
+                 expose_all=None,
+                 preserve=None):
+        '''Args:
+            clz_or_func: A class or function for parameter binding.
+            *expose_spec: A list of names and dictionaries for mapping. If these
+              are specified, only these fields are mapped unless expose_all is
+              set.
+            use_defaults: Allows use of defaults otherwise defaults should be
+              specified elsewhere.
+            suffix: The suffix to apply to field names.
+            prefix: the prefix to apply to field names.
+            expose_all: Forces the mapping of all fields even if the expose_spec
+              excluded the field name.
+            preserve: A set of names that are not prefixed or suffixed.
+        '''
+        _field_assign(self, 'clz_or_func', clz_or_func)
+        _field_assign(self, 'use_defaults', use_defaults)
+        expose_all = not expose_spec if expose_all is None else expose_all
+        _field_assign(self, 'expose_all', expose_all)
+        _field_assign(self, 'suffix', suffix)
+        _field_assign(self, 'prefix', prefix)
+        _field_assign(self, 'init_signature', inspect.signature(clz_or_func))
+        
+        if preserve is None:
+            preserve = self.DEFAULT_PRESERVE_SET
         
         fields_specified = tuple(f for f in expose_spec if isinstance(f, str))
         maps_specified = tuple(f for f in expose_spec if not isinstance(f, str))
@@ -116,19 +152,22 @@ class Node:
         
         # If we have a dataclass decorated class, use the __dataclass_fields__
         # to fill in this class,
-        if hasattr(clz, '__dataclass_fields__'):
+        if hasattr(clz_or_func, '__dataclass_fields__'):
             for from_id in fields_specified:
-                to_id = prefix + from_id + suffix
+                if from_id in preserve:
+                    to_id = from_id
+                else:
+                    to_id = prefix + from_id + suffix
                 if not from_id in init_fields:
                     raise MappedFieldNameNotFound(
                         f'Field name "{from_id}" is not an '
-                        f'{clz.__name__}.__init__ parameter name')
+                        f'{clz_or_func.__name__}.__init__ parameter name')
                 _update_name_map(
-                    clz, expose_dict, from_id, to_id, 'Field name')
+                    clz_or_func, expose_dict, from_id, to_id, 'Field name')
                 anno_detail = self.make_anno_detail(
-                        from_id, clz.__dataclass_fields__[from_id], clz.__annotations__)
+                        from_id, clz_or_func.__dataclass_fields__[from_id], clz_or_func.__annotations__)
                 _update_name_map(
-                    clz, expose_rev_dict, to_id, anno_detail, 
+                    clz_or_func, expose_rev_dict, to_id, anno_detail, 
                     'Mapped field name')
                 
             for map_specified in maps_specified:
@@ -137,13 +176,13 @@ class Node:
                     if not from_id in init_fields:
                         raise MappedFieldNameNotFound(
                             f'Field name "{from_id}" mapped to "{to_id}" '
-                            f'is not an {clz.__name__}.__init__ parameter name')
+                            f'is not an {clz_or_func.__name__}.__init__ parameter name')
                     _update_name_map(
-                        clz, expose_dict, from_id, to_id, 'Field name')
+                        clz_or_func, expose_dict, from_id, to_id, 'Field name')
                     anno_detail = self.make_anno_detail(
-                        from_id, clz.__dataclass_fields__[from_id], clz.__annotations__)
+                        from_id, clz_or_func.__dataclass_fields__[from_id], clz_or_func.__annotations__)
                     _update_name_map(
-                        clz, expose_rev_dict, to_id, anno_detail,
+                        clz_or_func, expose_rev_dict, to_id, anno_detail,
                         'Mapped field name')
         else:  # Not a dataclass type, can be a function.
             
@@ -152,12 +191,12 @@ class Node:
                 if not from_id in init_fields:
                     raise MappedFieldNameNotFound(
                         f'Field name "{from_id}" is not an '
-                        f'{clz.__name__}.__init__ parameter name')
+                        f'{clz_or_func.__name__}.__init__ parameter name')
                 _update_name_map(
-                    clz, expose_dict, from_id, to_id, 'Field name')
+                    clz_or_func, expose_dict, from_id, to_id, 'Field name')
                 anno_detail = AnnotationDetails.from_init_param(from_id, params)
                 _update_name_map(
-                    clz, expose_rev_dict, to_id, anno_detail, 
+                    clz_or_func, expose_rev_dict, to_id, anno_detail, 
                     'Mapped field name')
                 
             for map_specified in maps_specified:
@@ -166,16 +205,16 @@ class Node:
                     if not from_id in init_fields:
                         raise MappedFieldNameNotFound(
                             f'Field name "{from_id}" mapped to "{to_id}" '
-                            f'is not an {clz.__name__}.__init__ parameter name')
+                            f'is not an {clz_or_func.__name__}.__init__ parameter name')
                     _update_name_map(
-                        clz, expose_dict, from_id, to_id, 'Field name')
+                        clz_or_func, expose_dict, from_id, to_id, 'Field name')
                     anno_detail = AnnotationDetails.from_init_param(from_id, params)
                     _update_name_map(
-                        clz, expose_rev_dict, to_id, anno_detail,
+                        clz_or_func, expose_rev_dict, to_id, anno_detail,
                         'Mapped field name')
             
-        self.expose_map = frozendict(expose_dict)
-        self.expose_rev_map = frozendict(expose_rev_dict)
+        _field_assign(self, 'expose_map', frozendict(expose_dict))
+        _field_assign(self, 'expose_rev_map', frozendict(frozendict(expose_rev_dict)))
         
     def make_anno_detail(self, from_id, dataclass_field, annotations):
         if from_id in annotations:
@@ -212,6 +251,10 @@ def _apply_node_fields(clz):
         anno_default = getattr(clz, name)
         if isinstance(anno_default, Field):
             anno_default = anno_default.default
+        else:
+            # By default don't compare node fields as they don't add
+            # any value.
+            setattr(clz, name, field(default=anno_default, compare=False))
         if isinstance(anno_default, Node):
             nodes[name] = anno_default
             rev_map = anno_default.get_rev_map()
@@ -237,13 +280,14 @@ def _apply_node_fields(clz):
     return clz
 
 
+@dataclass(repr=False)
 class BoundNode:
-    def __init__(self, parent, name, node, instance_values):
-        self.parent = parent
-        self.name = name
-        self.node = node
-        self.instance_values = instance_values
-        
+    '''The result of binding a Node to a class instance. Once a datatree 
+    object is created, all Node fields become BoundNode fields.'''
+    parent: object
+    name: str
+    node: Node=field(compare=False)
+    instance_values: object
 
     def __call__(self, *args, **kwds):
         # Resolve parameter values.
@@ -252,19 +296,20 @@ class BoundNode:
         # 2. Passed in parameters
         # 3. Parent field values
         passed_bind = self.node.init_signature.bind_partial(*args, **kwds).arguments
-        clz = self.node.clz
+        clz_or_func = self.node.clz_or_func
         ovrde = (self.parent.override.get_override(self.name)
                  if self.parent.override
                  else MISSING)
         if not ovrde is MISSING:
-            ovrde_bind = ovrde.bind_signature(self.node.init_signature)
+            ovrde_bind = ovrde.bind_signature(
+                self.node.init_signature)
             
             for k, v in passed_bind.items():
                 if not k in ovrde_bind:
                     ovrde_bind[k] = v
             
             if ovrde.clazz:
-                clz = ovrde.clazz 
+                clz_or_func = ovrde.clazz 
         else:
             ovrde_bind = passed_bind
         
@@ -273,14 +318,16 @@ class BoundNode:
             if not fr in ovrde_bind:
                 ovrde_bind[fr] = getattr(self.parent, to)
         
-        
-        return clz(**ovrde_bind)
+        return clz_or_func(**ovrde_bind)
+    
+    def __repr__(self):
+        return f'BoundNode(node={repr(self.node)})'
+
     
 @dataclass
 class Exposures:
     items: tuple=None
-    
-    
+
     
 class Overrides:
     
@@ -291,7 +338,6 @@ class Overrides:
         return self.kwds.get(name, MISSING)
     
 def override(**kwds):
-    
     return Overrides(kwds)
 
 
@@ -329,7 +375,7 @@ def _process_datatree(clz, init, repr, eq, order, unsafe_hash, frozen,
         raise ReservedFieldNameException(
             f'Reserved field name {OVERRIDE_FIELD_NAME} used by class {clz.__name__}')
     clz.__annotations__['override'] = Overrides
-    setattr(clz, OVERRIDE_FIELD_NAME, None)
+    setattr(clz, OVERRIDE_FIELD_NAME, field(default=None, repr=False))
     
     post_init_chain = dict()
     if chain_post_init:
@@ -377,10 +423,8 @@ def _process_datatree(clz, init, repr, eq, order, unsafe_hash, frozen,
 def datatree(clz=None, /, *, init=True, repr=True, eq=True, order=False,
               unsafe_hash=False, frozen=False, match_args=True,
               kw_only=False, slots=False, chain_post_init=True):
-    '''Decroator similar to dataclasses.dataclass providing for relaying
-    parameters deeper inside a tree of dataclass objects.
-    The __post_tree_init()
-    
+    '''Python decorator similar to dataclasses.dataclass providing for relaying
+    parameters deeper inside a tree of objects.
     '''
     
     def wrap(clz):
@@ -394,4 +438,3 @@ def datatree(clz=None, /, *, init=True, repr=True, eq=True, order=False,
 
     # We're called as @datatree without parens.
     return wrap(clz)
-

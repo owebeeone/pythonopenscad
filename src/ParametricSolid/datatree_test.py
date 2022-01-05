@@ -329,7 +329,26 @@ class Test(unittest.TestCase):
         self.assertEqual(c.s, ['C', 'B'])
         c.node_A()
         self.assertEqual(c.s, ['C', 'B', 'A'])
-   
+        
+    def test_preserve(self):
+        
+        @datatree
+        class A:
+            a: int=1
+            b: int=2
+            keep1: int=3
+            keep2: int=4
+        
+        @datatree
+        class B:
+            nodeA: Node=Node(
+                A, prefix='aa_', preserve={'keep1', 'keep2'})
+            a_obj: A=None
+            
+            def __post_init__(self):
+                self.a_obj = self.nodeA()
+        
+        self.assertEqual(B(), B(aa_a=1, aa_b=2, keep1=3, keep2=4))
     
 
 if __name__ == "__main__":
