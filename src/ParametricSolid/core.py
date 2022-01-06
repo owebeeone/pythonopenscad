@@ -51,6 +51,7 @@ class ShapeNode(Node):
     '''A datatree Node that by default preserves the names of the
     standard metadata variables (fn, fs and fa)'''
     DEFAULT_PRESERVE_SET={'fn', 'fs', 'fa'}
+    DEFAULT_EXPOSE_IF_AVAIL={'fn', 'fs', 'fa'}
 
 def args(*args, **kwds):
     '''Returns a tuple or args and kwds passed to this function.'''
@@ -87,7 +88,6 @@ class AnchorArgs(tuple):
     @property
     def args(self):
         return self[1]
-    
     
 
 def surface_args(*args, **kwds):

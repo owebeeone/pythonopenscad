@@ -378,7 +378,6 @@ class Test(unittest.TestCase):
         self.assertFalse(hasattr(B(), 'aa_keep2'))
     
 
-
 if __name__ == "__main__":
     #import sys;sys.argv = ['', 'Test.testName']
     unittest.main()
