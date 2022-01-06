@@ -19,6 +19,7 @@ import traceback
 from frozendict import frozendict
 
 from ParametricSolid import linear as l
+from ParametricSolid.datatree import datatree, Node
 import numpy as np
 import pythonopenscad as posc
 
@@ -45,7 +46,11 @@ class IncorrectAnchorArgs(CoreEception):
 
 class InvalidNumberOfParametersException(CoreEception):
     '''Number of parameters provided is incorrect.'''
-
+    
+class ShapeNode(Node):
+    '''A datatree Node that by default preserves the names of the
+    standard metadata variables (fn, fs and fa)'''
+    DEFAULT_PRESERVE_SET={'fn', 'fs', 'fa'}
 
 def args(*args, **kwds):
     '''Returns a tuple or args and kwds passed to this function.'''

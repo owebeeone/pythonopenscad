@@ -97,7 +97,10 @@ class Node:
     expose_map: dict=field(repr=False)
     expose_rev_map: dict=field(repr=False)
     
+    # The default value for the preserve init parameter. Derived classes can override.
     DEFAULT_PRESERVE_SET=frozendict()
+    # The default value for the expose_if_avail init parameter. Derived classes can override.
+    DEFAULT_EXPOSE_IF_AVAIL=frozendict()
     
     def __init__(self, 
                  clz_or_func, 
@@ -106,6 +109,7 @@ class Node:
                  suffix='', 
                  prefix='', 
                  expose_all=None,
+                 expose_if_avail=None,
                  preserve=None):
         '''Args:
             clz_or_func: A class or function for parameter binding.
@@ -118,6 +122,7 @@ class Node:
             prefix: the prefix to apply to field names.
             expose_all: Forces the mapping of all fields even if the expose_spec
               excluded the field name.
+            expose_if_avail: The set of field to expose if they're available.
             preserve: A set of names that are not prefixed or suffixed.
         '''
         _field_assign(self, 'clz_or_func', clz_or_func)
@@ -130,13 +135,16 @@ class Node:
         
         if preserve is None:
             preserve = self.DEFAULT_PRESERVE_SET
+            
+        if expose_if_avail is None:
+            expose_if_avail = self.DEFAULT_EXPOSE_IF_AVAIL
         
         fields_specified = tuple(f for f in expose_spec if isinstance(f, str))
         maps_specified = tuple(f for f in expose_spec if not isinstance(f, str))
         fields_in_maps = tuple(f for m in maps_specified for f in m.keys())
         dupes, all_specified = _dupes_and_allset(fields_specified + fields_in_maps) 
         if dupes:
-            raise NameCollision(f'Field names have multiple specifiers {dupes:r}')
+            raise NameCollision(f'Field names have multiple specifiers {dupes!r}')
         
         params = self.init_signature.parameters
         init_fields = set(params.keys())
@@ -146,7 +154,12 @@ class Node:
                              for name in init_fields
                              if name != OVERRIDE_FIELD_NAME)
             fields_specified = set(fields_specified).union(all_fields - all_specified)
-        
+        elif expose_if_avail:
+            all_fields = set(name 
+                             for name in init_fields
+                             if name != OVERRIDE_FIELD_NAME)
+            fields_specified = set(fields_specified).union(
+                all_fields.intersection(expose_if_avail) - all_specified)
         expose_dict = {}
         expose_rev_dict = {}
         

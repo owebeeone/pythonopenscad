@@ -339,6 +339,7 @@ class Test(unittest.TestCase):
             keep1: int=3
             keep2: int=4
         
+        # Names keep1 and keep2 are preserved.
         @datatree
         class B:
             nodeA: Node=Node(
@@ -350,6 +351,33 @@ class Test(unittest.TestCase):
         
         self.assertEqual(B(), B(aa_a=1, aa_b=2, keep1=3, keep2=4))
     
+    def test_if_avail(self):
+        
+        @datatree
+        class A:
+            a: int=1
+            b: int=2
+            keep1: int=3
+            keep2: int=4
+        
+        # Name keep1 is exposed even if not specified.
+        @datatree
+        class B:
+            nodeA: Node=Node(
+                A, 'a', {'b': 'bb'}, prefix='aa_', 
+                expose_if_avail={'keep1', 'NotThere'})
+            a_obj: A=None
+            
+            def __post_init__(self):
+                self.a_obj = self.nodeA()
+        
+        self.assertEqual(B(), B(aa_a=11, bb=44, aa_keep1=33))
+        self.assertEqual(A(a=11, b=11, keep1=33), 
+                         B(aa_a=11, bb=44, aa_keep1=33).a_obj)
+        self.assertFalse(hasattr(B(), 'aa_b'))
+        self.assertFalse(hasattr(B(), 'aa_keep2'))
+    
+
 
 if __name__ == "__main__":
     #import sys;sys.argv = ['', 'Test.testName']

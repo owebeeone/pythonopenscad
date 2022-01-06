@@ -20,7 +20,7 @@ class ScrewTab(core.CompositeShape):
     dia: float=2.6 # Screw M size
     width: float=dia * 1.9 + 2
     depth: float=dia * 1.5 / 2 + 1
-    height: float=8 
+    h: float=8 
     screw: type=CountersinkSelfTapHole
     fn: int=36
     
@@ -32,10 +32,10 @@ class ScrewTab(core.CompositeShape):
             self.width 
             if self.width < self.depth * 2 
             else self.depth * 2)
-        tab = BoxCylinder((self.depth, self.width, self.height), fn=self.fn)
+        tab = BoxCylinder((self.depth, self.width, self.h), fn=self.fn)
         screw =self.screw(
             dia = self.dia,
-            thru_len=self.height, 
+            thru_len=self.h, 
             tap_len=0, 
             outer_delta=None,
             outer_dia=max_outer_dia, 
