@@ -306,7 +306,6 @@ class Test(unittest.TestCase):
             
             def __post_init__(self):
                 self.s.append('A')
-                
 
         @datatree
         class B():
