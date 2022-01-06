@@ -49,7 +49,7 @@ class InvalidNumberOfParametersException(CoreEception):
     
 class ShapeNode(Node):
     '''A datatree Node that by default preserves the names of the
-    standard metadata variables (fn, fs and fa)'''
+    standard metadata variables (fn, fs and fa) and exposes them if available.'''
     DEFAULT_PRESERVE_SET={'fn', 'fs', 'fa'}
     DEFAULT_EXPOSE_IF_AVAIL={'fn', 'fs', 'fa'}
 
@@ -69,8 +69,7 @@ def surface_anchor_renderer(maker, anchor_args):
     maker.add_at(
         AnnotatedCoordinates(label=label)
             .solid(label).at('origin'), *anchor_args[0], **anchor_args[1])
-    
-    
+
 def inner_anchor_renderer(maker, anchor_args):
     '''Helper to crate example anchor coordinates inside an object.'''
     maker.add_at(AnnotatedCoordinates().solid(args_to_str(anchor_args)).at('origin'),
