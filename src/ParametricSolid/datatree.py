@@ -293,14 +293,18 @@ def _apply_node_fields(clz):
     return clz
 
 
-@dataclass(repr=False)
+@dataclass(frozen=True, repr=False)
 class BoundNode:
     '''The result of binding a Node to a class instance. Once a datatree 
     object is created, all Node fields become BoundNode fields.'''
     parent: object
     name: str
     node: Node=field(compare=False)
-    instance_values: object
+    instance_node: object=field(repr=False)
+    chained_node: object=field(default=None, repr=False)
+    
+    def chain(self, new_parent, node):
+        return BoundNode(new_parent, self.name, self.node, node, self)
 
     def __call__(self, *args, **kwds):
         # Resolve parameter values.
@@ -374,7 +378,14 @@ def _initialize_node_instances(clz, instance):
     for name, node in nodes.items():
         # The cur-value may contain args specifically for this node.
         cur_value = getattr(instance, name)
-        bound_node = BoundNode(instance, name, node, cur_value)
+        if isinstance(cur_value, BoundNode):
+            bound_node = cur_value.chain(instance, node)
+        elif isinstance(cur_value, Node):
+            bound_node = BoundNode(instance, name, node, cur_value)
+        else:
+            # Parent node has passed something other than a Node or a chained BoundNode.
+            # Assume they just want to have it called.
+            return
         setattr(instance, name, bound_node)
 
 # Provide dataclass compatiability post python 3.8.

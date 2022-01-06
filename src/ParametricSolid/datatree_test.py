@@ -375,8 +375,64 @@ class Test(unittest.TestCase):
                          B(aa_a=11, bb=44, aa_keep1=33).a_obj)
         self.assertFalse(hasattr(B(), 'aa_b'))
         self.assertFalse(hasattr(B(), 'aa_keep2'))
+        
+    def test_exposed_node(self):
+        s = []
+        def f(a: int=3):
+            s.append(a)
+        
+        @datatree
+        class A:
+            a: int=1
+            f_node: Node=Node(f)
+            
+            def thing(self):
+                self.f_node()
+        
+        # Name keep1 is exposed even if not specified.
+        @datatree
+        class B:
+            nodeA: Node=Node(A, 'f_node')
+            a_obj: A=None
+            
+            def __post_init__(self):
+                self.a_obj = self.nodeA()
+                
+        b = B()
+        b.a_obj.f_node()
+        self.assertEqual(b.a_obj, A(a=1))
+        
+        b.f_node(a=4)
+        self.assertEqual(s, [1, 4])
+        
     
+    def test_other_bound_nodes(self):
+        s1 = []
+        def f1(a: int=3):
+            s1.append(a)
+            
+        s2 = []
+        def f2(a: int=3):
+            s2.append(a)
+        
+        @datatree
+        class A:
+            a: int=1
+            f1_node: Node=Node(f1)
+            
+            def thing(self):
+                self.f1_node()
+        
+        A().thing()
+        self.assertEqual(s1, [1])  
+        self.assertEqual(s2, [])  
+        
+        # If neither a Node or a BoundNode is passed a a node, it is just called.
+        A(f1_node=f2).thing()
+        self.assertEqual(s1, [1])  
+        self.assertEqual(s2, [3]) 
+
 
 if __name__ == "__main__":
-    #import sys;sys.argv = ['', 'Test.testName']
+    #import sys;sys.argv = ['', 'Test.test_exposed_node']
     unittest.main()
