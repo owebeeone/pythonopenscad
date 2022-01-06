@@ -19,7 +19,7 @@ import traceback
 from frozendict import frozendict
 
 from ParametricSolid import linear as l
-from ParametricSolid.datatree import datatree, Node
+from ParametricSolid.datatree import datatree, Node, BoundNode
 import numpy as np
 import pythonopenscad as posc
 
@@ -904,6 +904,8 @@ class CageOfProperties:
               as_cage: If true, the shape will be treated as a cage and not rendered
                        If false, it will be rendered transparent with the given colour.
         '''
+        if isinstance(shape, BoundNode):
+            shape = shape()
         if as_cage:
             return shape.cage(self.name)
         return (shape.solid(self.name)
