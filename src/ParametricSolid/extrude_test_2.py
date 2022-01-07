@@ -58,7 +58,7 @@ class ExtrudeTest2(unittest.TestCase):
                                [ 5.        , -5.        ],
                                [ 5.        ,  5.        ]],))  
 
-    def xtestArcTangentPoint_2(self):
+    def testArcTangentPoint_2(self):
         r_bevel = 5
         r_sphere = 15
         sin_t = r_bevel / (r_sphere + r_bevel)
@@ -98,7 +98,21 @@ class ExtrudeTest2(unittest.TestCase):
                            [ 1.87077655e+01, -4.33728971e-02],
                            [ 1.93649167e+01,  2.66453526e-15],
                            [ 0.00000000e+00,  0.00000000e+00]],))
+        
+    def test_stroke(self):
+        path = (extrude.PathBuilder()
+            .move([0, 0], direction=[0, -1])
+            .stroke(2, degrees=-120, name='stoke1')
+            .stroke(2, degrees=-120, name='stoke2')
+            .stroke(2, degrees=-120, name='stoke3')
+            .build())
 
+        iterable_assert(self.assertAlmostEqual, path.polygons(TestMetaData()),
+                        ([[ 0.00000000e+00,  0.00000000e+00],
+                          [-1.73205081e+00,  1.00000000e+00],
+                          [-6.66133815e-16,  2.00000000e+00],
+                          [ 7.77156117e-16,  6.66133815e-16]],))
+        
 
 if __name__ == "__main__":
     #import sys;sys.argv = ['', 'Test.testName']

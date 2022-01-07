@@ -559,6 +559,7 @@ class PathBuilder():
     class _MoveTo(OpBase):
         '''Move to position.'''
         point: np.array
+        dir: np.array=None
         prev_op: object=field(
             default=None, 
             init=True, 
@@ -577,10 +578,10 @@ class PathBuilder():
             map_builder.append((self,))
             
         def direction(self, t):
-            return None
+            return self.dir
             
         def direction_normalized(self, t):
-            return None
+            return _normalize(self.direction(t))
         
         def normal2d(self, t, dims=[0, 1]):
             return None
@@ -781,16 +782,36 @@ class PathBuilder():
     def last_op(self):
         return self.ops[-1] if self.ops else None
         
-    def move(self, point, name=None):
+    def move(self, point, name=None, direction=None):
         if not self.multi and self.ops:
             raise MoveNotAllowedException(f'Move is not allowed in non multi-path builder.')
+        if direction:
+            direction = np.array(LIST_2_FLOAT(direction))
         return self.add_op(self._MoveTo(np.array(LIST_2_FLOAT(point)),
+                                        dir=direction,
                                         prev_op=self.last_op(), name=name))
                         
     def line(self, point, name=None):
+        '''A line from the current point to the given point is added.'''
         assert len(self.ops) > 0, "Cannot line to without starting point"
         return self.add_op(self._LineTo(np.array(LIST_2_FLOAT(point)), 
                                         prev_op=self.last_op(), name=name))
+        
+    def stroke(self, length, degrees=0, radians=None, xform=None, name=None):
+        '''A line from the current point to a length away given
+        by following the tangent from the previous op transformed by rotating
+        by angle or a GMatrix xform.'''
+        assert len(self.ops) > 0, "Cannot line to without starting point"
+        d_vector = to_gvector(self.last_op().direction_normalized(1.0))
+        if degrees or radians:
+            d_vector = l.rotZ(degrees=degrees, radians=radians) * d_vector
+            
+        if xform:
+            d_vector = xform * d_vector
+            
+        point = d_vector * length + to_gvector(self.last_op().lastPosition())
+        
+        return self.line(point.A[:2], name)
              
     def spline(self, points, name=None, metadata=None, 
                cv_len=(None, None), degrees=(0, 0), radians=(0, 0), rel_len=None):
