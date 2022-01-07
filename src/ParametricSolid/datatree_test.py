@@ -389,7 +389,6 @@ class Test(unittest.TestCase):
             def thing(self):
                 self.f_node()
         
-        # Name keep1 is exposed even if not specified.
         @datatree
         class B:
             nodeA: Node=Node(A, 'f_node')
@@ -404,6 +403,35 @@ class Test(unittest.TestCase):
         
         b.f_node(a=4)
         self.assertEqual(s, [1, 4])
+        
+    
+    def test_exposed_node_different_names(self):
+        s = []
+        def f(a: int=3):
+            s.append(a)
+        
+        @datatree
+        class A:
+            a: int=1
+            f_node: Node=Node(f)
+            
+            def thing(self):
+                self.f_node()
+        
+        @datatree
+        class B:
+            nodeA: Node=Node(A, 'f_node', {'a': 'a1'}, expose_all=True)
+            a_obj: A=None
+            
+            def __post_init__(self):
+                self.a_obj = self.nodeA()
+                
+        b = B()
+        b.a_obj.f_node()
+        self.assertEqual(b.a_obj, A(a=1))
+        
+        b.f_node(a=b.a1)  # TODO: Use mapping to automatically find a in b.
+        self.assertEqual(s, [1, 1])
         
     
     def test_other_bound_nodes(self):
@@ -434,5 +462,5 @@ class Test(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    #import sys;sys.argv = ['', 'Test.test_exposed_node']
+    #import sys;sys.argv = ['', 'Test.test_exposed_node_different_names']
     unittest.main()
