@@ -57,6 +57,16 @@ def args(*args, **kwds):
     '''Returns a tuple or args and kwds passed to this function.'''
     return (args, kwds)
 
+def kwargs_chain_pre_post(kwargs, pre=None, post=None):
+    new_kwargs = None
+    params = {'pre': pre, 'post': post}
+    for k, v in params.items():
+        if v:
+            new_kwargs = dict(kwargs) if new_kwargs is None else new_kwargs
+            oldpost = kwargs.get(k, l.IDENTITY)
+            kwargs[k] = oldpost * v
+    return new_kwargs if new_kwargs else kwargs
+
 def args_to_str(args):
     '''Returns a string that represents the arguments passed into args().'''
     positional_bits = ', '.join(repr(v) for v in args[0])
@@ -65,33 +75,48 @@ def args_to_str(args):
 
 def surface_anchor_renderer(maker, anchor_args):
     '''Helper to crate example anchor coordinates on surface of objects.'''
-    label = args_to_str(anchor_args)
+    label = args_to_str(anchor_args.args)
+    xform = anchor_args.apply(maker)
     maker.add_at(
         AnnotatedCoordinates(label=label)
-            .solid(label).at('origin'), *anchor_args[0], **anchor_args[1])
+            .solid(label).at('origin'), post=xform)
 
 def inner_anchor_renderer(maker, anchor_args):
     '''Helper to crate example anchor coordinates inside an object.'''
-    maker.add_at(AnnotatedCoordinates().solid(args_to_str(anchor_args)).at('origin'),
-                 *anchor_args[0], **anchor_args[1])
+    xform = anchor_args.apply(maker)
+    maker.add_at(
+        AnnotatedCoordinates().solid(args_to_str(anchor_args.args)).at('origin'),
+                 post=xform)
 
-class AnchorArgs(tuple):
+@dataclass
+class AnchorArgs(list):
+    args_: tuple
+    scale_anchor: object=None
+    
     def apply(self, maker):
-        return apply_at_args(
-            maker, *self[1][0], **self[1][1])
+        result = apply_at_args(
+            maker, *self.args_[1][0], **self.args_[1][1])
+        if not self.scale_anchor is None:
+            result = result * l.scale(self.scale_anchor)
+        return result
         
     @property
     def name(self):
-        return self[1][0][0]
+        return self.args_[1][0][0]
         
     @property
     def args(self):
-        return self[1]
+        return self.args_[1]
     
+    @property
+    def func(self):
+        return self.args_[0]
 
-def surface_args(*args, **kwds):
+
+def surface_args(*args_, scale_anchor=None, **kwds):
     '''Defines an instance of an anchor example.'''
-    return AnchorArgs((surface_anchor_renderer, (args, kwds)))
+    return AnchorArgs((surface_anchor_renderer, (args_, kwds)),
+                      scale_anchor=scale_anchor)
 
 def inner_args(*args, **kwds):
     '''Defines an instance of an anchor example for anchors inside an object.'''
@@ -675,7 +700,7 @@ class Shape(ShapeNamer, ShapeMaker):
             maker = shape.solid(name).projection(l.IDENTITY)            
             
             for entry in example_params.anchors:
-                entry[0](maker, entry[1])
+                entry.func(maker, entry)
         except BaseException:
             traceback.print_exception(*sys.exc_info(), limit=20) 
             sys.stderr.write(
@@ -897,7 +922,7 @@ class CageOfProperties:
     name: str='cage'
     colour: tuple=(0.0, 1.0, 0.35, 0.4)
     
-    def apply(self, shape, as_cage):
+    def apply(self, shape, as_cage, name=None):
         '''Apply this object's properties to shape.
         Args:
               shape: Shape to be made a cage.
@@ -906,15 +931,18 @@ class CageOfProperties:
         '''
         if isinstance(shape, BoundNode):
             shape = shape()
+        if name is None:
+            name = self.name
         if as_cage:
-            return shape.cage(self.name)
-        return (shape.solid(self.name)
+            return shape.cage(name)
+        return (shape.solid(name)
                     .colour(self.colour)
                     .transparent(True))
 
 
 def cageof(shape: Shape=None, 
            as_cage: bool=True,
+           cage_name: object=None,
            properties: CageOfProperties=CageOfProperties()):
     '''Conditionally returns either a cage mode or solid (but transparent)
     Maker. This can be used as a datateee Node and parameters will become
@@ -925,8 +953,12 @@ def cageof(shape: Shape=None,
                If false, it will be rendered transparent with the given colour.
       cage_properties: to be applied.
     '''
-    return properties.apply(shape, as_cage)
+    return properties.apply(shape, as_cage, name=cage_name)
 
+class CageOfNode(Node):
+
+    def __init__(self, *args_, prefix=''):
+        super().__init__(cageof, 'as_cage', *args_, prefix=prefix)
 
 @dataclass
 class Maker(Shape):
