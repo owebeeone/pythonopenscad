@@ -67,6 +67,9 @@ def _vlen(v):
 def _normalize(v):
     return v / _vlen(v)
 
+def extentsof(p):
+    return np.array((p.min(axis=0), p.max(axis=0)))
+
 
 @dataclass(frozen=True)
 class CubicSpline():
@@ -173,20 +176,17 @@ class CubicSpline():
         l = np.sqrt(np.sum(vr**2))
         return vr / l
     
-    def extents(self):
+    def extremes(self):
         roots = self.curve_maxima_minima_t()
-        
-        minima_maxima = []
-
-        start = self.p[0]
-        end = self.p[3]
-        for i in range(self.dimensions):
-            v = [float(start[i]), float(end[i])]
-            v.extend(tuple((self.evaluate(t)[i] for t in roots[i] if t >= 0 and t <= 1),))
-            minima_maxima.append([np.min(v), np.max(v)])
+        t_values = [0.0, 1.0]
+        for v in roots.values():
+            t_values.extend(v)
+        t_values.sort()
+        return np.array(tuple(self.evaluate(t) for t in t_values if t >= 0 and t <= 1))
     
-        return np.transpose(minima_maxima)
-
+    def extents(self):
+        extr = self.extremes()
+        return extentsof(extr)
 
 def _normal_of_2d(v1, v2, dims=[0, 1]):
     vr = np.array(v1)
@@ -219,20 +219,14 @@ class Path():
         return self.name_map.get(name, None)
     
     def extents(self):
-        extents = None
-        for op in self.ops:
-            cur = op.extents()
-            if cur is None:
-                continue
-            cur = np.transpose(op.extents())
-            if extents is None:
-                extents = cur
-            else:
-                extents = [
-                    [min(v1[0], v2[0]), max(v1[1], v2[1])] 
-                    for v1, v2 in zip(extents, cur)]
-                
-        return np.transpose(extents)
+        itr = iter(self.ops)
+        extnts = extentsof(next(itr).extremes())
+        for op in itr:
+            ops_extremes = op.extremes()
+            cated = np.concatenate((ops_extremes, extnts))
+            extnts = extentsof(cated)
+
+        return extnts
     
     def build(self, meta_data):
         path_builder = []
@@ -451,6 +445,12 @@ def solve_circle_points_radius(p1, p2, r, left=True):
     centre = (p1 + p2) / 2 + dir * opp_side
     return (centre, r)
 
+def _less_than(a, b):
+    return (a - b) < EPSILON
+
+def _greater_than(a, b):
+    return (a - b) > EPSILON
+
 @dataclass()
 class CircularArc:
     start_angle: float  # Angles in radians
@@ -470,26 +470,33 @@ class CircularArc:
         ddt = self.derivative(t)
         return np.array([-ddt[1], ddt[0]])
     
-    def extents(self):
+    def extremes(self):
+        result = [self.evaluate(0.0), self.evaluate(1.0)]
+        swa = self.sweep_angle
+        angle_dir = 1. if swa >= 0 else -1.
+        
         sa = self.start_angle
         ea = sa + self.sweep_angle
-        r = self.radius
-        result = [
-            np.array([r * np.sin(sa), r * np.cos(sa) ]) + self.centre,
-            np.array([r * np.sin(ea), r * np.cos(ea) ]) + self.centre]
-        
         sai = sa * 2 / np.pi
-        eai = sa * 2 / np.pi
-        angle_dir = 1. if self.sweep_angle >= 0 else -1.
-        count = 1
-        while count < (eai - sai) * angle_dir and count < 4:
-            _, ai = np.modf(sai + count * angle_dir)
+        eai = ea * 2 / np.pi
+        
+        end_test = _less_than if angle_dir > 0 else _greater_than
+        ai = np.ceil(sai) if angle_dir > 0 else np.floor(sai)
+        if np.abs(ai - sai) < EPSILON:
+            ai += angle_dir
+        r = self.radius
+        count = 0
+        while end_test(ai, eai) and count < 4:
             angle = ai * (np.pi / 2)
             result.append(
-                np.array([r * np.sin(angle), r * np.cos(angle) ]) + self.centre)
-            ++count
+                r * np.array([np.cos(angle), np.sin(angle) ]) + self.centre)
+            count += 1
+            ai += angle_dir
 
-        return np.transpose(result)
+        return result
+    
+    def extents(self):
+        extentsof(self.extremes())
 
     def evaluate(self, t):
         angle = t * self.sweep_angle + self.start_angle
@@ -540,11 +547,13 @@ class PathBuilder():
         def normal2d(self, t, dims=[0, 1]):
             return _normal_of_2d(self.prev_op.lastPosition(), self.point, dims)
         
-        def extents(self):
+        def extremes(self):
             p0 = self.prev_op.lastPosition()
             p1 = self.point
-            return np.transpose(
-                list(([p0[k], p1[k]] if p0[k] < p1[k] else [p1[k], p0[k]]) for k in range(len(p0))))
+            return np.array((p0, p1))
+        
+        def extents(self):
+            return extentsof(self.extremes())
             
         def position(self, t):
             return self.point + (t - 1) * self.direction(0)
@@ -586,8 +595,12 @@ class PathBuilder():
         def normal2d(self, t, dims=[0, 1]):
             return None
         
+        def extremes(self):
+            p = self.point
+            return np.array((p, p))
+        
         def extents(self):
-            return None
+            return np.array([self.point, self.point])
         
         def position(self, t):
             return self.point  # Move is associated only with the move point. 
@@ -645,6 +658,9 @@ class PathBuilder():
         
         def normal2d(self, t, dims=[0, 1]):
             return self.spline.normal2d(t, dims)
+        
+        def extremes(self):
+            return self.spline.extremes()
         
         def extents(self):
             return self.spline.extents()
@@ -739,6 +755,9 @@ class PathBuilder():
         def normal2d(self, t, dims=[0, 1]):
             return self.arcto.normal2d(t)
         
+        def extremes(self):
+            return self.arcto.extremes()
+        
         def extents(self):
             return self.arcto.extents()
         
@@ -797,14 +816,22 @@ class PathBuilder():
         return self.add_op(self._LineTo(np.array(LIST_2_FLOAT(point)), 
                                         prev_op=self.last_op(), name=name))
         
-    def stroke(self, length, degrees=0, radians=None, xform=None, name=None):
+    def stroke(self,
+               length, 
+               degrees=0, 
+               radians=None, 
+               sinr_cosr=None,
+               xform=None, 
+               name=None):
         '''A line from the current point to a length away given
         by following the tangent from the previous op transformed by rotating
         by angle or a GMatrix xform.'''
         assert len(self.ops) > 0, "Cannot line to without starting point"
         d_vector = to_gvector(self.last_op().direction_normalized(1.0))
         if degrees or radians:
-            d_vector = l.rotZ(degrees=degrees, radians=radians) * d_vector
+            d_vector = l.rotZ(degrees=degrees, 
+                              radians=radians, 
+                              sinr_cosr=sinr_cosr) * d_vector
             
         if xform:
             d_vector = xform * d_vector
@@ -868,10 +895,13 @@ class PathBuilder():
                                  radius,
                                  sweep_angle_degrees=0,
                                  sweep_angle_radians=None,
+                                 sweep_sinr_cosr=None,
+                                 sweep_direction=None,
                                  side=False, 
                                  degrees=0, 
                                  radians=None, 
                                  direction=None, 
+                                 sinr_cosr=None,
                                  name=None,
                                  metadata=None):
         '''Defines a circular arc starting at the previous operator's end point
@@ -883,7 +913,8 @@ class PathBuilder():
             direction = _normalize(direction)
         
         t_dir = (
-            l.rotZ(degrees=degrees, radians=radians) * to_gvector(direction))
+            l.rotZ(degrees=degrees, radians=radians, sinr_cosr=sinr_cosr)
+            * to_gvector(direction))
         direction = t_dir.A[0:len(direction)]
         centre, _ = solve_circle_tangent_radius(start, direction, radius, side)
 
@@ -893,15 +924,19 @@ class PathBuilder():
         
         if sweep_angle_radians is None:
             sweep_angle_radians = sweep_angle_degrees * np.pi / 180
-            
-        sin_sweep = np.sin(sweep_angle_radians)
-        cos_sweep = np.cos(sweep_angle_radians)
+        
+        if not sweep_sinr_cosr is None:
+            sin_sweep, cos_sweep = sweep_sinr_cosr
+            path_direction = sweep_direction
+        else:
+            sin_sweep = np.sin(sweep_angle_radians)
+            cos_sweep = np.cos(sweep_angle_radians)
+            path_direction = sweep_angle_radians >= 0
         
         cos_e = cos_s * cos_sweep - sin_s * sin_sweep
         sin_e = sin_s * cos_sweep + sin_sweep * cos_s
         last = np.array([cos_e * radius + centre[0], sin_e * radius + centre[1]])
         
-        path_direction = sweep_angle_degrees >= 0
         
         return self.add_op(self._ArcTo(
             last, centre, path_direction, 

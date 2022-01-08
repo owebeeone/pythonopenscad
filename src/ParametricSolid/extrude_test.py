@@ -31,8 +31,6 @@ class ExtrudeTest(TestCase):
 
     def testBezierExtents2D(self):
         b = extrude.CubicSpline([[0, 0], [1, -1], [1, 1], [0, 1]])
-        extents = b.extents()
-        expects = [[0.0, 0.75], [-0.28, 1.0]]
         iterable_assert(self.assertAlmostEqual, b.extents(), [[0., -0.28], [ 0.75, 1]])
         minima = b.curve_maxima_minima_t()
         self.assertAlmostEqual(b.normal2d(minima[0][0])[1], 1, 5)

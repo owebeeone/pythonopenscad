@@ -556,8 +556,10 @@ def clean(v, epsilon=1.e-13):
         return 0
     return v
 
-def rotZ(degrees=90, radians=None):
+def rotZ(degrees=90, radians=None, sinr_cosr=None):
     '''Returns a GMatrix that causes a rotation about Z a given number of degrees.'''
+    if sinr_cosr:
+        return rotZSinCos(clean(sinr_cosr[0]), clean(sinr_cosr[1]))
     if radians is None:
         radians = np.pi * (degrees / 180.0)
     cosr = clean(np.cos(radians))
@@ -575,8 +577,10 @@ ROTZ_90 = rotZ(90)
 ROTZ_180 = rotZ(180)
 ROTZ_270 = rotZ(-90)
 
-def rotX(degrees=90, radians=None):
+def rotX(degrees=90, radians=None, sinr_cosr=None):
     '''Returns a GMatrix that causes a rotation about X a given number of degrees.'''
+    if sinr_cosr:
+        return rotXSinCos(clean(sinr_cosr[0]), clean(sinr_cosr[1]))
     if radians is None:
         radians = np.pi * (degrees / 180.0)
     cosr = clean(np.cos(radians))
@@ -592,7 +596,9 @@ ROTX_90 = rotX(90)
 ROTX_180 = rotX(180)
 ROTX_270 = rotX(-90)
     
-def rotY(degrees=90, radians=None):
+def rotY(degrees=90, radians=None, sinr_cosr=None):
+    if sinr_cosr:
+        return rotYSinCos(clean(sinr_cosr[0]), clean(sinr_cosr[1]))
     '''Returns a GMatrix that causes a rotation about Y a given number of degrees.'''
     if radians is None:
         radians = np.pi * (degrees / 180.0)
@@ -617,7 +623,7 @@ def normalize(v):
     return v.N
 
 def rotVSinCos(v, sinr, cosr):
-    '''Returns a GMatrix that causes a rotation about an axis vector V a given the sin and cos
+    '''Returns a GMatrix that causes a rotation about an axis vector v a given the sin and cos
     of rotation angle.'''
     u = normalize(v)
     ux = u.x
@@ -637,8 +643,10 @@ def rotVSinCos(v, sinr, cosr):
          [uxz * lcosr - uy * sinr, uyz * lcosr + ux * sinr, cosr + uz2 * lcosr, 0],
          [0.0, 0, 0, 1]]))
 
-def rotV(v, degrees=90, radians=None):
+def rotV(v, degrees=90, radians=None, sinr_cosr=None):
     '''Returns a GMatrix that causes a rotation about an axis vector V a given number of degrees.'''
+    if sinr_cosr:
+        return rotVSinCos(clean(sinr_cosr[0]), clean(sinr_cosr[1]))
     if radians is None:
         radians = np.pi * (degrees / 180.0)
     cosr = clean(np.cos(radians))
