@@ -40,8 +40,8 @@ class TactileSwitchTL1105Leg(core.CompositeShape):
     
     
     EXAMPLE_SHAPE_ARGS=core.args(as_cage=False)
-    EXAMPLE_ANCHORS=(core.surface_args('body_edge', scale_anchor=0.3),
-                     core.surface_args('cage', 'face_centre', 5, scale_anchor=0.3),)
+    EXAMPLE_ANCHORS=(core.surface_args('body_edge', scale_anchor=0.2),
+                     core.surface_args('cage', 'face_centre', 5, scale_anchor=0.2),)
      
     def __post_init__(self):
         
@@ -61,7 +61,6 @@ class TactileSwitchTL1105Leg(core.CompositeShape):
                     self.thickness, 
                     sweep_sinr_cosr=norm_bend,
                     sweep_direction=False,
-                    side=False,
                     metadata=self.metadata,
                     name='bc1')
                 .stroke(vlen, name='b1')
@@ -70,7 +69,6 @@ class TactileSwitchTL1105Leg(core.CompositeShape):
                     self.thickness, 
                     sweep_sinr_cosr=norm_bend,
                     sweep_direction=False,
-                    side=False,
                     metadata=self.metadata,
                     name='bc3')
                 .stroke(self.lx_tail, name='b3')
@@ -81,7 +79,6 @@ class TactileSwitchTL1105Leg(core.CompositeShape):
                     self.thickness, 
                     sweep_sinr_cosr=norm_bend_back_x2,
                     sweep_direction=False,
-                    side=False,
                     metadata=self.metadata,
                     name='tc1')
                 .stroke(vlen, name='t1')
@@ -158,9 +155,10 @@ class TactileSwitch(core.CompositeShape):
                             cage_name=('lead_pos_cage', i)).at('face_edge', 0, 0),
                          *f, post=l.ROTX_90)
             for j in range(2):
-                # Map the lead number to the same as the datasheet.
-                button_no = (3, 1, 2, 4)[j + i * 2]
-                #button_no = 1 + i + 2 * (i == j)
+                # Map the lead number to shown on the datasheet.
+                # Leads 1&2 are connected, so are 3&4.
+                # button_no = (3, 1, 2, 4)[j + i * 2]
+                button_no = 1 + i + 2 * (i == j)
                 maker.add_at(lead_shape.named_shape(
                                 ('lead', button_no), leads_mode)
                              .at('body_edge', rh=1 - j),

@@ -927,6 +927,8 @@ class PathBuilder():
         
         if not sweep_sinr_cosr is None:
             sin_sweep, cos_sweep = sweep_sinr_cosr
+            assert not sweep_direction is None, 'If sweep_sinr_cosr is specified a ' \
+                'sweep_direction must also be specified.'
             path_direction = sweep_direction
         else:
             sin_sweep = np.sin(sweep_angle_radians)

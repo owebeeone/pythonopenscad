@@ -32,8 +32,8 @@ class ButtonCap(core.CompositeShape):
     extruder: Node=core.ShapeNode(extrude.RotateExtrude, {})
     
     EXAMPLE_SHAPE_ARGS=core.args(fn=128, bc_cage_as_cage=False)
-    EXAMPLE_ANCHORS=((core.surface_args('cage', 'base'),
-                      core.surface_args('cage', 'top'),))
+    EXAMPLE_ANCHORS=((core.surface_args('base'),
+                      core.surface_args('top'),))
     
     def __post_init__(self):
         start_point = [self.shaft_diameter / 2.0 + self.shaft_taper[0], 0]
@@ -80,11 +80,13 @@ class ButtonCap(core.CompositeShape):
             .line(start_point, 'base')).build()
             
         shape = self.extruder(path)
-        maker = shape.solid('button_cap').at('centre_line', 1.0, post=l.ROTX_270)
-        maker.add_at(self.cageof_node().at('top'), 
-                     'centre_line', 1.0, post=l.ROTX_270)
+        maker = self.cageof_node().at('base', post=l.ROTX_180)
+        maker.add_at(shape.solid('button_cap')
+                     .at('centre_line', 1.0, post=l.ROTX_270),
+                     'top')
         
         self.maker = maker
+    
 
 if __name__ == '__main__':
     core.anchorscad_main(False)
