@@ -11,6 +11,7 @@ import ParametricSolid.linear as l
 import numpy as np
 
 LIST_2_FLOAT = l.list_of(l.strict_float, len_min_max=(2, 3), fill_to_min=0.0)
+EPSILON=1.0e-3
 
 def _vlen(v):
     return np.sqrt(np.sum(v**2))
@@ -22,7 +23,7 @@ def _normal_len(v):
 
 @core.shape('anchorscad.models.components.switches.tactile_tl1105_leg')
 @datatree
-class TactileSwitchTL1105Leg(core.CompositeShape):
+class TactileSwitchTL1105Lead(core.CompositeShape):
     
     # Numbers taken from datasheet (mostly).
     max_w: float=7.90
@@ -105,14 +106,20 @@ class TactileSwitchTL1105Leg(core.CompositeShape):
         return self.maker.at('b0', rh=rh) * l.ROTZ_90
     
     @core.anchor('Centre of hole for lead.')
-    def lead_hole_pos(self):
-        return self.maker.at('cage', 'face_centre', 2,
-                             ) * l.tranZ(-self.lx_body) * l.ROTZ_90
+    def lead_hole_pos(self, at_end=False):
+        if at_end:
+            tran = 0
+            face = 5
+        else:
+            tran = -self.lx_body
+            face=2
+        return self.maker.at('cage', 'face_centre', face,
+                             ) * l.tranZ(tran) * l.ROTZ_90
     
 
-@core.shape('anchorscad.models.components.switches.tactile_body')
+@core.shape('anchorscad.models.components.switches.tactile_switch_tl1105')
 @datatree
-class TactileSwitch(core.CompositeShape):
+class TactileSwitchTL1105(core.CompositeShape):
     '''
     <description>
     '''
@@ -122,7 +129,7 @@ class TactileSwitch(core.CompositeShape):
     shaft_h: float=6.3
     between_leads: float=3.5
     shaft_node: Node=core.ShapeNode(core.Cone, prefix='shaft_')
-    leada_node: Node=core.ShapeNode(TactileSwitchTL1105Leg, prefix='leada_')
+    leada_node: Node=core.ShapeNode(TactileSwitchTL1105Lead, prefix='leada_')
     leads_as_cages: bool=False
 
     leadx_cage_node: Node=core.CageOfNode(prefix='leadx_cage_')
@@ -131,8 +138,10 @@ class TactileSwitch(core.CompositeShape):
     EXAMPLE_SHAPE_ARGS=core.args(leadx_cage_as_cage=True,
                                  leada_as_cage=True,
                                  leads_as_cages=False)
-    EXAMPLE_ANCHORS=tuple(core.surface_args(('lead', i + 1), 'lead_hole_pos', 
+    EXAMPLE_ANCHORS=tuple(core.surface_args('lead_hole', i + 1, at_end=True,
                                        scale_anchor=0.3) for i in range(4))
+    
+    LEADS_COUNT=4
     
     def __post_init__(self):
         maker = core.Box(self.body_size).solid('body').at('centre')
@@ -157,10 +166,10 @@ class TactileSwitch(core.CompositeShape):
             for j in range(2):
                 # Map the lead number to shown on the datasheet.
                 # Leads 1&2 are connected, so are 3&4.
-                # button_no = (3, 1, 2, 4)[j + i * 2]
-                button_no = 1 + i + 2 * (i == j)
+                # lead_no = (3, 1, 2, 4)[j + i * 2]
+                lead_no = 1 + i + 2 * (i == j)
                 maker.add_at(lead_shape.named_shape(
-                                ('lead', button_no), leads_mode)
+                                ('lead', lead_no), leads_mode)
                              .at('body_edge', rh=1 - j),
                              ('lead_pos_cage', i), 'face_edge', 0, 0, j, 
                              post=l.ROTX_270)
@@ -168,9 +177,155 @@ class TactileSwitch(core.CompositeShape):
         self.maker = maker
         
 
-    @core.anchor('An example anchor specifier.')
-    def side(self, *args, **kwds):
-        return self.maker.at('face_edge', *args, **kwds)
+    @core.anchor('The hole location for the specified lead number.')
+    def lead_hole(self, lead_no, at_end=False):
+        return self.maker.at(('lead', lead_no), 'lead_hole_pos', at_end=True)
+    
+    @core.anchor('The hole location for the specified lead number.')
+    def switch_top(self):
+        return self.maker.at('face_centre', 4)
+    
+    @core.anchor('The base of the switch.')
+    def switch_base(self):
+        return self.maker.at('face_centre', 1)
+
+
+@core.shape('anchorscad.models.components.switches.tactile_tl59_lead')
+@datatree
+class TactileSwitchTL59Lead(core.CompositeShape):
+    
+    # Numbers taken from datasheet (mostly).
+    size: tuple=(9.45 - 3.92, 0.30, 0.7)
+    cage_size: tuple=None
+    
+    
+    EXAMPLE_SHAPE_ARGS=core.args()
+    EXAMPLE_ANCHORS=()
+     
+    def __post_init__(self):
+        shape = core.Box(self.size)
+        maker = shape.solid('terminal').at()
+        self.maker = maker 
+
+    @core.anchor('Body edge.')
+    def body_edge(self, rh=0.5):
+        return self.maker.at('face_edge', 2, 0, rh=rh)
+    
+    @core.anchor('Centre of hole for lead.')
+    def lead_hole_pos(self, at_end=False):
+        return self.maker.at('face_centre', 5 if at_end else 2)    
+
+
+@core.shape('anchorscad.models.components.switches.tactile_switch_tl59')
+@datatree
+class TactileSwitchTL59(core.CompositeShape):
+    '''
+    <description>
+    '''
+    body_size: tuple=(6, 6, 3.6)
+    shaft_r_base: float=3.5 / 2
+    shaft_r_top: float=3.08 / 2
+    shaft_h: float=6.3
+    between_leads: float=5.0
+    between_lead_centres: float=5.0
+    shaft_node: Node=core.ShapeNode(core.Cone, prefix='shaft_')
+    leada_node: Node=core.ShapeNode(TactileSwitchTL59Lead, prefix='leada_')
+    leads_as_cages: bool=False
+
+    leadx_cage_node: Node=core.CageOfNode(prefix='leadx_cage_')
+    fn: int=32
+    
+    EXAMPLE_SHAPE_ARGS=core.args(leadx_cage_as_cage=True)
+    EXAMPLE_ANCHORS=tuple(core.surface_args('lead_hole', i + 1, at_end=True, 
+                                       scale_anchor=0.3) for i in range(2))
+    
+    LEADS_COUNT=2
+    
+    def __post_init__(self):
+        maker = core.Box(self.body_size).solid('body').at('centre')
+        
+        shaft = self.shaft_node()
+        maker.add_at(shaft.solid('shaft').at('base'),
+                     'face_centre', 4, post=l.ROTX_180)
+        
+        lead_pos_cage = core.Box([self.between_leads, 1, 1])
+        
+        lead_shape = self.leada_node()
+        leads_mode = (core.ModeShapeFrame.CAGE 
+                      if self.leads_as_cages 
+                      else core.ModeShapeFrame.SOLID)
+        maker.add_at(self.leadx_cage_node(
+                        lead_pos_cage, 
+                        cage_name=('lead_pos_cage', 0)).at('face_centre', 0),
+                     'face_centre', 1, post=l.ROTX_180)
+
+        for i in range(2):
+            lead_no = 1 + i
+            maker.add_at(lead_shape.named_shape(
+                            ('lead', lead_no), leads_mode)
+                         .at('lead_hole_pos'),
+                         ('lead_pos_cage', 0), 'face_edge', 2 + 3 * i, 1 + 2 * i, 
+                         post=l.ROTX_90)
+        self.maker = maker
+
+    @core.anchor('The hole location for the specified lead number.')
+    def lead_hole(self, lead_no, at_end=False):
+        return self.maker.at(('lead', lead_no), 'lead_hole_pos', at_end=at_end)
+    
+    @core.anchor('The hole location for the specified lead number.')
+    def switch_top(self):
+        return self.maker.at('face_centre', 4) * l.ROTZ_90
+    
+    @core.anchor('The base of the switch.')
+    def switch_base(self):
+        return self.maker.at('face_centre', 1) * l.ROTZ_90
+    
+
+@core.shape('anchorscad.models.components.switches.tactile_switch_outline')
+@datatree
+class TactileSwitchOutline(core.CompositeShape):
+    '''
+    <description>
+    '''
+    
+    leads_as_cages: bool=True
+    switch_shape: core.Shape=TactileSwitchTL59()
+    lead_hole_h: float=10
+    lead_hole_r: float=1.4
+    lead_hole_node: Node=core.ShapeNode(core.Cylinder, 'h', 'r', prefix='lead_hole_')
+    lead_hole_scale: l.GMatrix=l.scale((0.7, 1, 1))
+    add_push_hole: bool=True
+    push_hole_h: float=10
+    push_hole_r: float=1.4
+    push_hole_node: Node=core.ShapeNode(core.Cylinder, 'h', 'r', prefix='push_hole_')
+
+    fn: int=16
+    
+    EXAMPLE_SHAPE_ARGS=core.args(switch_shape=TactileSwitchTL1105())
+    EXAMPLE_ANCHORS=tuple(core.surface_args('lead_hole', i + 1, at_end=True, 
+                                       scale_anchor=0.3) for i in range(2))
+    
+    def __post_init__(self):
+        shape = self.switch_shape
+        
+        maker = shape.solid('switch').at()
+        
+        lead_hole_shape = self.lead_hole_node()
+        
+        scale_xform=self.lead_hole_scale
+        for i in range(shape.LEADS_COUNT):
+            maker.add_at(
+                lead_hole_shape.solid(('lead_hole_shape', i)).at('top'),
+                'lead_hole', i + 1, at_end=True, post=scale_xform)
+            
+        if self.add_push_hole:
+            push_hole_shape = self.push_hole_node()
+            maker.add_at(
+                push_hole_shape.solid('push_hole_shape').at('top'), 
+                'switch_base', post=l.ROTX_180 * l.tranZ(EPSILON))
+            
+        self.maker = maker
+
 
 if __name__ == '__main__':
     core.anchorscad_main(False)

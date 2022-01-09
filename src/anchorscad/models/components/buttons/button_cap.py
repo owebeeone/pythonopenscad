@@ -17,7 +17,7 @@ class ButtonCap(core.CompositeShape):
     '''
     <description>
     '''
-    r: float=17.4
+    r: float=17.4 / 2
     h: float=5.7
     shaft_diameter: float=3.09
     shaft_taper: tuple=(0.3, 0.8)
@@ -29,7 +29,7 @@ class ButtonCap(core.CompositeShape):
     cageof_node: Node=Node(core.cageof, prefix='bc_cage_')
     spline1_meta_data: object=core.ModelAttributes().with_fn(15)
     spline2_meta_data: object=core.ModelAttributes().with_fn(5)
-    extruder: Node=core.ShapeNode(extrude.RotateExtrude, {})
+    extruder: Node=core.ShapeNode(extrude.RotateExtrude, {'degrees': 'ex_degrees'})
     
     EXAMPLE_SHAPE_ARGS=core.args(fn=128, bc_cage_as_cage=False)
     EXAMPLE_ANCHORS=((core.surface_args('base'),
