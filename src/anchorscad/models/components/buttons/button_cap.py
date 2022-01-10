@@ -17,15 +17,15 @@ class ButtonCap(core.CompositeShape):
     '''
     <description>
     '''
-    r: float=17.4 / 2
-    h: float=5.7
+    button_r: float=17.4 / 2
+    button_h: float=5.7
     shaft_diameter: float=3.09
     shaft_taper: tuple=(0.3, 0.8)
     shaft_height: float=4.5
     edge_height: float=4.5
     rim_radius: float=0.75
     bottom_flange: tuple=(0.3, 0.4)
-    bc_cage_shape: Node=core.ShapeNode(core.Cylinder, 'r', 'h')
+    bc_cage_shape: Node=core.ShapeNode(core.Cylinder, {'r': 'button_r', 'h': 'button_h'})
     cageof_node: Node=Node(core.cageof, prefix='bc_cage_')
     spline1_meta_data: object=core.ModelAttributes().with_fn(15)
     spline2_meta_data: object=core.ModelAttributes().with_fn(5)
@@ -43,12 +43,12 @@ class ButtonCap(core.CompositeShape):
         end_shaft_point1 = [self.shaft_diameter / 2.0, shaft_height]
         end_shaft_point2 = [0, shaft_height]
     
-        top_point = [0, self.h]
+        top_point = [0, self.button_h]
     
         top_spline_points = [
-            [self.r / 2, self.h],
-            [self.r / 2, self.h],
-            [self.r - self.rim_radius / 2, self.edge_height]]
+            [self.button_r / 2, self.button_h],
+            [self.button_r / 2, self.button_h],
+            [self.button_r - self.rim_radius / 2, self.edge_height]]
     
         cp1 = np.array(top_spline_points[1])
         ep1 = np.array(top_spline_points[2])
@@ -57,11 +57,11 @@ class ButtonCap(core.CompositeShape):
         
         top_spline_to_rim_spline_tangent = [
             direction * self.rim_radius / 2 + ep1,
-            [self.r, self.edge_height - self.rim_radius / 2],
-            [self.r, self.edge_height - self.rim_radius]]
+            [self.button_r, self.edge_height - self.rim_radius / 2],
+            [self.button_r, self.edge_height - self.rim_radius]]
         
-        rim_bottom_edge = [self.r, self.bottom_flange[1]]
-        rim_bottom = [self.r - self.bottom_flange[0], 0]
+        rim_bottom_edge = [self.button_r, self.bottom_flange[1]]
+        rim_bottom = [self.button_r - self.bottom_flange[0], 0]
         
         path = (extrude.PathBuilder()
             .move(start_point)
