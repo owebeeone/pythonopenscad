@@ -52,6 +52,21 @@ class ShapeNode(Node):
     standard metadata variables (fn, fs and fa) and exposes them if available.'''
     DEFAULT_PRESERVE_SET={'fn', 'fs', 'fa'}
     DEFAULT_EXPOSE_IF_AVAIL={'fn', 'fs', 'fa'}
+    
+    def __init__(self, *args, expose_if_avail=None, preserve=None, **kwds):
+        
+        expose_if_avail = (self.DEFAULT_EXPOSE_IF_AVAIL
+                           if expose_if_avail is None 
+                           else self.DEFAULT_EXPOSE_IF_AVAIL.union(expose_if_avail))
+        
+        preserve = (self.DEFAULT_PRESERVE_SET
+                           if preserve is None 
+                           else self.DEFAULT_PRESERVE_SET.union(preserve))
+        
+        super().__init__(*args, 
+                         expose_if_avail=expose_if_avail, 
+                         preserve=preserve, 
+                         **kwds)
 
 def args(*args, **kwds):
     '''Returns a tuple or args and kwds passed to this function.'''
@@ -88,8 +103,9 @@ def inner_anchor_renderer(maker, anchor_args):
         AnnotatedCoordinates().solid(args_to_str(anchor_args.args)).at('origin'),
                  post=xform)
 
-@dataclass
-class AnchorArgs(list):
+
+@dataclass(frozen=True)
+class AnchorArgs():
     args_: tuple
     scale_anchor: object=None
     

@@ -46,6 +46,13 @@ class ButtonBody(core.CompositeShape):
     cage_node: Node=core.CageOfNode()
     plate_cage_node: Node=core.CageOfNode(prefix='plate_cage_')
     rim_cage_node: Node=core.CageOfNode(prefix='rim_cage_')
+    
+    WINGS_PRESERVE_SET={'button_r', 'button_h', 'wing_count'}
+    
+    with_wings: bool=True
+    body_wing_node: Node=core.ShapeNode(button_cap.ButtonWings, 
+            preserve=WINGS_PRESERVE_SET,
+            prefix='cap_')
     fn: int=64
     
     EXAMPLE_SHAPE_ARGS=core.args(as_cage=True,
@@ -113,6 +120,13 @@ class ButtonBody(core.CompositeShape):
         maker.add_at(shape.solid('body').at('plate_centre'),
                      'base', post=l.ROTY_180 * l.ROTX_90)
         
+        
+        wings_mode = (core.ModeShapeFrame.SOLID
+                      if self.with_wings else
+                      core.ModeShapeFrame.CAGE)
+        wings_shape = self.body_wing_node()
+        maker.add_at(wings_shape.named_shape('body_wings', wings_mode).at('base'),
+                     'rim_plate_cage', 'base', rh=1, post=l.ROTZ_180 * l.tranZ(-EPSILON))
         self.maker = maker
 
     @core.anchor('Plate top.')
@@ -134,7 +148,14 @@ class ButtonForTactileSwitch(core.CompositeShape):
     tl59_node: Node=core.ShapeNode(tactile_switches.TactileSwitchTL59, 
                                      {'leada_node': 'tl59_leada_node'})
     outline_node: Node=core.ShapeNode(tactile_switches.TactileSwitchOutline)
-    body_node: Node=core.ShapeNode(ButtonBody, prefix='body_')
+    body_node: Node=core.ShapeNode(
+            ButtonBody, 
+            prefix='body_', 
+            preserve=ButtonBody.WINGS_PRESERVE_SET.union(
+                {'cap_wing_r_inner_size',
+                 'cap_wing_r_outer_size',
+                 'cap_wing_h',
+                 'cap_wing_angle'}))
     fn: int=64
     
     EXAMPLE_SHAPE_ARGS=core.args(switch_type='TL59')
@@ -176,6 +197,9 @@ class ButtonAssemblyTest(core.CompositeShape):
     
     base_node: Node=core.ShapeNode(ButtonForTactileSwitch)
     cap_node: Node=core.ShapeNode(button_cap.ButtonCap)
+    gap_size: float=0.3
+    wing_count: int=4
+    wing_angle: float=15
 
     EXAMPLE_SHAPE_ARGS=core.args(switch_type='TL1105',
                                  body_as_cage=True,
@@ -186,6 +210,12 @@ class ButtonAssemblyTest(core.CompositeShape):
     EXAMPLE_ANCHORS=tuple()
     
     def __post_init__(self):
+        
+        inner_size = self.button_r - self.body_inner_rim_r
+        self.wing_r_inner_size = inner_size + self.gap_size
+        self.cap_wing_r_inner_size = inner_size
+        self.cap_wing_h = self.wing_h - self.gap_size
+        self.cap_wing_angle = self.wing_angle - 2
         
         shape = self.base_node()
         
@@ -199,7 +229,7 @@ class ButtonAssemblyTest(core.CompositeShape):
         cap_shape = self.cap_node()
         
         maker.add_at(cap_shape.solid('cap').colour([1, 0.3, 0.8, 1]).at('base'),
-                     'rim_plate_cage', 'base', rh=1, post=l.ROTZ_180)
+                     'rim_plate_cage', 'base', rh=1, post=l.ROTZ_180 * l.tranZ(-0.))
         
         self.maker = maker
 
