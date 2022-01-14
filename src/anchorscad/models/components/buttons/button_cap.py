@@ -157,18 +157,18 @@ class EngravedButtonCap(core.CompositeShape):
     <description>
     '''
     button_node: Node=core.ShapeNode(ButtonCap)
-    engrave_h: float=0.5
+    engrave_h: float=0.4
     engrave_shape: core.shape=None
     engrave_shape_anchor: core.AnchorArgs=core.surface_args()
     wing_count: int=2
 
     EXAMPLE_SHAPE_ARGS=core.args(
-        engrave_shape=core.Text('Fire', 
-                                size=5,
+        engrave_shape=core.Text('⚓', 
+                                size=14,
                                 depth=10, 
                                 halign='center', 
                                 valign='center',
-                                font="Segoe UI Black:style=Bold"),
+                                font="Segoe UI Symbol:style=Bold"),
         engrave_shape_anchor=core.surface_args(pre=l.scale([1., 1, 1])),
         fn=64)
     EXAMPLE_ANCHORS=()

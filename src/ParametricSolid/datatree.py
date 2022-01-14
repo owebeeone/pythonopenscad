@@ -309,19 +309,25 @@ class BoundNode:
         return BoundNode(new_parent, self.name, self.node, node, self)
 
     def __call__(self, *args, **kwds):
+        return self._invoke(self, self.node.clz_or_func, args, kwds)
+
+    def call_with(self, clz_or_func, *args, **kwds):
+        return self._invoke(self, clz_or_func, args, kwds)
+        
+    @classmethod
+    def _invoke(cls, node, clz_or_func, args, kwds):
         # Resolve parameter values.
         # Priority order:
         # 1. Override (if any)
         # 2. Passed in parameters
         # 3. Parent field values
-        passed_bind = self.node.init_signature.bind_partial(*args, **kwds).arguments
-        clz_or_func = self.node.clz_or_func
-        ovrde = (self.parent.override.get_override(self.name)
-                 if self.parent.override
+        passed_bind = node.node.init_signature.bind_partial(*args, **kwds).arguments
+        ovrde = (node.parent.override.get_override(node.name)
+                 if node.parent.override
                  else MISSING)
         if not ovrde is MISSING:
             ovrde_bind = ovrde.bind_signature(
-                self.node.init_signature)
+                node.node.init_signature)
             
             for k, v in passed_bind.items():
                 if not k in ovrde_bind:
@@ -333,9 +339,9 @@ class BoundNode:
             ovrde_bind = passed_bind
         
         # Pull any values left from the parent.
-        for fr, to in self.node.expose_map.items():
+        for fr, to in node.node.expose_map.items():
             if not fr in ovrde_bind:
-                ovrde_bind[fr] = getattr(self.parent, to)
+                ovrde_bind[fr] = getattr(node.parent, to)
         
         return clz_or_func(**ovrde_bind)
     

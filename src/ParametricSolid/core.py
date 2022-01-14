@@ -452,6 +452,19 @@ class ShapeNamer:
     def minkowski(self, name):
         return self.named_shape(name, ModeShapeFrame.MINKOWSKI)
 
+    def named_shape_by_index(self, name, index, *modes):
+        '''Select the shape mode by the index given over the provided modes.'''
+        return self.named_shape(name, modes[index])
+    
+    def solid_hole(self, name, is_hole):
+        '''Choose the mode as solid or hole determined by the is_hole parameter.'''
+        return self.named_shape_by_index(
+            name, is_hole, ModeShapeFrame.SOLID, ModeShapeFrame.HOLE)
+        
+    def solid_cage(self, name, is_cage):
+        '''Choose the mode as solid or cage determined by the is_cage parameter.'''
+        return self.named_shape_by_index(
+            name, is_cage, ModeShapeFrame.SOLID, ModeShapeFrame.CAGE)
 
 class ShapeMaker:
     def as_maker(self, name, model_shape_frame, reference_frame):

@@ -817,7 +817,7 @@ class PathBuilder():
                                         prev_op=self.last_op(), name=name))
         
     def stroke(self,
-               length, 
+               length,
                degrees=0, 
                radians=None, 
                sinr_cosr=None,
@@ -828,18 +828,26 @@ class PathBuilder():
         by angle or a GMatrix xform.'''
         assert len(self.ops) > 0, "Cannot line to without starting point"
         d_vector = to_gvector(self.last_op().direction_normalized(1.0))
-        if degrees or radians:
+        if degrees or radians or sinr_cosr:
             d_vector = l.rotZ(degrees=degrees, 
                               radians=radians, 
                               sinr_cosr=sinr_cosr) * d_vector
-            
         if xform:
             d_vector = xform * d_vector
             
         point = d_vector * length + to_gvector(self.last_op().lastPosition())
-        
-        return self.line(point.A[:2], name)
-             
+        return self.add_op(self._LineTo(point.A[:2], 
+                                        prev_op=self.last_op(), name=name))
+            
+    def relative_line(self,
+               relative_pos,
+               name=None):
+        '''A line from the current point to the relative X,Y position given.'''
+        point = (np.array(LIST_2_FLOAT(relative_pos)) 
+                 + self.last_op().lastPosition())
+        return self.add_op(self._LineTo(point[:2], 
+                                        prev_op=self.last_op(), name=name))
+
     def spline(self, points, name=None, metadata=None, 
                cv_len=(None, None), degrees=(0, 0), radians=(0, 0), rel_len=None):
         '''Adds a spline node to the path.
