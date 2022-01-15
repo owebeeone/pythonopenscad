@@ -390,19 +390,27 @@ class NamedShapeBase(object):
 
 class NamedShape(NamedShapeBase):
     
-    def at(self, *pargs, post: l.GMatrix=None, pre: l.GMatrix=None, args=None, **kwds):
+    def at(self, 
+           *pargs, 
+           post: l.GMatrix=None, 
+           pre: l.GMatrix=None, 
+           args=None,
+           anchor=None, 
+           **kwds):
         '''Creates a shape containing the nominated shape at the reference frame given.
         *args, **kwds: Parameters for the shape given. If none is provided then IDENTITY is used.
         pre: The pre multiplied transform.
         post: The post multiplied transform,
         '''
         
-        if (pargs or kwds) and args:
+        if (pargs or kwds) and (args or anchor) or (args and anchor):
             raise IllegalParameterException(
-                f'Recieved positional args and kwds when parameter "args" is also provided.')
-        
+                'Only one form of anchor parameters allowed.')
+            
         alter_pre = None
         alter_post = None
+        if anchor:
+            args = anchor.args
         if args:
             pargs = args[0]
             kwds = args[1]
@@ -427,7 +435,7 @@ class NamedShape(NamedShapeBase):
             attributes=self.attributes)
 
 class ShapeNamer:
-    def named_shape(self, name, model_shape_frame):
+    def named_shape(self, name, mode_shape_frame):
         assert False, 'This method needs to be overridden in child classes.'
         
     # Shape like functions.    
@@ -467,7 +475,7 @@ class ShapeNamer:
             name, is_cage, ModeShapeFrame.SOLID, ModeShapeFrame.CAGE)
 
 class ShapeMaker:
-    def as_maker(self, name, model_shape_frame, reference_frame):
+    def as_maker(self, name, mode_shape_frame, reference_frame):
         assert False, 'This method needs to be overridden in child classes.'
 
     def as_solid(self, name, reference_frame):
@@ -520,8 +528,8 @@ class LazyShape(ShapeNamer):
         
         return self.shape_type(*args[0], **args[1])
 
-    def named_shape(self, name, model_shape_frame):
-        return LazyNamedShape(self, model_shape_frame, name)
+    def named_shape(self, name, mode_shape_frame):
+        return LazyNamedShape(self, mode_shape_frame, name)
 
 
 @dataclass(frozen=True)
@@ -650,14 +658,14 @@ class Shape(ShapeNamer, ShapeMaker):
     def copy_if_mutable(self):
         return self
         
-    def named_shape(self, name, model_shape_frame):
+    def named_shape(self, name, mode_shape_frame):
         'Overrides ShapeNamer.named_shape'
-        return NamedShape(self.copy_if_mutable(), model_shape_frame, name)
+        return NamedShape(self.copy_if_mutable(), mode_shape_frame, name)
     
-    def as_maker(self, name, model_shape_frame, reference_frame):
+    def as_maker(self, name, mode_shape_frame, reference_frame):
         'Overrides ShapeNamer.as_maker'
         return Maker(
-            model_shape_frame, ShapeFrame(name, self.copy_if_mutable(), reference_frame))
+            mode_shape_frame, ShapeFrame(name, self.copy_if_mutable(), reference_frame))
 
     def has_anchor(self, name):
         return name in self.anchorscad.anchors
@@ -1049,8 +1057,7 @@ class Maker(Shape):
         if (pargs or kwds) and args:
             raise IllegalParameterException(
                 f'Recieved positional args and kwds when parameter "args" is also provided.')
-        
-        
+
         alter_pre = None
         alter_post = None
         if args:

@@ -224,15 +224,13 @@ class RaspberryPiCase(core.CompositeShape):
         
         maker.add_at(grille_holes.hole('rhs_grille').at('centre', post=ROTX_90),
                      post=plane_line_intersect(
-                         core.apply_anchor_args(maker, self.BOX_RHS),
-                         core.apply_anchor_args(maker, self.HEADER_CORNER)
-                         ))
+                         self.BOX_RHS.apply(maker),
+                         self.HEADER_CORNER.apply(maker)))
         
         maker.add_at(grille_holes.hole('lhs_grille').at('centre', post=ROTX_90),
                      post=plane_line_intersect(
-                         core.apply_anchor_args(maker, self.BOX_LHS),
-                         core.apply_anchor_args(maker, self.HEADER_CORNER)
-                         ))
+                         self.BOX_LHS.apply(maker),
+                         self.HEADER_CORNER.apply(maker)))
         
         bottom_loc = maker.at('shell', 'face_centre', 1).get_translation()
         screw_hole_loc = maker.at('outline', ('mount_hole', 0), 'top').get_translation()
@@ -246,8 +244,8 @@ class RaspberryPiCase(core.CompositeShape):
         
         # Add Fan
         
-        fan_fix_plane = core.apply_anchor_args(maker, self.FAN_FIXING_PLANE)
-        fan_fix_pos = core.apply_anchor_args(maker, self.FAN_POSITION)
+        fan_fix_plane = self.FAN_FIXING_PLANE.apply(maker)
+        fan_fix_pos = self.FAN_POSITION.apply(maker)
         
         fan_pos = plane_line_intersect(fan_fix_plane, fan_fix_pos)
         
@@ -272,20 +270,19 @@ class RaspberryPiCase(core.CompositeShape):
                          'outline', ('mount_hole', i), 'top')
             
         # Add mounting screw tabs.
+        if not self.make_case_top:
+            tab_anchors = (self.TAB_RHS, 
+                            self.TAB_LHS, 
+                            self.TAB_REAR_RHS, 
+                            self.TAB_REAR_LHS)
+            tab_trans = ROTY_180
+            tab_shape = ScrewTab()
+            for i, a in enumerate(tab_anchors):
+                maker.add_at(tab_shape
+                        .composite(('tab', i))
+                        .at('face_edge', 0, 0),
+                        post=a.apply(maker) * tab_trans)
         
-        tab_anchors = (self.TAB_RHS, 
-                        self.TAB_LHS, 
-                        self.TAB_REAR_RHS, 
-                        self.TAB_REAR_LHS)
-        tab_trans = ROTY_180
-        tab_shape = ScrewTab()
-        for i, a in enumerate(tab_anchors):
-            maker.add_at(tab_shape
-                    .composite(('tab', i))
-                    .at('face_edge', 0, 0),
-                    post=core.apply_anchor_args(maker, a) * tab_trans)
-        
-     
         top_maker = maker.solid('main').at('centre')
         self.maker = top_maker
         
@@ -311,8 +308,8 @@ class RaspberryPiCase(core.CompositeShape):
             f, a = fa
             top_maker.add_at(f
                     .named_shape(('clip', i), fastener_mode)
-                    .at(*self.SNAP_ANCHOR[1][0], **self.SNAP_ANCHOR[1][1]),
-                    post=core.apply_anchor_args(top_maker, a) * -cut_trans)
+                    .at(anchor=self.SNAP_ANCHOR),
+                    post=a.apply(top_maker) * -cut_trans)
         
         # Add pry holes
         pry_shape = core.Box(self.snap_pry_hole_size)
@@ -321,7 +318,7 @@ class RaspberryPiCase(core.CompositeShape):
             top_maker.add_at(pry_shape
                     .hole(('pry', i))
                     .at('face_centre', 0),
-                    post=core.apply_anchor_args(top_maker, a) * -cut_trans)
+                    post=a.apply(top_maker) * -cut_trans)
             
         # Add version text
         text_anchor, text_name = ((self.VERS_UPPER, 'upper') 
@@ -330,7 +327,7 @@ class RaspberryPiCase(core.CompositeShape):
         top_maker.add_at(self.version
                 .hole((('version', text_name), i))
                 .at('default', rd=0.4),
-                post=core.apply_anchor_args(top_maker, text_anchor))
+                post=text_anchor.apply(top_maker))
         
             
     def make_flange(self, width, height):
@@ -345,10 +342,8 @@ class RaspberryPiCase(core.CompositeShape):
                      for la in line_anchors)
     
     def find_intersection(self, maker, plane_anchor, line_anchor):
-        plane = core.apply_at_args(
-            maker, *plane_anchor[1][0], **plane_anchor[1][1])
-        line = core.apply_at_args(
-            maker, *line_anchor[1][0], **line_anchor[1][1])
+        plane = plane_anchor.apply(maker)
+        line = line_anchor.apply(maker)
         return plane_line_intersect(plane, line)
 
     def get_example_version(self):
