@@ -316,8 +316,8 @@ class Renderer():
     def get_current_attributes(self):
         return self.context.get_last_attributes()
         
-    def add(self, *object):
-        self.context.get_last_container().add_solid(*object)
+    def add(self, *obj):
+        self.context.get_last_container().add_solid(*obj)
 
 
 def render_graph(shape, initial_frame=None, initial_attrs=None):

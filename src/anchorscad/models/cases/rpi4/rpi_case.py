@@ -50,9 +50,10 @@ class RaspberryPiCase(core.CompositeShape):
     fastener_rear: core.Shape=Snap(size=(15, 9.5, 4))
     snap_pry_hole_size: tuple=(10, wall_thickness * 0.75, 1.7)
     epsilon: float=0.01
-    upper_fan: object=FanVent(grille_as_cutout=True,
-                              vent_thickness=wall_thickness + epsilon,
-                              screw_hole_extension=wall_thickness-0.5)
+    grille_as_cutout: bool=True
+    grille_vent_thickness: float=wall_thickness + epsilon
+    grille_screw_hole_extension: float=wall_thickness - 0.5
+    upper_fan_node: Node=core.ShapeNode(FanVent, prefix='grille_')
     
     version: object=core.Text(
         text=f'-{int(time())-1632924118:X}', 
@@ -248,8 +249,8 @@ class RaspberryPiCase(core.CompositeShape):
         fan_fix_pos = self.FAN_POSITION.apply(maker)
         
         fan_pos = plane_line_intersect(fan_fix_plane, fan_fix_pos)
-        
-        maker.add_at(self.upper_fan.composite('fan')
+        upper_fan = self.upper_fan_node()
+        maker.add_at(upper_fan.composite('fan')
                      .at('grille_centre'),
                      post=fan_pos)
         

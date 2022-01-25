@@ -16,6 +16,7 @@ from anchorscad.models.screws.dims import HoleDimensions, holeMetricDims
 from anchorscad.models.screws.holes import SelfTapHole
 import numpy as np
 
+RUNNER_EXCLUDE=True
 
 @shape('anchorscad/models/cases/rpi4/side_mount')
 @dataclass
@@ -31,7 +32,6 @@ class SideMount(CompositeShape):
     counter_sink_overlap: float
     dia: float=2.6
     outer_dia: float=None
-    dia: object=None
     dims: HoleDimensions=None
     outer_delta: float=6
     overlap_delta: float=0.01

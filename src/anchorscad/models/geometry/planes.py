@@ -15,15 +15,14 @@ class Planes(core.CompositeShape):
     '''
     A set of planes
     '''
-    mat1: l.GMatrix
-    mat1: l.GMatrix
+    mat1: l.GMatrix=l.IDENTITY
     
     EXAMPLE_SHAPE_ARGS=core.args()
     EXAMPLE_ANCHORS=()
     
     def __post_init__(self):
         maker = core.Box([100, 100, 1]).solid(
-            'plane1').colour([1, 1, 0, 0.5].at('centre')
+            'plane1').colour([1, 1, 0, 0.5]).at('centre')
         
         self.maker = maker
 

@@ -1832,7 +1832,13 @@ def nameof(name, example_version):
         return ''.join((name, example_version))
     return name
 
-def render_examples(module, render_options, consumer, graph_consumer):
+def render_examples(module, 
+                    render_options, 
+                    consumer, 
+                    graph_consumer,
+                    shape_consumer=None,
+                    start_example=None,
+                    end_example=None):
     '''Scans a module for all Anchorscad shape classes and renders examples.'''
     classes = find_all_shape_classes(module)
     # Lazy import renderer since renderer depends on this.
@@ -1845,17 +1851,27 @@ def render_examples(module, render_options, consumer, graph_consumer):
             shape_count += 1
             for e in clz.examples():
                 example_count += 1
+                if start_example:
+                    start_example(clz, e)
                 try:
                     maker, shape = clz.example(e)
-                    poscobj, graph = renderer.render_graph(
-                        maker, initial_frame=None, initial_attrs=render_options.render_attributes)
                     name = nameof(e, shape.get_example_version())
-                    consumer(poscobj, clz, name)
-                    graph_consumer(graph, clz, name)
+                    poscobj, graph = renderer.render_graph(
+                        maker, 
+                        initial_frame=None, 
+                        initial_attrs=render_options.render_attributes)
+                    consumer(poscobj, clz, name, e)
+                    graph_consumer(graph, clz, name, e)
+                    if shape_consumer:
+                        shape_consumer(maker, shape, clz, name, e)
                 except BaseException as ex:
                     traceback.print_exception(*sys.exc_info(), limit=20) 
-                    sys.stderr.write(f'Error while rendering {clz.__name__}:\n{ex}\n')
+                    sys.stderr.write(
+                        f'Error while rendering {clz.__name__} example:{e}:\n{ex}\n')
                     traceback.print_exception(*sys.exc_info()) 
+                finally:
+                    if end_example:
+                        end_example(clz, e)
     return shape_count, example_count
 
 
@@ -1879,87 +1895,78 @@ class ExampleCommandLineRenderer():
     '''
     
     def __init__(self, args, do_exit_on_completion=None):
-        
-        argp = argparse.ArgumentParser(
+        argq = argparse.ArgumentParser(
             formatter_class=argparse.RawDescriptionHelpFormatter,
             description=self.DESCRIPTION,
             epilog=textwrap.dedent(self.EXAMPLE_USAGE))
-        
-        argp.add_argument(
-            'command', 
-            metavar='command',
-            type=str,
-            nargs='?',
-            help='List of image files.'
-        )
-        
-        argp.add_argument(
+
+        argq.add_argument(
             '--class_name', 
             type=str,
             default='*',
             nargs='*',
             help='The name/s of the shape classes to render.')
         
-        argp.add_argument(
+        argq.add_argument(
             '--module', 
             type=str,
             default=None,
             help='The python module to be loaded.')
         
-        argp.add_argument(
+        argq.add_argument(
             '--no-write', 
             dest='write_files',
             action='store_false',
             help='Perform a test run. It will not make changes to file system.')
         
-        argp.add_argument(
+        argq.add_argument(
             '--write', 
             dest='write_files',
             action='store_true',
             help='Writes models to files.')
-        argp.set_defaults(write_files=False)
+        argq.set_defaults(write_files=False)
 
-        argp.add_argument(
+        argq.add_argument(
             '--no-graph_write', 
             dest='write_graph_files',
             action='store_false',
             help='Produces a graph of shape_names in .dot GraphViz format.')
         
-        argp.add_argument(
+        argq.add_argument(
             '--graph_write', 
             dest='write_graph_files',
             action='store_true',
             help='Produces a graph of shape_names in .dot GraphViz format.')
-        argp.set_defaults(write_graph_files=False)
+        argq.set_defaults(write_graph_files=False)
         
-        argp.add_argument(
+        argq.add_argument(
             '--no-svg_write', 
             dest='write_graph_svg_files',
             action='store_false',
             help='Produces a graph of shape_names in .dot and .svg formats.')
         
-        argp.add_argument(
+        argq.add_argument(
             '--svg_write', 
             dest='write_graph_svg_files',
             action='store_true',
             help='Produces a graph of shape_names in .dot and .svg formats.')
-        argp.set_defaults(write_graph_svg_files=False)
+        argq.set_defaults(write_graph_svg_files=False)
         
-        argp.add_argument(
+        argq.add_argument(
             '--out_file_name', 
             type=str,
             default=os.path.join(
                 'examples_out', 'anchorcad_{class_name}_{example}_example.scad'),
             help='The OpenSCAD formatted output filename.')
         
-        argp.add_argument(
+        argq.add_argument(
             '--graph_file_name', 
             type=str,
             default=os.path.join(
                 'examples_out', 'anchorcad_{class_name}_{example}_example.dot'),
             help='The GraphViz shape_name graph output filename.')
         
-        argp.add_argument(
+        argq.add_argument(
             '--level', 
             type=int,
             default=10,
@@ -1967,18 +1974,25 @@ class ExampleCommandLineRenderer():
                   'Shape classes with a lower level than this are excluded unless '
                   'they are specifically named.'))
         
-        argp.add_argument(
+        argq.add_argument(
             '--list_shapes', 
             action='store_true',
             default=False,
             help=('List Shape class names.'))
         
-        self.argp = argp.parse_args()
-        
-        self.do_exit_on_completion = do_exit_on_completion
+        self.argq = argq
+        self.add_more_args()
         if do_exit_on_completion is None:
             self.do_exit_on_completion = not getattr(sys, 'ps1', sys.flags.interactive)
-            
+        else:
+            self.do_exit_on_completion = do_exit_on_completion
+        self.parse()
+    
+    def add_more_args(self):
+        pass
+        
+    def parse(self):
+        self.argp = self.argq.parse_args()
         self.options = RenderOptions(
             render_attributes=ModelAttributes(),
             level=self.argp.level,
@@ -1998,7 +2012,7 @@ class ExampleCommandLineRenderer():
             self.module = sys.modules['__main__']
             self.module_name = ''
 
-    def file_writer(self, obj, clz, example_name):
+    def file_writer(self, obj, clz, example_name, base_example_name):
         fname = self.argp.out_file_name.format(
             class_name=clz.__name__, example=example_name)
         path = pathlib.Path(fname)
@@ -2013,7 +2027,7 @@ class ExampleCommandLineRenderer():
             sys.stdout.write(
                 f'Shape: {clz.__name__} {example_name} {len(strv)}\n')
 
-    def graph_file_writer(self, graph, clz, example_name):
+    def graph_file_writer(self, graph, clz, example_name, base_example_name):
         fname = self.argp.graph_file_name.format(
             class_name=clz.__name__, example=example_name)
         path = pathlib.Path(fname)
@@ -2043,6 +2057,15 @@ class ExampleCommandLineRenderer():
         for clz in classes:
             print(clz.__name__)
         
+    def run_module(self):
+                
+        if self.argp.list_shapes:
+            self.list_shapes()
+        else:
+            self.invoke_render_examples()
+        
+        sys.stderr.write(f'shapes: {self.counts[0]}\nexamples: {self.counts[1]}\n')
+
     def run(self):
         '''Renders the example shapes on the Shape classes found in the specified module.
         Note that by default, run() will exit the process.
@@ -2056,13 +2079,8 @@ class ExampleCommandLineRenderer():
             else:
                 self.module = sys.modules['__main__']
                 self.module_name = ''
-        
-            if self.argp.list_shapes:
-                self.list_shapes()
-            else:
-                self.invoke_render_examples()
-            
-            sys.stderr.write(f'shapes: {self.counts[0]}\nexamples: {self.counts[1]}\n')
+            self.run_module()
+
         except BaseException as ex:
             if self.do_exit_on_completion:
                 sys.stderr.write(f'{str(ex)}\nAnchorscad example renderer exiting with errors.')
