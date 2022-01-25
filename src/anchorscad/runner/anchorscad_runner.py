@@ -331,7 +331,7 @@ class ExampleRunner:
                 rs.RunnerModuleExampleRef(
                     module_name=self.module_name,
                     class_name=clz.__name__,
-                    example_name=base_example_name)
+                    example_name=base_example_name))
 
             with open(self.error_file_name, 'r') as f:            
                 self.cumulative_error_text.append(
@@ -348,6 +348,8 @@ class ExampleRunner:
         
         status_file_name = make_json_status_file(
             self.out_dir, self.module_name)
+        
+        pathlib.Path(status_file_name).parent.mkdir(parents=True, exist_ok=True)
         
         with open(status_file_name, 'w') as f:
             f.write(runner_status.to_json(indent=4))
@@ -492,8 +494,28 @@ class AnchorScadRunner(core.ExampleCommandLineRenderer):
         self.proc_mgr.wait_for_completions(0)
         self.time_end = time.time()
         succeeded, failed = self.proc_mgr.finished_status()
-        elapsed = self.time_end - self.time_start
-        print(f'Failed = {failed} from {failed + succeeded} in {elapsed}s.')
+        elapsed_time = self.time_end - self.time_start
+        runner_status = self.write_runner_status(elapsed_time)
+        
+        print(f'Total modules = {succeeded + failed}')
+        print(f'Failed modules = {failed}')
+        print(f'Failed examples = {len(runner_status.examples_with_error_output)}')
+        
+    def write_runner_status(self, elapsed_time):
+        runner_status = rs.RunnerStatus(
+            dirs=self.argp.dirs,
+            elapsed_time=elapsed_time,
+            module_status=self.stats.module_stats,
+            examples_with_error_output=self.stats.examples_with_error_output)
+        
+        filename = os.path.join(self.argp.out_dir, 'status.json')
+        pathlib.Path(filename).parent.mkdir(parents=True, exist_ok=True)
+        status_json = runner_status.to_json(indent=4)
+        with open(filename, 'w') as f:
+            f.write(status_json)
+        
+        return runner_status
+        
     
     def load_and_run_module(self):
         module_name = self.argp.dirs[1]
@@ -565,6 +587,8 @@ class AnchorScadRunner(core.ExampleCommandLineRenderer):
         else:
             mod_status = rs.RunnerModuleStatus(
                 mod_name, 
+                shape_results=(),
+                examples_with_error_output=(),
                 exit_status=exit_status,
                 incomplete=True)
         
