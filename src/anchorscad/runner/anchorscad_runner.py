@@ -25,7 +25,7 @@ from typing import Dict
 import pickle
 import dill
 
-GENERATE_STL = True
+GENERATE_STL = False
 
 ENVIRON_NAME = '__ANCHORSCAD_RUNNER_KEY__'
 

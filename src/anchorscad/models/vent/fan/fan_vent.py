@@ -46,7 +46,7 @@ class FanVent(core.CompositeShape):
     '''
     A fan screw mount and vent using CurlySpokes.
     Different fan dimensions are supported using a FanVentScrewHoleParams
-    dataclass.
+    data class.
     '''
     vent_thickness: float=2
     screw_hole_size: float=2.6
@@ -69,15 +69,7 @@ class FanVent(core.CompositeShape):
     def __post_init__(self):
         self.fan_cage_shape = core.Box(self.screw_params.size)
         maker = self.fan_cage(cage_name='fan').at('face_centre', 1)
-        # cage_mode = (core.ModeShapeFrame.SOLID 
-        #              if self.as_example 
-        #              else core.ModeShapeFrame.CAGE)
-        # maker = (core.Box(self.screw_params.size)
-        #          .named_shape('fan', cage_mode)
-        #          .colour([1, 1, 0, 0.5])
-        #          .transparent(1)
-        #          .at('face_centre', 1))
-
+        
         inside_r = (self.screw_hole_tap_dia_scale
             * holeMetricDims(self.screw_hole_size).tap_dia / 2)
             

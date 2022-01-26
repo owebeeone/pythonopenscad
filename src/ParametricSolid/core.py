@@ -1236,6 +1236,25 @@ def shape(name=None, level=10):
     return decorator
 
 
+@dataclass
+class FabricatorParams:
+    level: float
+
+
+def fabricator(clazz=None, /, *, level=10):
+    def wrap(clazz):
+        clazz.anchorscad_fabricator = FabricatorParams(level)
+        return clazz
+    
+    # See if we're being called as @datatree or @datatree().
+    if clazz is None:
+        # We're called with parens.
+        return wrap
+
+    # We're called as @datatree without parens.
+    return wrap(clazz)
+
+
 @shape('anchorscad/core/box')
 @dataclass
 class Box(Shape):
