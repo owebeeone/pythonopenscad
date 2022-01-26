@@ -49,14 +49,15 @@ class RaspberryPiCase(core.CompositeShape):
     fastener_side: core.Shape=Snap(size=(15, 9.5, 3))
     fastener_rear: core.Shape=Snap(size=(15, 9.5, 4))
     snap_pry_hole_size: tuple=(10, wall_thickness * 0.75, 1.7)
+    
     epsilon: float=0.01
-    grille_as_cutout: bool=True
-    grille_vent_thickness: float=wall_thickness + epsilon
-    grille_screw_hole_extension: float=wall_thickness - 0.5
-    upper_fan_node: Node=core.ShapeNode(FanVent, prefix='grille_')
+    fan_vent_as_cutout: bool=True
+    fan_vent_vent_thickness: float=wall_thickness + epsilon
+    fan_vent_screw_hole_extension: float=wall_thickness - 0.5
+    upper_fan_node: Node=core.ShapeNode(FanVent, prefix='fan_vent_')
     
     version: object=core.Text(
-        text=f'-{int(time())-1632924118:X}', 
+        text=f'-{int(time())-MODEL_V0:X}', 
         size=5, 
         depth=0.3 if wall_thickness > 0.5 else wall_thickness * 0.5)
     do_versioned_example: bool=False

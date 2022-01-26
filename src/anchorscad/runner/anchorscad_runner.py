@@ -25,9 +25,9 @@ from typing import Dict
 import pickle
 import dill
 
-GENERATE_STL = False
+GENERATE_STL = True
 
-ENVIRON_NAME='__ANCHORSCAD_RUNNER_KEY__'
+ENVIRON_NAME = '__ANCHORSCAD_RUNNER_KEY__'
 
 PATH_SEPARATOR = ';' if platform.system() == 'Windows' else ':'
 

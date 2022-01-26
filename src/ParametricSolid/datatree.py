@@ -433,7 +433,9 @@ def _process_datatree(clz, init, repr, eq, order, unsafe_hash, frozen,
         
     def override_post_init(self):
         if not self.__initialize_node_instances_done__:
-            self.__initialize_node_instances_done__ = True
+            _field_assign(self,
+                          '__initialize_node_instances_done__',
+                          True)
             _initialize_node_instances(clz, self)
         for post_init_func in self.__post_init_chain__:
             post_init_func(self)
