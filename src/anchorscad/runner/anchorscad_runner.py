@@ -25,16 +25,14 @@ from typing import Dict
 import pickle
 import dill
 
+from anchorscad.runner.opendscad_finder import openscad_exe_location
+from anchorscad.runner.process_manager import ProcessManager, ProcessManagerEntry
+
 GENERATE_STL = False
 
 ENVIRON_NAME = '__ANCHORSCAD_RUNNER_KEY__'
 
 PATH_SEPARATOR = ';' if platform.system() == 'Windows' else ':'
-
-def openscad_exe_location():
-    if platform.system() == 'Windows':
-        return 'C:\\Program Files\\OpenSCAD\\openscad.exe'
-    return 'openscad'
 
 OPENSCAD_FILENAME=openscad_exe_location()
 
@@ -92,63 +90,6 @@ def add_file_to_path(filename, curr_path):
         return '.'.join((module_prefix, mod_name)), new_path
     return mod_name, new_path
 
-
-@dataclass
-class ProcessManagerEntry:
-    
-    popen_obj: Popen=None
-
-    def ended(self, status):
-        pass
-
-DEFAULT_MAX_JOBS=7
-
-@dataclass
-class ProcessManager:
-    current_entries: list=field(default_factory=list)
-    finished_entries: list=field(default_factory=list)
-    max_jobs: int=DEFAULT_MAX_JOBS
-    poll_time: float=0.5
-    
-    def run_proc(self, proc_entry, *args, **kwargs):
-        self.wait_for_completions()
-        proc_entry.started()
-        proc_entry.popen_obj = Popen(*args, **kwargs)
-        self.current_entries.append(proc_entry)
-
-    def count_procs(self):
-        next_current_entries = []
-        for p in self.current_entries:
-            status = p.popen_obj.poll()
-            if status is None:
-                next_current_entries.append(p)
-            else:
-                self.finished_entries.append(p)
-                p.ended(p.popen_obj.wait())
-                
-        self.current_entries = next_current_entries
-        return len(self.current_entries)
-        
-    def wait_for_completions(self, max_count=None):
-        if max_count is None:
-            max_count = self.max_jobs - 1
-        while True:
-            count = self.count_procs()
-            if count <= max_count:
-                return count
-            time.sleep(self.poll_time)
-
-    def finished_status(self):
-        self.wait_for_completions(0)
-        succeed_count = 0
-        failed_count = 0
-        for p in self.finished_entries:
-            if p.popen_obj.wait():
-                failed_count += 1
-            else:
-                succeed_count += 1
-                
-        return succeed_count, failed_count
 
 @dataclass
 class AnchorScadRunnerEntry(ProcessManagerEntry):
