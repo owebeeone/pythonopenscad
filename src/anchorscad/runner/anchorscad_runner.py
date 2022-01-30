@@ -7,15 +7,12 @@ Created on 15 Jan 2022
 import argparse
 from dataclasses import dataclass, field
 import ParametricSolid.core as core
-import textwrap
 from subprocess import Popen
-from collections import defaultdict
 
 import sys
 import os
 import inspect
 import os.path as path
-from ParametricSolid.datatree import datatree
 import time
 import platform
 import importlib

@@ -4,7 +4,10 @@ Created on 11 Jan 2022
 @author: gianni
 '''
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from typing import Dict
+from ParametricSolid.core import DuplicateNameException
+from frozendict import frozendict
 
 @dataclass(frozen=True)
 class StlRecipeArgs:
@@ -29,17 +32,39 @@ class GraphRecipeArgs:
 @dataclass(frozen=True)
 class Recipe:
     '''The shape to 'fabricate' '''
-    shape: object=None
+    name: str
+    shape_function: object
     anchor: object=None
     place_at: object=None
 
+
+@dataclass(frozen=True)
+class Recipies:
+    '''The shape to 'fabricate' '''
+    recipies: Dict[str, Recipe]
+
+class RecipiesBuilder:
+    def __init__(self):
+        self.map = dict()
+    
+    def add(self, name: str, shape_function: object, *args, **kwds):
+        if name in self.map:
+            raise DuplicateNameException(
+                f'Shape {name} has been added previously.')
+        self.map[name] = Recipe(name=name, 
+                                shape_function=shape_function,
+                                *args, 
+                                **kwds)
+    def build(self):
+        return frozendict(self.map)
+        
 
 @dataclass
 class Fabricator:
     '''
     Data class of collective fabricator parameters.
     '''
-    recipies: tuple=()
+    recipies: Recipies=field(init=False)
     stl_args: StlRecipeArgs=StlRecipeArgs(True)
     image_args: ImageRecipeArgs=ImageRecipeArgs(imgsize=(1280, 1024))
     graph_args: GraphRecipeArgs=GraphRecipeArgs()
