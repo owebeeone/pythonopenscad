@@ -4,6 +4,7 @@ Created on 7 Jan 2021
 @author: gianni
 '''
 
+from _collections_abc import Iterable
 from dataclasses import dataclass, field
 
 from frozendict import frozendict
@@ -12,6 +13,9 @@ import ParametricSolid.core as core
 import ParametricSolid.linear as l
 import numpy as np
 import pyclipper as pc
+from collections.abc import Iterable
+from typing import List
+from types import FunctionType
 
 
 class DuplicateNameException(Exception):
@@ -34,6 +38,9 @@ class UnableToFitCircleWithGivenParameters(Exception):
     
 class TooFewPointsInPath(Exception):
     '''There were too few points in the given path.'''
+    
+class MultiplePathPolygonBuilderNotImplemented(Exception):
+    '''Paths with multiple polygons are not implemented yet.'''
 
 
 EPSILON=1e-6
@@ -83,6 +90,7 @@ class CubicSpline():
         [ -3,  3,  0,  0 ],
         [  1,  0,  0,  0 ]])
     
+    @staticmethod
     def _dcoeffs_builder(dims):
         zero_order_derivative_coeffs=np.array([[1.] * dims, [1] * dims, [1] * dims, [1] * dims])
         derivative_coeffs=np.array([[3.] * dims, [2] * dims, [1] * dims, [0] * dims])
@@ -209,9 +217,62 @@ def adder(a, b):
     if b is None:
         return a
     return a + b
+
+
+class OpBase:
+    '''Base class for path operations (move, line, arc and spline).
+    '''
+    # Implementation state should consist of control points that can be easily 
+    # transformed via a matrix multiplication.
     
+    def _as_non_defaults_dict(self):
+        return dict((k, getattr(self, k)) 
+                    for k in self.__annotations__.keys() 
+                        if not getattr(self, k) is None and k != 'prev_op')
+        
+    def is_move(self):
+        return False
+
+    def transform(self, m):
+        raise NotImplemented('Derived class must implement this.')
+
+@dataclass
+class OpMetaData():
+    '''The Op and parameters used to generate the point.'''
+    op: OpBase
+    point: tuple
+    count: int=None
+    t: float=None
+    dupe_ops_md: list=field(default_factory=list, init=False)
+
+    
+@dataclass()
+class MapBuilder:
+    '''Builder for a map of points to the OpMetaData associated with the point.'''
+    opmap: List[OpMetaData]=field(default_factory=list)
+    
+    def append(self, op: OpBase, point: tuple, count: int=None, t: float=None):
+        self.opmap.append(OpMetaData(op, point, count, t))
+
+
+@dataclass()
+class NullMapBuilder:
+    '''A null builder'''
+    opmap: List[OpMetaData]=None
+    
+    def append(self, op: OpBase, point: tuple, count: int=None, t: float=None):
+        pass
+
+
 @dataclass(frozen=True)
 class Path():
+    '''Encapsulated a "path" generate by a list of path "Op"s (move, line, arc etc).
+    Each move op indicates a separate path. This can be a hole (anticlockwise) or a
+    polygon (clockwise).
+    A Path can generate a polygon with a differing number of facets or extents 
+    (bounding box) or can be transformed into another path using an l.GMatrix.
+    
+    '''
     ops: tuple
     name_map: frozendict
 
@@ -228,10 +289,10 @@ class Path():
 
         return extnts
     
-    def build(self, meta_data):
+    def build(self, meta_data, map_builder_type=None):
         path_builder = []
         start_indexes = []
-        map_builder = []
+        map_builder = map_builder_type() if map_builder_type else NullMapBuilder()
         for op in self.ops:
             op.populate(path_builder, start_indexes, map_builder, meta_data)
         return (np.array(path_builder), start_indexes, map_builder)
@@ -240,15 +301,35 @@ class Path():
         points, _, _ = self.build(meta_data)
         return points
 
-    def polygons(self, meta_data):
-        points, start_indexes, map_ops = self.build(meta_data)
+    def polygons_with_map_ops(self, meta_data, map_builder_type=None):
+        points, start_indexes, map_ops = self.build(
+            meta_data, map_builder_type=map_builder_type)
         if len(start_indexes) == 1:
-            return (points,)
+            return (points, None, map_ops.opmap)
         
-        indexes = start_indexes + [len(points),]
-        return (points, 
-                (tuple(tuple(range(indexes[i], indexes[i+1])) 
-                           for i in range(len(start_indexes)))))
+        start_ranges = []
+        # Close paths.
+        for i in range(len(start_indexes)):
+            start_point = start_indexes[i] - 1
+            if i + 1 < len(start_indexes):
+                end_point = start_indexes[i + 1] - 2
+            else:
+                end_point = len(points) - 1
+            extra_point = ()
+            if _vlen(points[start_point] - points[end_point]) > EPSILON:
+                extra_point = (start_point,)
+            start_ranges.append(tuple(range(start_point, end_point + 1)) + extra_point)
+        return (points, tuple(start_ranges), map_ops.opmap)
+    
+    def polygon_with_maps(self, meta_data):
+        return self.polygons_with_map_ops(
+            meta_data, map_builder_type=MapBuilder)
+    
+    def polygons(self, meta_data, map_builder_type=None):
+        points, ranges, _ = self.polygons_with_map_ops(meta_data)
+        if ranges:
+            return points, ranges
+        return (points,)
 
     def transform_to_builder(self, 
                              m, 
@@ -501,7 +582,7 @@ class CircularArc:
     def evaluate(self, t):
         angle = t * self.sweep_angle + self.start_angle
         return np.array([np.cos(angle), np.sin(angle)]) * self.radius + self.centre
-  
+
 
 @dataclass()
 class PathBuilder():
@@ -509,14 +590,6 @@ class PathBuilder():
     name_map: dict
     multi: bool=False
     
-    class OpBase:
-        def _as_non_defaults_dict(self):
-            return dict((k, getattr(self, k)) 
-                        for k in self.__annotations__.keys() 
-                            if not getattr(self, k) is None and k != 'prev_op')
-            
-        def is_move(self):
-            return False
     
     @dataclass(frozen=True)
     class _LineTo(OpBase):
@@ -536,7 +609,7 @@ class PathBuilder():
         
         def populate(self, path_builder, start_indexes, map_builder, meta_data):
             path_builder.append(self.point)
-            map_builder.append((self,))
+            map_builder.append(self, self.point, 1, 1.0)
             
         def direction(self, t):
             return self.point - self.prev_op.lastPosition()
@@ -584,7 +657,7 @@ class PathBuilder():
         def populate(self, path_builder, start_indexes, map_builder, meta_data):
             path_builder.append(self.point)
             start_indexes.append(len(path_builder))
-            map_builder.append((self,))
+            map_builder.append(self, self.point, 1, 0)
             
         def direction(self, t):
             return self.dir
@@ -648,7 +721,7 @@ class PathBuilder():
                 t = float(i) / float(count)
                 point = self.spline.evaluate(t)
                 path_builder.append(point)
-                map_builder.append((self, t, count))
+                map_builder.append(self, point, count, t)
     
         def direction(self, t):
             return -self.spline.derivative(t)
@@ -744,7 +817,7 @@ class PathBuilder():
                 t = float(i) / float(count)
                 point = self.arcto.evaluate(t)
                 path_builder.append(point)
-                map_builder.append((self, t, count))
+                map_builder.append(self, point, count, t)
     
         def direction(self, t):
             return self.arcto.derivative(t)
@@ -1135,7 +1208,7 @@ class PolyhedronBuilderContext:
     
     def __post_init__(self):
         if not self.path:
-            self.path = tuple(range(0, len(self.path)))
+            self.path = tuple(range(0, len(self.points)))
         if len(self.path) < 3:
             raise TooFewPointsInPath()
         unique_indexes = sorted(set(self.path))
@@ -1145,6 +1218,7 @@ class PolyhedronBuilderContext:
         # Re-map the path to the new indexes.
         self.vec_path = tuple(reverse_map[p] for p in self.path)
 
+
 def quad(prev_offs, curr_offs, pi, pj, direction):
     i, j = (pi, pj) if direction else (pj, pi)
     return (
@@ -1153,6 +1227,7 @@ def quad(prev_offs, curr_offs, pi, pj, direction):
         curr_offs + i,
         prev_offs + i,
         )
+    
     
 @dataclass
 class PolyhedronBuilder:
@@ -1230,6 +1305,146 @@ class PolyhedronBuilder:
                     PolyhedronBuilderContext(points, path)))
 
         return builders
+
+
+class PathGenerator:
+    '''Interface for a path generator. The PathGenerator controls the tesselation
+    resolution along the path.'''
+    
+    def get_r_generator(self, metadata):
+        '''Returns an iterable for the 'r' value, a value between 0 and 1 that
+        describes how far along the extrusion the path is.'''
+        raise NotImplemented
+    
+    def get_polygons_at(self, r):
+        '''Returns the 'polygons' (the result of Path.polygons()) for a given r
+        where r is between 0 and 1.'''
+        raise NotImplemented
+
+
+@dataclass
+class BasicPathGenerator(PathGenerator):
+    '''Provides an isomorphic path.'''
+    path: Path
+    polygons: tuple=field(init=False)
+    
+    def get_r_generator(self, metadata):
+        self.polygons = self.path.polygons(metadata)
+        if len(self.polygons) == 1:
+            self.polygons = self.polygons + (None,)
+        fn = metadata.fn
+        return (i / fn for i in range(fn + 1))
+    
+    def get_polygons_at(self, r):
+        return self.polygons
+
+
+@dataclass
+class Polyhedron2BuilderContext:
+    path_generator: PathGenerator
+    metadata: object
+    
+    def get_paths(self):
+        return ((r,) + self.path_generator.get_polygons_at(r) 
+                for r 
+                in self.path_generator.get_r_generator(self.metadata))
+
+
+
+@dataclass
+class Polyhedron2Builder:
+    ctxt: Polyhedron2BuilderContext
+    xform_function: FunctionType
+    
+    def __post_init__(self):
+        self.points = []
+        self.index_paths = []
+        self.faces = []
+    
+    def make_open(self):
+        self.make_body()
+        self.faces.append(self.index_paths[0])
+        self.faces.append(list(reversed(self.index_paths[-1])))
+        
+    def make_closed(self):
+        self.make_body()
+        self.make_face(self.index_paths[-1], self.index_paths[0])
+        
+    def make_body(self):
+        for r, points, paths in self.ctxt.get_paths():
+            if not paths:
+                paths = (tuple(range(len(points))),)
+                
+            if len(paths) != 1:
+                raise MultiplePathPolygonBuilderNotImplemented()
+            
+            offset_indexes = len(self.points)
+            self.index_paths.append(
+                tuple(i + offset_indexes for i in paths[0]))
+                
+            xform = self.xform_function(r)
+            self.points.extend(xform * p for p in points)
+            
+            if len(self.index_paths) > 1:
+                self.make_face_from_last_polys()
+                
+    def make_face_from_last_polys(self):
+        self.make_face(self.index_paths[-2], self.index_paths[-1])
+
+    def make_face(self, path1, path2):
+        face = list(path1)
+        face.extend(list(reversed(path2)))
+        face.append(path1[-1])
+        self.faces.append(face)
+
+class LinearExtrudeTransformGenerator:
+    scale: List[float]=(1.0, 1.0)
+    twist_degrees: float=None
+    twist_radians: float=None
+    
+    def __call__(self, r):
+        return (l.tranZ(self.h * r) 
+                * l.scale((1 + (self.scale[0] - 1) * r, 
+                           1 + (self.scale[1] - 1) * r, 
+                           1))) 
+
+
+class RotateExtrudeTransformGenerator:
+    scale: List[float]=(1.0, 1.0)
+    twist_degrees: float=None
+    twist_radians: float=None
+    
+    def __call__(self, r):
+        return (l.tranZ(self.h * r) 
+                * l.scale((1 + (self.scale[0] - 1) * r, 
+                           1 + (self.scale[1] - 1) * r, 
+                           1))) 
+
+
+def test():
+    SCALE = 2
+    path = (PathBuilder(multi=True)
+            .move([0, 0])
+            .line([100 * SCALE, 0], 'linear')
+            .spline([[150 * SCALE, 100 * SCALE], [20 * SCALE, 100 * SCALE]],
+                     name='curve', cv_len=(0.5,0.4), degrees=(90,), rel_len=0.8)
+            .line([0, 100 * SCALE], 'linear2')
+            .line([0, 0], 'linear3')
+            
+            .move([10, 10])
+            .line([11, 10])
+            .line([11, 11])
+            .move([20, 10])
+            .line([21, 10])
+            .line([21, 11])
+            .build())
+    
+    pg = BasicPathGenerator(path)
+    md = core.EMPTY_ATTRS.with_fn(10)
+    p2bc = Polyhedron2BuilderContext(pg, md)
+    for r, points, paths in p2bc.get_paths():
+        print(f'r={r}, points={points}, paths={paths}')
+    
 
 @core.shape('linear_extrude')
 @dataclass
@@ -1628,5 +1843,6 @@ class RotateExtrude(ExtrudedShape):
         return l.IDENTITY
 
 if __name__ == "__main__":
+    #test()
     core.anchorscad_main(False)
     
