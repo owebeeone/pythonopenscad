@@ -125,6 +125,14 @@ class AnchorArgs():
         return self.args_[1]
     
     @property
+    def pargs(self):
+        return self.args_[1][0]
+    
+    @property
+    def kwds(self):
+        return self.args_[1][1]
+    
+    @property
     def func(self):
         return self.args_[0]
 
@@ -673,7 +681,15 @@ class Shape(ShapeNamer, ShapeMaker):
     def anchor_names(self):
         return tuple(self.anchorscad.anchors.keys())
     
-    def at(self, anchor_name, *args, **kwds):
+    def at(self, *args, anchor=None, **kwds):
+        if anchor and (args or kwds):
+            raise IncorrectAnchorArgs(
+                'Must not provide any other args when anchor parameter specified')
+        if anchor:
+            return anchor.apply(self)
+        
+        anchor_name = args[0]
+        args = args[1:]
         spec = self.anchorscad.get(anchor_name)
         if not spec:
             raise IncorrectAnchorArgs(
@@ -1045,7 +1061,14 @@ class Maker(Shape):
         
         return self
     
-    def add_at(self, maker, *pargs, pre=None, post=None, args=None, **kwds):
+    def add_at(self, 
+               maker, 
+               *pargs, 
+               pre=None, 
+               post=None, 
+               args=None, 
+               anchor=None, 
+               **kwds):
         '''Adds another maker at the anchor of the provided parameters.
         If args is provided, this is a packed set of args from core.args.
         '''
@@ -1054,9 +1077,13 @@ class Maker(Shape):
                 f'Expected a parameter of type {self.__class__.__name__!r} but received an '
                 f'object of type {maker.__class__.__name__!r}.')
             
-        if (pargs or kwds) and args:
+        if (pargs or kwds) and (args or anchor):
             raise IllegalParameterException(
-                f'Recieved positional args and kwds when parameter "args" is also provided.')
+                f'Recieved positional args and kwds when parameter "args" or anchor is also'
+                'provided.')
+        if anchor:
+            pargs = anchor.pargs
+            kwds = anchor.kwds
 
         alter_pre = None
         alter_post = None
@@ -1119,7 +1146,15 @@ class Maker(Shape):
     def anchor_names(self):
         return self.reference_shape.shape().anchor_names() + tuple(self.entries.keys()) 
     
-    def at(self, name, *args, **kwds):
+    def at(self, *args, anchor=None, **kwds):
+        if anchor and (args or kwds):
+            raise IncorrectAnchorArgs(
+                'Must not provide any other args when anchor parameter specified')
+        if anchor:
+            return anchor.apply(self)
+        
+        name = args[0]
+        args = args[1:]
         shapeframe = self.reference_shape.shapeframe
         ref_shape = shapeframe.shape
         if ref_shape.has_anchor(name):
