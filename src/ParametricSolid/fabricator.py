@@ -20,6 +20,13 @@ class ImageRecipeArgs:
 
 
 @dataclass(frozen=True)
+class GraphRecipeArgs:
+    '''Parameters for generating image files.'''
+    enable: bool=True
+    enable_svg: bool=True
+
+
+@dataclass(frozen=True)
 class Recipe:
     '''The shape to 'fabricate' '''
     shape: object=None
@@ -30,10 +37,10 @@ class Recipe:
 @dataclass
 class Fabricator:
     '''
-    <description>
+    Data class of collective fabricator parameters.
     '''
     recipies: tuple=()
     stl_args: StlRecipeArgs=StlRecipeArgs(True)
-    image_args: ImageRecipeArgs=ImageRecipeArgs(
-        imgsize=(1280, 1024))
+    image_args: ImageRecipeArgs=ImageRecipeArgs(imgsize=(1280, 1024))
+    graph_args: GraphRecipeArgs=GraphRecipeArgs()
     file_basename: str=None # Use the class name if unset.
