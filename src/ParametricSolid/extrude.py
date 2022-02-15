@@ -4,6 +4,7 @@ Created on 7 Jan 2021
 @author: gianni
 '''
 
+from _collections_abc import Iterable
 from dataclasses import dataclass, field
 
 from frozendict import frozendict
