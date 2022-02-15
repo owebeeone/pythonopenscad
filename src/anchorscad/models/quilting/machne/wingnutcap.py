@@ -17,7 +17,7 @@ import ParametricSolid.linear as l
 @datatree
 class WingNutWings(core.CompositeShape):
     '''
-    <description>
+    Provides a single wing shape for a wing-nut assembly.
     '''
     h: float=10.6
     
@@ -58,7 +58,8 @@ class WingNutWings(core.CompositeShape):
 @datatree
 class WingNutCap(core.CompositeShape):
     '''
-    <description>
+    Provides a shape to be used to make a winged bolt.
+    Defaults are for a 3inch x 1/4inch rounded head, square neck bolt.
     '''
     r: float=6.5 / 2
     
