@@ -19,7 +19,7 @@ import traceback
 from frozendict import frozendict
 
 from ParametricSolid import linear as l
-from ParametricSolid.datatree import datatree, Node, BoundNode
+from ParametricSolid.datatree import Node, BoundNode
 import numpy as np
 import pythonopenscad as posc
 

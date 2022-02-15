@@ -5,7 +5,7 @@ Created on 8 Dec 2021
 '''
 
 import unittest
-from ParametricSolid.datatree import datatree, args, override, Node
+from ParametricSolid.datatree import datatree, dtargs, override, Node
 from dataclasses import dataclass, field
 
 @datatree
@@ -72,7 +72,7 @@ OVERRIDER1=Overridable(
     leaf_a=3, 
     leaf1_b=44,
     override=override(
-        leaf1=args(leaf_b=7)),
+        leaf1=dtargs(leaf_b=7)),
     )
 
 class Test(unittest.TestCase):

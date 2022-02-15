@@ -375,7 +375,7 @@ class Args:
     def bind_signature(self, signature):
         return signature.bind_partial(*self.arg, **self.kwds).arguments
     
-def args(*arg, clazz=None, **kwds):
+def dtargs(*arg, clazz=None, **kwds):
     return Args(arg, kwds, clazz=clazz)
 
 
@@ -398,7 +398,7 @@ def _initialize_node_instances(clz, instance):
 
 # Provide dataclass compatiability post python 3.8.
 # Default values for the dataclass function post Python 3.8.
-_POST_38_DEFAULTS=args(match_args=True, kw_only=False, slots=False).kwds
+_POST_38_DEFAULTS=dtargs(match_args=True, kw_only=False, slots=False).kwds
 
 def _process_datatree(clz, init, repr, eq, order, unsafe_hash, frozen,
                    match_args, kw_only, slots, chain_post_init):
@@ -444,7 +444,7 @@ def _process_datatree(clz, init, repr, eq, order, unsafe_hash, frozen,
 
     _apply_node_fields(clz)
     
-    values_post_38 = args(match_args=match_args, kw_only=kw_only, slots=slots).kwds
+    values_post_38 = dtargs(match_args=match_args, kw_only=kw_only, slots=slots).kwds
     values_post_38_differ = dict(
         ((k, v) for k, v in values_post_38.items() if v != _POST_38_DEFAULTS[k]))
         

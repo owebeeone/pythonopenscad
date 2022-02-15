@@ -5,19 +5,19 @@ Created on 9 Jan 2022
 '''
 
 
-import ParametricSolid.core as core
-import ParametricSolid.extrude as e
-from ParametricSolid.datatree import datatree, Node
-import ParametricSolid.linear as l
+from anchorscad import args, anchor, shape, surface_args, datatree, CompositeShape, \
+    Node, EMPTY_ATTRS, ShapeNode, CageOfNode, Cylinder, ModeShapeFrame, anchorscad_main, \
+    RotateExtrude, Path, PathBuilder, ROTX_90, ROTX_180, ROTY_180, ROTZ_90, ROTZ_180, \
+    tranZ
 
 import anchorscad.models.components.switches.tactile_tl1105 as tactile_switches
 import anchorscad.models.components.buttons.button_cap as button_cap
 
 EPSILON=1.0e-3
 
-@core.shape('anchorscad.models.components.buttons.button_body')
+@shape('anchorscad.models.components.buttons.button_body')
 @datatree
-class ButtonBody(core.CompositeShape):
+class ButtonBody(CompositeShape):
     '''
     Substrate of a button housing. This can make a fat switch from a
     small tactile switch but retaining the operating ease of the tactile switch.
@@ -36,31 +36,31 @@ class ButtonBody(core.CompositeShape):
     outer_r: float=22.5 / 2
     inside_rim_top_r: float=1
     ouside_rim_top_r: float=2
-    path: e.Path=None
+    path: Path=None
     extents: tuple=None
     
-    metadata: object=core.EMPTY_ATTRS.with_fn(8)
-    cage_shape_node: Node=core.ShapeNode(core.Cylinder, {})
+    metadata: object=EMPTY_ATTRS.with_fn(8)
+    cage_shape_node: Node=ShapeNode(Cylinder, {})
     degrees: float=360
-    extrude_node: Node=core.ShapeNode(e.RotateExtrude, 'degrees')
-    cage_node: Node=core.CageOfNode()
-    plate_cage_node: Node=core.CageOfNode(prefix='plate_cage_')
-    rim_cage_node: Node=core.CageOfNode(prefix='rim_cage_')
+    extrude_node: Node=ShapeNode(RotateExtrude, 'degrees')
+    cage_node: Node=CageOfNode()
+    plate_cage_node: Node=CageOfNode(prefix='plate_cage_')
+    rim_cage_node: Node=CageOfNode(prefix='rim_cage_')
     
     WINGS_PRESERVE_SET={'button_r', 'button_h', 'wing_count'}
     
     with_wings: bool=True
-    body_wing_node: Node=core.ShapeNode(button_cap.ButtonWings, 
+    body_wing_node: Node=ShapeNode(button_cap.ButtonWings, 
             preserve=WINGS_PRESERVE_SET,
             prefix='cap_')
     fn: int=64
     
-    EXAMPLE_SHAPE_ARGS=core.args(as_cage=True,
+    EXAMPLE_SHAPE_ARGS=args(as_cage=True,
                                 plate_cage_as_cage=False, 
                                 rim_cage_as_cage=False,
                                 degrees=270)
-    EXAMPLE_ANCHORS=(core.surface_args('base', scale_anchor=0.5),
-                     core.surface_args('plate', scale_anchor=0.5),)
+    EXAMPLE_ANCHORS=(surface_args('base', scale_anchor=0.5),
+                     surface_args('plate', scale_anchor=0.5),)
     
     def __post_init__(self):
         
@@ -84,7 +84,7 @@ class ButtonBody(core.CompositeShape):
             [outside_radius, height - self.ouside_rim_top_r / 2.0],
             [outside_radius, height - self.ouside_rim_top_r]]
         
-        path = (e.PathBuilder()
+        path = (PathBuilder()
                 .move(start_point)
                 .line([0, self.top_plate_height], 'plate_centre')
                 .line([self.inner_rim_r, self.top_plate_height], 'plate_outer')
@@ -102,7 +102,7 @@ class ButtonBody(core.CompositeShape):
         
         cage_shape = self.cage_shape_node(h=extents[1][1] - extents[0][1], 
                                    r=extents[1][0] - extents[0][0])
-        maker = self.cage_node(cage_shape).at('base', post=l.ROTX_180)
+        maker = self.cage_node(cage_shape).at('base', post=ROTX_180)
         
         cage_plate_shape = self.cage_shape_node(h=self.top_plate_height,
                                                 r=self.inner_rim_r)
@@ -118,37 +118,37 @@ class ButtonBody(core.CompositeShape):
 
         shape = self.extrude_node(path)
         maker.add_at(shape.solid('body').at('plate_centre'),
-                     'base', post=l.ROTY_180 * l.ROTX_90)
+                     'base', post=ROTY_180 * ROTX_90)
         
         
-        wings_mode = (core.ModeShapeFrame.SOLID
+        wings_mode = (ModeShapeFrame.SOLID
                       if self.with_wings else
-                      core.ModeShapeFrame.CAGE)
+                      ModeShapeFrame.CAGE)
         wings_shape = self.body_wing_node()
         maker.add_at(wings_shape.named_shape('body_wings', wings_mode).at('base'),
-                     'rim_plate_cage', 'base', rh=1, post=l.ROTZ_180 * l.tranZ(-EPSILON))
+                     'rim_plate_cage', 'base', rh=1, post=ROTZ_180 * tranZ(-EPSILON))
         self.maker = maker
 
-    @core.anchor('Plate top.')
+    @anchor('Plate top.')
     def plate(self, *args, **kwds):
         return self.maker.at('plate_cage', 'top', *args, **kwds)
 
 
-@core.shape('anchorscad.models.components.buttons.button_for_tactile_switch')
+@shape('anchorscad.models.components.buttons.button_for_tactile_switch')
 @datatree
-class ButtonForTactileSwitch(core.CompositeShape):
+class ButtonForTactileSwitch(CompositeShape):
     '''
     <description>
     '''
     
     leads_as_cages: bool=True
     switch_type: str=None
-    tl1105_node: Node=core.ShapeNode(tactile_switches.TactileSwitchTL1105, 
+    tl1105_node: Node=ShapeNode(tactile_switches.TactileSwitchTL1105, 
                                      {'leada_node': 'tl1105_leada_node'})
-    tl59_node: Node=core.ShapeNode(tactile_switches.TactileSwitchTL59, 
+    tl59_node: Node=ShapeNode(tactile_switches.TactileSwitchTL59, 
                                      {'leada_node': 'tl59_leada_node'})
-    outline_node: Node=core.ShapeNode(tactile_switches.TactileSwitchOutline)
-    body_node: Node=core.ShapeNode(
+    outline_node: Node=ShapeNode(tactile_switches.TactileSwitchOutline)
+    body_node: Node=ShapeNode(
             ButtonBody, 
             prefix='body_', 
             preserve=ButtonBody.WINGS_PRESERVE_SET.union(
@@ -158,7 +158,7 @@ class ButtonForTactileSwitch(core.CompositeShape):
                  'cap_wing_angle'}))
     fn: int=64
     
-    EXAMPLE_SHAPE_ARGS=core.args(switch_type='TL59')
+    EXAMPLE_SHAPE_ARGS=args(switch_type='TL59')
     EXAMPLE_ANCHORS=tuple()
     
     def __post_init__(self):
@@ -171,7 +171,7 @@ class ButtonForTactileSwitch(core.CompositeShape):
         switch_shape = self.outline_node(switch_shape=switch_node())
         
         maker.add_at(switch_shape.hole('switch_hole').at('switch_top'),
-                     'plate_cage', 'top', post=l.tranZ(EPSILON))
+                     'plate_cage', 'top', post=tranZ(EPSILON))
         
         self.maker = maker
 
@@ -188,25 +188,25 @@ class ButtonForTactileSwitch(core.CompositeShape):
         assert False, f'Failed to find switch_type {self.switch_type!r}.'
         
 
-@core.shape('anchorscad.models.components.buttons.button_for_tactile_switch')
+@shape('anchorscad.models.components.buttons.button_for_tactile_switch')
 @datatree
-class ButtonAssemblyTest(core.CompositeShape):
+class ButtonAssemblyTest(CompositeShape):
     '''
     <description>
     '''
     
-    base_node: Node=core.ShapeNode(ButtonForTactileSwitch)
-    cap_node: Node=core.ShapeNode(button_cap.ButtonCap)
+    base_node: Node=ShapeNode(ButtonForTactileSwitch)
+    cap_node: Node=ShapeNode(button_cap.ButtonCap)
     gap_size: float=0.3
     wing_count: int=4
     wing_angle: float=15
 
-    EXAMPLE_SHAPE_ARGS=core.args(switch_type='TL1105',
-                                 body_as_cage=True,
-                                 body_plate_cage_as_cage=False, 
-                                 body_degrees=270, 
-                                 ex_degrees=270,
-                                 fn=64)
+    EXAMPLE_SHAPE_ARGS=args(switch_type='TL1105',
+                            body_as_cage=True,
+                            body_plate_cage_as_cage=False, 
+                            body_degrees=270, 
+                            ex_degrees=270,
+                            fn=64)
     EXAMPLE_ANCHORS=tuple()
     
     def __post_init__(self):
@@ -219,7 +219,7 @@ class ButtonAssemblyTest(core.CompositeShape):
         
         shape = self.base_node()
         
-        maker = shape.solid('base').at(post=l.ROTZ_90)
+        maker = shape.solid('base').at(post=ROTZ_90)
 
         switch = shape.select_switch()(leads_as_cages=False)
         
@@ -229,10 +229,10 @@ class ButtonAssemblyTest(core.CompositeShape):
         cap_shape = self.cap_node()
         
         maker.add_at(cap_shape.solid('cap').colour([1, 0.3, 0.8, 1]).at('base'),
-                     'rim_plate_cage', 'base', rh=1, post=l.ROTZ_180 * l.tranZ(-0.))
+                     'rim_plate_cage', 'base', rh=1, post=ROTZ_180 * tranZ(-0.))
         
         self.maker = maker
 
 
 if __name__ == '__main__':
-    core.anchorscad_main(False)
+    anchorscad_main(False)

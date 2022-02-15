@@ -74,7 +74,7 @@ class FrabricatorRunner:
                 self.runner(fab, m)
     
     def runner(self, fab, ):
-
+        pass
 
 class FabricatorSubprocessEntry(ProcessManagerEntry):
     '''Provides the result of the running subprocess.
@@ -98,7 +98,7 @@ def run_fabricator(fab):
             shape.solid(recipie.name).at(anchor=recipie.anchor),
             anchor=recipie.place_at)
     
-    render maker etc...
+    #render maker etc...
     
     
 
