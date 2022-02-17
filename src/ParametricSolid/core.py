@@ -22,6 +22,7 @@ from ParametricSolid import linear as l
 from ParametricSolid.datatree import Node, BoundNode
 import numpy as np
 import pythonopenscad as posc
+from _datetime import datetime
 
 
 class CoreEception(Exception):
@@ -1254,7 +1255,11 @@ class AnchorsBuilder():
         return Anchors(name=self.name, level=self.level, anchors=frozendict(self.anchors))
 
 
-def shape(name=None, level=10):
+def shape(clazz_or_name=None, /, *, name=None, level=10):
+    if isinstance(clazz_or_name, str):
+        name = clazz_or_name
+        clazz_or_name = None
+    
     def decorator(clazz):
         builder = AnchorsBuilder(name, level)
         for func_name in dir(clazz):
@@ -1268,7 +1273,10 @@ def shape(name=None, level=10):
             builder.add(func_name, func, func.__anchor_spec__)
         clazz.anchorscad = builder.build()
         return clazz
-    return decorator
+    if clazz_or_name is None:
+        return decorator
+    
+    return decorator(clazz_or_name)
 
 
 @dataclass

@@ -69,8 +69,10 @@ class RaspberryPiCase(core.CompositeShape):
     fa: float=None
     fs: float=None
     
-    EXAMPLE_ANCHORS=(core.surface_args('shell', 'face_centre', 1),)
-    EXAMPLE_SHAPE_ARGS=core.args(fn=36, rpi_cage_as_cage=False)
+    EXAMPLE_ANCHORS=(core.surface_args('shell', 'face_centre', 1),
+                     core.surface_args(
+                         'main', 'fan', 'grille', ('spoke', 7), ('inner', 'mid', 0), 0),)
+    EXAMPLE_SHAPE_ARGS=core.args(fn=36, make_case_top=True, rpi_cage_as_cage=True)
     
     # Some anchor locations for locating flange position and sizes.
     USBA2_A2 = core.surface_args(

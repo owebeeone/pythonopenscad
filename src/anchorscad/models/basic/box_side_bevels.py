@@ -1,12 +1,14 @@
 '''
-Created on 25 Jan 2021
 
+Provides a box shape with bevels on 4 sides. The top and bottom edges
+are not beveled.
+
+Created on 25 Jan 2021
 @author: gianni
+
 '''
 
 from dataclasses import dataclass
-
-from numpy.core.defchararray import center
 
 import ParametricSolid.core as core
 import ParametricSolid.extrude as e
@@ -15,51 +17,52 @@ import numpy as np
 
 EPSILON = 1.e-10
 
-@core.shape('anchorscad/models/basic/box_side_bevels')
-@dataclass
-class BoxSideBevelsX(core.CompositeShape):
-    '''
-    Creates a box with bevels on 4 size (flat top and bottom).
-    '''
-    size: tuple=(30., 20., 10.)
-    bevel_radius: float=2.0
-    fn: int=None
-    fa: float=None
-    fs: float=None
+# @core.shape('anchorscad/models/basic/box_side_bevels')
+# @dataclass
+# class BoxSideBevelsX(core.CompositeShape):
+#     '''
+#     Creates a box with bevels on 4 size (flat top and bottom).
+#     '''
+#     size: tuple=(30., 20., 10.)
+#     bevel_radius: float=2.0
+#     fn: int=None
+#     fa: float=None
+#     fs: float=None
+#
+#
+#     EXAMPLE_SHAPE_ARGS=core.args([100., 80., 40.], bevel_radius=8, fn=20)
+#     EXAMPLE_ANCHORS=tuple(
+#         (core.surface_args('face_corner', f, c)) for f in (0, 3) for c in range(4)
+#         ) + tuple(core.surface_args('face_edge', f, c) for f in (1, 3) for c in range(4)
+#         ) + tuple(core.surface_args('face_centre', f) for f in (0, 3)
+#         ) + (
+#             core.surface_args('face_edge', 2, 2, 0.1),
+#             core.surface_args('face_edge', 2, 2, -0.5),
+#              core.inner_args('centre'),)
+#
+#     def __post_init__(self):
+#         size_delta = np.array([2 * self.bevel_radius, 2 * self.bevel_radius, 0])
+#         inner_size = np.array(self.size) - size_delta
+#         maker = core.Box(self.size).cage('shell').at('centre')
+#         maker.add(core.Box(inner_size).cage('hull').at('centre'))
+#
+#         params = core.non_defaults_dict(self, include=('fn', 'fa', 'fs'))
+#         roundc = core.Cylinder(h=self.size[2], r=self.bevel_radius, **params)
+#         faces = ((0, 1), (2, 1), (3, 3), (5, 1))
+#         for f, e in faces:
+#             maker.add_at(roundc.solid(f).at('centre'), 'hull', 'face_edge', f, e, post=l.ROTY_90)
+#
+#         size_delta + np.array([2 * self.bevel_radius, 2 * self.bevel_radius, 0])
+#
+#         for i in range(2):
+#             adjust = np.array([0, 0, 0])
+#             adjust[i] = 2 * self.bevel_radius
+#             new_size = adjust + inner_size
+#             maker.add(core.Box(new_size).solid(('box', i)).at('centre'))
+#
+#         self.maker = maker
+#
 
-
-    EXAMPLE_SHAPE_ARGS=core.args([100., 80., 40.], bevel_radius=8, fn=20)
-    EXAMPLE_ANCHORS=tuple(
-        (core.surface_args('face_corner', f, c)) for f in (0, 3) for c in range(4)
-        ) + tuple(core.surface_args('face_edge', f, c) for f in (1, 3) for c in range(4)
-        ) + tuple(core.surface_args('face_centre', f) for f in (0, 3)
-        ) + (
-            core.surface_args('face_edge', 2, 2, 0.1),
-            core.surface_args('face_edge', 2, 2, -0.5),
-             core.inner_args('centre'),)
-
-    def __post_init__(self):
-        size_delta = np.array([2 * self.bevel_radius, 2 * self.bevel_radius, 0])
-        inner_size = np.array(self.size) - size_delta
-        maker = core.Box(self.size).cage('shell').at('centre')
-        maker.add(core.Box(inner_size).cage('hull').at('centre'))
-        
-        params = core.non_defaults_dict(self, include=('fn', 'fa', 'fs'))
-        roundc = core.Cylinder(h=self.size[2], r=self.bevel_radius, **params)
-        faces = ((0, 1), (2, 1), (3, 3), (5, 1))
-        for f, e in faces:
-            maker.add_at(roundc.solid(f).at('centre'), 'hull', 'face_edge', f, e, post=l.ROTY_90)
-        
-        size_delta + np.array([2 * self.bevel_radius, 2 * self.bevel_radius, 0])
-        
-        for i in range(2):
-            adjust = np.array([0, 0, 0])
-            adjust[i] = 2 * self.bevel_radius
-            new_size = adjust + inner_size
-            maker.add(core.Box(new_size).solid(('box', i)).at('centre'))
-        
-        self.maker = maker
-        
 
 @core.shape('anchorscad/models/basic/box_side_bevels')
 @dataclass

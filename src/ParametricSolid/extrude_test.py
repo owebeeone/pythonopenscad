@@ -7,7 +7,6 @@ Created on 8 Jan 2021
 from dataclasses import dataclass
 from unittest import TestCase
 
-import ParametricSolid.core as core
 import ParametricSolid.extrude as extrude
 import ParametricSolid.linear as l
 from ParametricSolid.renderer import render
