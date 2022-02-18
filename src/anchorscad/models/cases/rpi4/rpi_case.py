@@ -136,7 +136,9 @@ class RaspberryPiCase(core.CompositeShape):
                        'top': core.ExampleParams(
                             core.args(make_case_top=True, 
                                       fn=36),
-                            anchors=())}
+                            anchors=(),
+                            base_anchor=core.surface_args(
+                                'main', 'face_centre', 4, post=ROTX_180))}
 
     def __post_init__(self):
         params = core.non_defaults_dict(self, include=('fn', 'fa', 'fs'))

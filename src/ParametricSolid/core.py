@@ -111,7 +111,7 @@ def inner_anchor_renderer(maker, anchor_args):
 
 @dataclass(frozen=True)
 class AnchorArgs():
-    args_: tuple
+    args_: tuple=args()
     scale_anchor: object=None
     
     def apply(self, maker):
@@ -652,6 +652,7 @@ def lazy_shape(shape_type, *field_specifiers, other_args=args()):
 class ExampleParams():
     shape_args: tuple=args()
     anchors: tuple=()
+    base_anchor: AnchorArgs=surface_args()
     
     def args_str(self):
         return f'(*{self.shape_args[0]!r}, **{self.shape_args[1]!r})'
@@ -755,7 +756,8 @@ class Shape(ShapeNamer, ShapeMaker):
                 *example_params.shape_args[0], 
                 **example_params.shape_args[1]
                 )
-            maker = shape.solid(name).projection(l.IDENTITY)            
+            projection = example_params.base_anchor.apply(shape)
+            maker = shape.solid(name).projection(projection)            
             
             for entry in example_params.anchors:
                 entry.func(maker, entry)
