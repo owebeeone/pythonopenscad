@@ -22,7 +22,7 @@ from ParametricSolid import linear as l
 from ParametricSolid.datatree import Node, BoundNode
 import numpy as np
 import pythonopenscad as posc
-from _datetime import datetime
+import builtins
 
 
 class CoreEception(Exception):
@@ -48,6 +48,10 @@ class IncorrectAnchorArgs(CoreEception):
 class InvalidNumberOfParametersException(CoreEception):
     '''Number of parameters provided is incorrect.'''
     
+class IllegalStateException(CoreEception):
+    '''An operation was attempted where not permitted.'''
+
+
 class ShapeNode(Node):
     '''A datatree Node that by default preserves the names of the
     standard metadata variables (fn, fs and fa) and exposes them if available.'''
@@ -1658,7 +1662,7 @@ class CompositeShape(Shape):
             
     def copy_if_mutable(self):
         result=copy.copy(self)
-        result.maker = Maker(copy_of=self.maker)
+        result._set_maker(Maker(copy_of=self.maker))
         return result
 
     @anchor('Access to inner elements of this composite shape.')
@@ -1687,12 +1691,19 @@ class CompositeShape(Shape):
             raise IncorrectAnchorArgs(
                 f'Could not find {anchor_name!r} on {self.__class__.__name__}\n'
                 f'Available names are {self.anchor_names()!r}')
+    
+    def _set_maker(self, maker):
+        builtins.object.__setattr__(self, 'maker', maker)
+        
+    def set_maker(self, maker):
+        if hasattr(self, 'maker'):
+            raise IllegalStateException('Cannot set maker more than once.')
+        self._set_maker(maker)
 
 
 @shape('anchorscad/core/arrow')
-@dataclass
+@dataclass(frozen=True)
 class Arrow(CompositeShape):
-    
     r_stem_top: float=1.0
     r_stem_base: float=None # Defaults to r_stem_top
     l_stem: float=6.0
@@ -1702,7 +1713,6 @@ class Arrow(CompositeShape):
     fn: int=None
     fa: float=None
     fs: float=None
-    
     
     EXAMPLE_ANCHORS=(
         surface_args('base'),
@@ -1722,7 +1732,7 @@ class Arrow(CompositeShape):
         stem = Cone(h=self.l_stem, r_base=self.r_stem_base, r_top=self.r_stem_top, **f_args)
         maker = stem.solid('stem').at('base')
         maker.add_at(head.solid('head').at('base', post=l.rotX(180)), 'top')
-        self.maker = maker
+        self.set_maker(maker)
         
     @anchor('The base of the stem of the object')
     def base(self, *args, **kwds):
@@ -1735,7 +1745,8 @@ class Arrow(CompositeShape):
     @anchor('Access to inner elements of this shape.')
     def within(self, *args, **kwds):
         return self.maker.at(*args, **kwds)
-    
+
+
 @shape('anchorscad/core/coordinates_cage')
 @dataclass
 class CoordinatesCage(Shape):
