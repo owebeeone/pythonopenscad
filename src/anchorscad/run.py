@@ -1,15 +1,20 @@
 '''
-Command line executable for running AnchorSCAD models. 
+Command line runner for AnchorSCAD models or any Python script using 
+AnchorSCAD imports.
 
 The AnchorSCAD root directory is applied to the PYTHONPATH and subsequent
-parameters are passed to a run of the subsequent file.
+parameters are passed to run of the subsequent file in the command line.
 
-Also, directory is changed to the same directory as the file being executed.
+Also, the current working directory is changed to the same directory as 
+the file being executed.
 
 Example:
-  python3 src\anchorscad\run.py \
-    src\anchorscad\models\basic\box_cylinder.py --write
-    
+  python3 src\\anchorscad\\run.py \\
+    src\\anchorscad\\models\\basic\\box_cylinder.py --write --svg_write
+
+    - The src\\anchorscad\\models\\basic\\examples_out directory will contain
+      the resulting files.
+
 Created on 17 Feb 2022
 
 @author: gianni
@@ -30,17 +35,20 @@ ANCHORSAD_RUNNER_TAG = 'ANCHORSAD_RUNNER_TAG'
 DO_LOG = False
 
 def log_message(message):
+    '''Minimal log function.'''
     if DO_LOG:
         sys.stderr.write(message + '\n')
 
 @dataclass
 class RunAnchorSCADModule:
+    f'''Prepares the environment to contain the appropriate {PYTHON_PATH}
+    to execute anchorscad modules.'''
     module: type=sys.modules[__name__]
     env: dict=field(default_factory=lambda : dict(os.environ))
     argv: list=field(default_factory=lambda : list(sys.argv))
     
     def __post_init__(self):
-        # Fix PYTHONPATH to anchorcad root
+        # Fix PYTHONPATH to AnchorSCAD's root
         ad_path = self.get_anchorscad_path()
         ppath = self.env.get(PYTHON_PATH, None)
         
@@ -62,7 +70,7 @@ class RunAnchorSCADModule:
     
     def run(self):
         if self.python_path_ok:
-            return self.run_command()
+            return self.run_ad_command()
         
         if self.env.get(ANCHORSAD_RUNNER_TAG, None) == 'T':
             sys.stderr.write(
@@ -80,7 +88,7 @@ class RunAnchorSCADModule:
         log_message('Rerunning process.')
         return Popen(command, env=self.env).wait()
     
-    def run_command(self):
+    def run_ad_command(self):
         if len(self.argv) <= 1:
             sys.stderr.write(
                 'Missing command line arg: Python file to execute. ')
@@ -102,6 +110,8 @@ class RunAnchorSCADModule:
         return Popen(command, env=self.env).wait()
         
     def get_anchorscad_path(self):
+        '''Evaluates the AnchorSCAD path given the file location of
+        self.module.'''
         path_to_module = Path(inspect.getfile(self.module))
         return path_to_module.parents[1]
     
