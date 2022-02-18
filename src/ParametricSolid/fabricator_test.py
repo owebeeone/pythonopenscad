@@ -26,7 +26,7 @@ class TestBoxFabricator(Fabricator):
         self.recipies = (RecipiesBuilder()
             .add(
                 name='box1',
-                shape=lambda : core.Box((10, 20, 30)),
+                shape_func=lambda : core.Box((10, 20, 30)),
                 anchor=core.surface_args(
                             'face_centre', 0, post=l.tranX(40)),
                 place_at=core.surface_args(
@@ -34,7 +34,7 @@ class TestBoxFabricator(Fabricator):
                 )
             .add(
                 name='box2',
-                shape=lambda : core.Box((10, 20, 30)),
+                shape_func=lambda : core.Box((10, 20, 30)),
                 anchor=core.surface_args(
                             'face_centre', 3, post=l.tranX(40)),
                 place_at=core.surface_args(

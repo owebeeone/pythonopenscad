@@ -33,7 +33,7 @@ class GraphRecipeArgs:
 class Recipe:
     '''The shape to 'fabricate' '''
     name: str
-    shape_function: object
+    shape_func: object
     anchor: object=None
     place_at: object=None
 
@@ -47,14 +47,16 @@ class RecipiesBuilder:
     def __init__(self):
         self.map = dict()
     
-    def add(self, name: str, shape_function: object, *args, **kwds):
+    def add(self, name: str, shape_func: object, *args, **kwds):
         if name in self.map:
             raise DuplicateNameException(
                 f'Shape {name} has been added previously.')
         self.map[name] = Recipe(name=name, 
-                                shape_function=shape_function,
+                                shape_func=shape_func,
                                 *args, 
                                 **kwds)
+        return self
+    
     def build(self):
         return frozendict(self.map)
         
@@ -69,3 +71,4 @@ class Fabricator:
     image_args: ImageRecipeArgs=ImageRecipeArgs(imgsize=(1280, 1024))
     graph_args: GraphRecipeArgs=GraphRecipeArgs()
     file_basename: str=None # Use the class name if unset.
+
