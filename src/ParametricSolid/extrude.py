@@ -4,7 +4,10 @@ Created on 7 Jan 2021
 @author: gianni
 '''
 
+from collections.abc import Iterable
 from dataclasses import dataclass, field
+from types import FunctionType
+from typing import List
 
 from frozendict import frozendict
 
@@ -12,9 +15,6 @@ import ParametricSolid.core as core
 import ParametricSolid.linear as l
 import numpy as np
 import pyclipper as pc
-from collections.abc import Iterable
-from typing import List
-from types import FunctionType
 
 
 class DuplicateNameException(Exception):
@@ -89,7 +89,7 @@ class CubicSpline():
         [ -3,  3,  0,  0 ],
         [  1,  0,  0,  0 ]])
     
-    @staticmethod
+    #@staticmethod
     def _dcoeffs_builder(dims):
         zero_order_derivative_coeffs=np.array([[1.] * dims, [1] * dims, [1] * dims, [1] * dims])
         derivative_coeffs=np.array([[3.] * dims, [2] * dims, [1] * dims, [0] * dims])

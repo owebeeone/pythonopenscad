@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 '''
 Command line runner for AnchorSCAD models or any Python script using 
 AnchorSCAD imports.
@@ -25,8 +26,9 @@ import inspect
 import os
 from pathlib import Path
 import platform
-import sys
 from subprocess import Popen
+import sys
+
 
 PATH_SEPARATOR = ';' if platform.system() == 'Windows' else ':'
 PYTHON_PATH = 'PYTHONPATH'
