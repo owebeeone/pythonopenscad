@@ -5,3 +5,4 @@ scipy
 dataclasses_json
 debugpy
 dill
+sortedcontainers
