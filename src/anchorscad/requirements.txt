@@ -1,0 +1,7 @@
+numpy
+frozendict
+pyclipper
+scipy
+dataclasses_json
+debugpy
+dill

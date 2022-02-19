@@ -3,7 +3,7 @@ Basic set of tests.
 
 '''
 import unittest
-import pythonopenscad as base
+import base
 
 
 class Test(unittest.TestCase):
@@ -32,6 +32,10 @@ class Test(unittest.TestCase):
         obj = base.Linear_Extrude(scale=10)
         self.assertEqual(repr(obj),
                          'linear_extrude(height=100.0, scale=10.0)\n')
+
+    def testSphere(self):
+        obj = base.Sphere(r=1)
+        self.assertEqual(obj.r, 1, "Expected r 1")
 
     def testCylinderConstruction(self):
         obj = base.Cylinder(10, 11)
@@ -177,10 +181,6 @@ class Test(unittest.TestCase):
         self.assertFalse(base.OSC_FALSE)
         self.assertTrue(base.OSC_TRUE)
 
-    def test_offset(self):
-        self.assertEqual(base.Offset(r=3.0).r, 3.0)
-        self.assertEqual(base.Offset().r, 1.0)
-
     def testModifiers(self):
         obj = base.Cylinder()
         self.assertFalse(obj.has_modifier(base.DEBUG))
@@ -195,14 +195,6 @@ class Test(unittest.TestCase):
         )
         self.assertFalse(obj.has_modifier(base.DEBUG))
         self.assertTrue(obj.has_modifier(base.TRANSPARENT))
-        
-    def testMetadataName(self):
-        obj = base.Sphere()
-        self.assertEquals(str(obj), 'sphere(r=1.0);\n')
-        obj.setMetadataName("a_name")
-        self.assertEquals(str(obj), "// 'a_name'\nsphere(r=1.0);\n")
-        obj.setMetadataName(('a', 'tuple'))
-        self.assertEquals(str(obj), "// ('a', 'tuple')\nsphere(r=1.0);\n")
 
 
 if __name__ == "__main__":

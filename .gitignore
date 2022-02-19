@@ -20,11 +20,13 @@ parts/
 sdist/
 var/
 wheels/
+examples_out/
 share/python-wheels/
 *.egg-info/
 .installed.cfg
 *.egg
 MANIFEST
+generated*/
 
 # PyInstaller
 #  Usually these files are written by a python script from a template
@@ -139,3 +141,4 @@ cython_debug/
 
 # BAK files
 *.BAK
+test*.scad
