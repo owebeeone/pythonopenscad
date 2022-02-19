@@ -5,6 +5,7 @@ Created on 5 Jan 2021
 '''
 
 import argparse
+import builtins
 import copy
 from dataclasses import dataclass, field
 import fnmatch
@@ -22,7 +23,6 @@ from ParametricSolid import linear as l
 from ParametricSolid.datatree import Node, BoundNode
 import numpy as np
 import pythonopenscad as posc
-import builtins
 
 
 class CoreEception(Exception):
@@ -1345,12 +1345,27 @@ class Box(Shape):
     EXAMPLE_ANCHORS=tuple(
         (surface_args('face_corner', f, c)) for f in (0, 3) for c in range(4)
         ) + tuple(surface_args('face_edge', f, c) for f in (1, 3) for c in range(4)
-        ) + tuple(surface_args('face_centre', f) for f in (0, 3)
+        ) + tuple(surface_args('face_centre', f) for f in 
+                  ('front', 'back', 'left', 'right', 'base', 'top')
         ) + (
             surface_args('face_edge', 2, 2, 0.1),
-            surface_args('face_edge', 2, 2, -0.5),
-             inner_args('centre'),)
+            surface_args('face_edge', 'left', 2, -0.5),
+            inner_args('centre'),)
     EXAMPLE_SHAPE_ARGS=args([100, 120, 140])
+    
+    FACE_MAP=frozendict({
+        0: 0,
+        1: 1,
+        2: 2,
+        3: 3,
+        4: 4,
+        5: 5,
+        'front': 0,
+        'back': 3,
+        'base': 1,
+        'top': 4,
+        'left': 2,
+        'right': 5})
     
     def __init__(self, size=[1, 1, 1]):
         self.size = l.GVector(VECTOR3_FLOAT_DEFAULT_1(size))
@@ -1369,6 +1384,7 @@ class Box(Shape):
     
     @anchor('Edge centre of box given face (0-5) and edge (0-3)')
     def face_edge(self, face, edge, t=0.5, d=0):
+        face = self.FACE_MAP[face]
         orientation = self.ORIENTATION[face] * l.rotZ(90 * edge)
         loc = l.GVector(self.size)  # make a copy.
         half_of = self.COORDINATES_EDGE_HALVES[face][edge]
@@ -1385,6 +1401,7 @@ class Box(Shape):
         
     @anchor('Centre of face given face (0-5)')
     def face_centre(self, face):
+        face = self.FACE_MAP[face]
         orientation = self.ORIENTATION[face]
         loc = l.GVector(self.size)  # make a copy.
         keep_value = self.COORDINATES_CENTRES_AXIS[face % 3][0]
