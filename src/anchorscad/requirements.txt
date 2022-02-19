@@ -6,3 +6,4 @@ dataclasses_json
 debugpy
 dill
 sortedcontainers
+graphviz
