@@ -188,6 +188,33 @@ FN_ARG = Arg('_fn',
              osc_name="$fn")
 
 
+@dataclass(frozen=True)
+class _ConverterWrapper:
+    
+    func: object
+    
+    def __repr__(self):
+        return self.func.__name__
+    
+    def __str__(self):
+        return self.func.__name__
+    
+    def __call__(self, v):
+        return self.func(v)
+    
+    @property
+    def __name__(self):
+        return self.func.__name__
+    
+def _as_converter(arg=None):
+    if isinstance(arg, str):
+        def decorator(f):
+            f.__name__ = arg
+            return _ConverterWrapper(f)
+        return decorator
+    return _ConverterWrapper(arg)
+
+
 def list_of(typ, len_min_max=(3, 3), fill_to_min=None):
     '''Defines a converter for an iterable to a list of elements of a given type.
     Args:
@@ -200,6 +227,7 @@ def list_of(typ, len_min_max=(3, 3), fill_to_min=None):
     description = 'list_of(%s, len_min_max=%r, fill_to_min=%r)' % (
         typ.__name__, len_min_max, fill_to_min)
 
+    @_as_converter(description)
     def list_converter(value):
         '''Converts provided value as a list of the given type.
         value: The value to be converted
@@ -220,9 +248,7 @@ def list_of(typ, len_min_max=(3, 3), fill_to_min=None):
                 converted_value.append(fill_converted)
         return converted_value
 
-    list_converter.__name__ = description
     return list_converter
-
 
 def one_of(typ, *args):
     '''Provides a converter that will iterate over the provided converters until it succeeds.
@@ -233,6 +259,7 @@ def one_of(typ, *args):
     largs = [typ] + list(args)
     description = 'one_of(%s)' % ', '.join(t.__name__ for t in largs)
 
+    @_as_converter(description)
     def one_of_converter(value):
         '''Converts a value to one of the list provided to one_of().
         Throws:
@@ -246,7 +273,6 @@ def one_of(typ, *args):
         raise ConversionException('The value %r can\'t convert using %s' %
                                   (value, description))
 
-    one_of_converter.__name__ = description
     return one_of_converter
 
 
@@ -272,6 +298,7 @@ OSC_TRUE = OscKeyword('true')
 OSC_FALSE = OscKeyword('false')
 
 
+@_as_converter
 def bool_strict(value):
     '''Returns an OscKeyword given bool i.e. 'true' if True else 'false'.
     Args:
@@ -285,7 +312,7 @@ def bool_strict(value):
             (value, value.__class__.__name__))
     return OSC_TRUE if value else OSC_FALSE
 
-
+@_as_converter
 def str_strict(value):
     '''Returns the given value if it is a str object otherwise raises
     InvalidValueForStr exception.
@@ -300,7 +327,6 @@ def str_strict(value):
             (value, value.__class__.__name__))
     return value
 
-
 def of_set(*args):
     '''Returns a converter function that will throw if the the value to be converted is not
     one of args:
@@ -312,13 +338,13 @@ def of_set(*args):
     allowed_values = set(args)
     description = 'of_set(allowed_values=%r)' % (tuple(allowed_values), )
 
+    @_as_converter(description)
     def of_set_converter(value):
         if not value in allowed_values:
             raise InvalidValue('%r is not allowed with %s.' %
                                (value, description))
         return value
 
-    of_set_converter.__name__ = description
     return of_set_converter
 
 
