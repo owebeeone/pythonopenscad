@@ -931,8 +931,11 @@ def apply_posc_attributes(clazz):
     strs.append(clazz.OSC_API_SPEC.generate_class_doc())
     clazz.__doc__ = '\n'.join(strs)
     # Add an alias of this class for the OpenScad name. Be compatible with SolidPython.
-    setattr(sys.modules[__name__], clazz.OSC_API_SPEC.openscad_name,
-            type(clazz.OSC_API_SPEC.openscad_name, (clazz, ), {}))
+    other_class = type(clazz.OSC_API_SPEC.openscad_name, (clazz, ), {})
+    other_class.__doc__ = clazz.__doc__  # For some reason __doc__ needs setting.
+    setattr(sys.modules[__name__],
+            clazz.OSC_API_SPEC.openscad_name,
+            other_class)
 
     return clazz
 
