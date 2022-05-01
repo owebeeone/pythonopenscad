@@ -1313,7 +1313,7 @@ class Polygon(PoscBase):
             None,
             'A list of paths which are a list of indexes into the points collection.'),
         Arg('convexity', int, None, 'A convexity value used for preview mode to aid rendering.'),),
-        OPEN_SCAD_URL_TAIL_2D)
+        OPEN_SCAD_URL_TAIL_2D, 'Polygons')
 
 @apply_posc_attributes
 class Text(PoscBase):
