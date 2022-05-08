@@ -136,8 +136,8 @@ PythonOpenScad is yet another OpenScad script generator (and only this). I will 
 
 * $fn/$fa/$fs is supported everywhere it actually does something even though the docs don’t say that they do.
 
-* repr(object) works and produces python code. similarly str(object) produces OpenScadCode.
+* repr(object) works and produces python code. similarly str(object) produces OpenScad code.
 
 PythonOpenScad code is very specifically only a layer to generate OpenScad scripts. I want to allow for one day where I will write bindings directly to a native OpenScad Python module that will allow more interesting interactions with the model. That’s for another day.
 
-I have/am building another solid modelling tool, ParamertricSolids which allows building libraries of geometric solid models that will hopefully be a much easier way to build complex models. This is a layer on top of other CSG modules that hopefully will have a very independent relationship with OpenScad.
+I am building another solid modelling tool, [AnchorScad](https://github.com/owebeeone/anchorscad) which allows building libraries of geometric solid models that will hopefully be a much easier way to build complex models. This is a layer on top of other CSG modules that hopefully will have a very independent relationship with OpenScad.
