@@ -9,7 +9,7 @@ The Python code below generates a 3D solid model of text saying â€˜Hello world!â
 -----
 	from pythonopenscad import Text 
 	
-	print(|
+	print(
 	  Text('Hello world!', size=15).linear_extrude(height=2)
 	      .translate([-60, 0, 0]))
 -----
