@@ -506,18 +506,18 @@ class StringWriter(object):
     '''A CodeDumper writer that writes to a string. This can API can be implemented for
     file writers or other uses.'''
     def __init__(self):
-        self.builder = []
+        self._builder = []
 
     def get(self):
         '''Returns the contents. This is used by PythonOpenScad code in only the str
         and repr conversions which specifically create a StringWriter writer. Append
         is the only mentod called by the PythonOpenScad renderer.'''
-        return '\n'.join(self.builder + [''])
+        return '\n'.join(self._builder + [''])
 
     def append(self, line):
         '''Called by the PythonOpenScad renderer/code_dump to write generated model
         representation. Override this function to implement other output mechanisms.'''
-        self.builder.append(line)
+        self._builder.append(line)
 
 
 class FileWriter(object):
