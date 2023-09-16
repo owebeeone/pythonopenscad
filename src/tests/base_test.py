@@ -203,7 +203,23 @@ class Test(unittest.TestCase):
         self.assertEquals(str(obj), "// 'a_name'\nsphere(r=1.0);\n")
         obj.setMetadataName(('a', 'tuple'))
         self.assertEquals(str(obj), "// ('a', 'tuple')\nsphere(r=1.0);\n")
-
+        
+    def testFill(self):
+        obj1 = base.Circle(r=10)
+        obj2 = base.Circle(r=5)
+        
+        result = base.difference()(obj1, obj2).fill()
+        
+        self.assertEquals(
+            str(result),
+            '\n'.join((
+                'fill() {',
+                '  difference() {',
+                '    circle(r=10.0);',
+                '    circle(r=5.0);',
+                '  }',
+                '}\n')))
+        
 
 if __name__ == "__main__":
     #import sys;sys.argv = ['', 'Test.testName']

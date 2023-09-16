@@ -877,6 +877,9 @@ class PoscBase(PoscModifiers):
 
     def rotate_extrude(self, *args, **kwds):
         return Rotate_Extrude(*args, **kwds)(self)
+    
+    def fill(self, *args, **kwds):
+        return Fill(*args, **kwds)(self)
 
     def __eq__(self, other):
         '''Exact object tree equality. (Not resulting shape equality)'''
@@ -1396,3 +1399,8 @@ class Surface(PoscBase):
         Arg('convexity', int, None, 'A convexity value used for preview mode to aid rendering.'),),
         OPEN_SCAD_URL_TAIL_OTHER, 'Surface')
 
+@apply_posc_attributes
+class Fill(PoscParentBase):
+    '''Removes holes from polygons without changing the outline. For convex polygons 
+    the result is identical to hull().'''
+    OSC_API_SPEC = OpenScadApiSpecifier('fill', (), OPEN_SCAD_URL_TAIL_TRANSFORMS)
