@@ -79,8 +79,8 @@ PythonOpenSCAD is available under the terms of the [GNU LESSER GENERAL PUBLIC LI
 
 Copyright (C) 2022 Gianni Mariani
 
-[PythonOpenScad](https://bitbucket.org/owebeeone/pythonopenscad/src/master/) is free software; you can redistribute it and/or
-modify it under the terms of the GNU Lesser General Public
+[PythonOpenScad](https://github.com/owebeeone/pythonopenscad) is free software; 
+you can redistribute it and/or modify it under the terms of the GNU Lesser General Public
 License as published by the Free Software Foundation; either
 version 2.1 of the License, or (at your option) any later version.
 
