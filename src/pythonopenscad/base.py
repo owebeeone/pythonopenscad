@@ -14,7 +14,7 @@ PythonOpenScad features include:
     * Python doc which is accurate and links to OpenScad reference documents.
 
 See:
-    `PythonOpenScad <http://bitbucket.org/owebeeone/pythonopenscad/src/master/>`
+    `PythonOpenScad <https://github.com/owebeeone/pythonopenscad>`
     `OpenScad <http://www.openscad.org/documentation.html>`
     `OpenPyScad <http://github.com/taxpon/openpyscad>`
     `SolidPython <http://github.com/SolidCode/SolidPython>`
@@ -1404,3 +1404,4 @@ class Fill(PoscParentBase):
     '''Removes holes from polygons without changing the outline. For convex polygons 
     the result is identical to hull().'''
     OSC_API_SPEC = OpenScadApiSpecifier('fill', (), OPEN_SCAD_URL_TAIL_TRANSFORMS)
+
