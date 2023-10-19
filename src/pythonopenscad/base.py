@@ -1188,7 +1188,7 @@ class Multmatrix(PoscParentBase):
 @apply_posc_transformation_attributes
 class Color(PoscParentBase):
     '''Apply a color (only supported in OpenScad preview mode). Colors can be a 3 vector
-    of values [0.0-1.0] for RGG or additionally a 4 vector if alpha is included for an
+    of values [0.0-1.0] for RGB or additionally a 4 vector if alpha is included for an
     RGBA color. Colors can be specified as #RRGGBB and it's variants.'''
     OSC_API_SPEC = OpenScadApiSpecifier('color', (
         Arg('c', one_of(str_strict, VECTOR3OR4_FLOAT), None,
