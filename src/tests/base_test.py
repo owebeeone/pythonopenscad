@@ -219,6 +219,26 @@ class Test(unittest.TestCase):
                 '    circle(r=5.0);',
                 '  }',
                 '}\n')))
+    
+    def testLazyUnion(self):
+        obj1 = base.Circle(r=10)
+        obj2 = base.Circle(r=5)
+        
+        result = base.lazy_union()(obj1, obj2)
+        result.setMetadataName("a_name")
+        
+        self.assertEquals(
+            repr(result),
+            '''# 'a_name'\nlazy_union() (\n  circle(r=10.0),\n  circle(r=5.0)\n),\n''')
+        
+        self.assertEquals(
+            str(result),
+            '\n'.join((
+                '// Start: lazy_union',
+                'circle(r=10.0);',
+                'circle(r=5.0);',
+                '// End: lazy_union\n')))
+        
         
 
 if __name__ == "__main__":

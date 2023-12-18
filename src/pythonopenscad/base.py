@@ -544,6 +544,8 @@ class CodeDumper(object):
             self.level = level
             self.is_last = is_last
 
+    DUMPS_OPENSCAD = True
+
     def get(self):
         return self.level, self.is_last
 
@@ -680,6 +682,9 @@ class CodeDumperForPython(CodeDumper):
         Same parameters as CodeDumper but overrides defaults for str_quotes and
         block_ends.
     '''
+    
+    DUMPS_OPENSCAD = False
+    
     def __init__(self, *args, **kwds):
         kwds.setdefault('str_quotes', "'")
         kwds.setdefault('block_ends', (' (', '),', ',', '#'))
@@ -711,6 +716,8 @@ class CodeDumperForPython(CodeDumper):
 
 
 class PoscBase(PoscModifiers):
+    
+    DUMP_CONTAINER = True
 
     def __post_init__(self):
         for arg in self.OSC_API_SPEC.args:
@@ -760,7 +767,7 @@ class PoscBase(PoscModifiers):
         '''This is a childless node, always returns empty tuple.'''
         return ()
 
-    def code_dump(self, code_dumper):
+    def code_dump(self, code_dumper: CodeDumper):
         '''Dump the OpenScad equivalent of this script into the provided dumper.'''
         termial_suffix = (code_dumper.block_ends[2]
                           if code_dumper.should_add_suffix() else '')
@@ -773,17 +780,25 @@ class PoscBase(PoscModifiers):
         metadataName = self.getMetadataName()
         if metadataName:
             comment = code_dumper.block_ends[3] + ' ' + repr(metadataName)
-        code_dumper.write_function(
-            function_name, params_list, mod_prefix, mod_suffix, suffix, comment)
-        if self.has_children():
-            code_dumper.push_increase_indent()
-            left = len(self.children())
+        if self.DUMP_CONTAINER or not code_dumper.DUMPS_OPENSCAD:
+            code_dumper.write_function(
+                function_name, params_list, mod_prefix, mod_suffix, suffix, comment)
+            if self.has_children():
+                code_dumper.push_increase_indent()
+                left = len(self.children())
+                for child in self.children():
+                    left -= 1
+                    code_dumper.set_is_last(left == 0)
+                    child.code_dump(code_dumper)
+                code_dumper.pop_indent_level()
+                code_dumper.write_line(code_dumper.block_ends[1])
+        else:
+            # Must be a LazyUnion dumping to OpenScad. Dump the children directly
+            # to invoke the "lazy" union behavior.
+            code_dumper.write_line(code_dumper.block_ends[3] + ' Start: ' + self.OSC_API_SPEC.openscad_name)
             for child in self.children():
-                left -= 1
-                code_dumper.set_is_last(left == 0)
                 child.code_dump(code_dumper)
-            code_dumper.pop_indent_level()
-            code_dumper.write_line(code_dumper.block_ends[1])
+            code_dumper.write_line(code_dumper.block_ends[3] + ' End: ' + self.OSC_API_SPEC.openscad_name)
 
     def __str__(self):
         '''Returns the OpenScad equivalent code for this node.'''
@@ -1352,11 +1367,20 @@ class Polyhedron(PoscBase):
         Arg('convexity', int, 10, 'A convexity value used for preview mode to aid rendering.'),),
         OPEN_SCAD_URL_TAIL_PRIMITIVES)
 
+
 @apply_posc_attributes
 class Union(PoscParentBase):
     '''Unifies a set of 3D objects into a single object by performing a union of all the space
     contained by all the shapes.'''
     OSC_API_SPEC = OpenScadApiSpecifier('union', (), OPEN_SCAD_URL_TAIL_CSG)
+
+
+@apply_posc_attributes
+class LazyUnion(PoscParentBase):
+    '''An implicit union for the top level node. This allows the top level nodes to be rendered
+    separeately if the model is exported as a 3mf file.'''
+    DUMP_CONTAINER = False  # When rendering to OpenScad, don't render the container.
+    OSC_API_SPEC = OpenScadApiSpecifier('lazy_union', (), OPEN_SCAD_URL_TAIL_CSG)
 
 
 @apply_posc_attributes
