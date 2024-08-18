@@ -710,6 +710,11 @@ class CodeDumper(object):
                     break
                     
             self.modules_dict[module.get_name()] = module
+            
+    def reset_modules(self, modules):
+        '''Resets the module names.'''
+        for module in modules:
+            module.gen_name = None
 
     def dump_modules(self):
         '''Writes the modules to the output.'''
@@ -887,6 +892,8 @@ class PoscBase(PoscModifiers):
         code_dumper.add_modules(self.get_modules())
         self.code_dump(code_dumper)
         code_dumper.dump_modules()
+        # Reset the module names sp that these can be reused.
+        code_dumper.reset_modules(self.get_modules())
         return code_dumper
 
     def __str__(self):
