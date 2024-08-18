@@ -182,9 +182,9 @@ class Test(unittest.TestCase):
         self.assertEqual(base.Offset().r, 1.0)
 
     def testModifiers(self):
-        obj = base.Cylinder()
+        obj = base.Cylinder(h=1)
         self.assertFalse(obj.has_modifier(base.DEBUG))
-        obj = base.Cylinder().add_modifier(base.DEBUG, base.TRANSPARENT)
+        obj = base.Cylinder(h=1).add_modifier(base.DEBUG, base.TRANSPARENT)
         self.assertEquals(obj.get_modifiers(), '#%')
         obj.remove_modifier(base.DEBUG)
         self.assertEquals(obj.get_modifiers(), '%')
@@ -239,7 +239,135 @@ class Test(unittest.TestCase):
                 'circle(r=5.0);',
                 '// End: lazy_union\n')))
         
+    def testModules(self):
+        obj1 = base.module('obj1')(base.Circle(r=10))
+        obj1.setMetadataName("obj 1")
+        obj2 = base.module('obj2')(base.Circle(r=5))
+        obj2.setMetadataName("obj 2")
         
+        result = base.lazy_union()(obj1, obj2)
+        result.setMetadataName("a_name")
+
+        # Debug helper - uncomment to print the result.
+        # print('str: ')
+        # print(self.dump_str(str(result)))
+        # print('repr: ')        
+        # print(self.dump_str(repr(result)))
+        
+        self.assertEquals(
+            str(result),
+            '\n'.join([
+                '// Start: lazy_union',
+                'obj1();',
+                'obj2();',
+                '// End: lazy_union',
+                '',
+                '// Modules.',
+                '',
+                "// 'obj 1'",
+                'module obj1() {',
+                '  circle(r=10.0);',
+                '} // end module obj1',
+                '',
+                "// 'obj 2'",
+                'module obj2() {',
+                '  circle(r=5.0);',
+                '} // end module obj2',
+                '']))
+        
+        self.assertEquals(
+            repr(result),
+            '\n'.join([
+                "# 'a_name'",
+                'lazy_union() (',
+                'obj1();',
+                'obj2();',
+                '),',
+                '',
+                '# Modules.',
+                '',
+                "# 'obj 1'",
+                'def obj1(): return (',
+                '  circle(r=10.0)',
+                '), # end module obj1',
+                '',
+                "# 'obj 2'",
+                'def obj2(): return (',
+                '  circle(r=5.0)',
+                '), # end module obj2',
+                '']))
+        
+    def testModules_nameCollision(self):
+        obj1 = base.module('colliding_name')(base.Circle(r=10))
+        obj1.setMetadataName("obj 1")
+        obj2 = base.module('colliding_name')(base.Circle(r=5))
+        obj2.setMetadataName("obj 2")
+        
+        result = base.lazy_union()(obj1, obj2)
+        result.setMetadataName("a_name")
+        
+        # Debug helper - uncomment to print the result.
+        # print('str: ')
+        # print(self.dump_str(str(result)))
+        # print('repr: ')        
+        # print(self.dump_str(repr(result)))
+        
+        self.assertEquals(
+            str(result),
+            '\n'.join([
+                '// Start: lazy_union',
+                'colliding_name();',
+                'colliding_name_1();',
+                '// End: lazy_union',
+                '',
+                '// Modules.',
+                '',
+                "// 'obj 1'",
+                'module colliding_name() {',
+                '  circle(r=10.0);',
+                '} // end module colliding_name',
+                '',
+                "// 'obj 2'",
+                'module colliding_name_1() {',
+                '  circle(r=5.0);',
+                '} // end module colliding_name_1',
+                '']))
+        
+    def testModules_nameCollision_elided(self):
+        obj1 = base.module('colliding_name')(base.Circle(r=10))
+        obj1.setMetadataName("obj 1")
+        obj2 = base.module('colliding_name')(base.Circle(r=10))
+        obj2.setMetadataName("obj 2")
+        
+        result = base.lazy_union()(obj1, obj2)
+        result.setMetadataName("a_name")
+        
+        # Debug helper - uncomment to print the result.
+        # print('str: ')
+        # print(self.dump_str(str(result)))
+        # print('repr: ')        
+        # print(self.dump_str(repr(result)))
+        
+        self.assertEquals(
+            str(result),
+            '\n'.join([
+                '// Start: lazy_union',
+                'colliding_name();',
+                'colliding_name();',
+                '// End: lazy_union',
+                '',
+                '// Modules.',
+                '',
+                "// 'obj 2'",
+                'module colliding_name() {',
+                '  circle(r=10.0);',
+                '} // end module colliding_name',
+                '']))
+                
+        
+    def dump_str(self, s):
+        return '[\n' + ',\n'.join([repr(l) for l in s.split('\n')]) + ']'
+            
 
 if __name__ == "__main__":
     #import sys;sys.argv = ['', 'Test.testName']

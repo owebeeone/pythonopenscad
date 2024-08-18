@@ -41,6 +41,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
 import copy
 import sys
 from dataclasses import dataclass, field
+from collections import defaultdict
+from typing import List, Tuple
 
 
 # Exceptions for dealing with argument checking.
@@ -121,7 +123,9 @@ class Arg(object):
                  docstring,
                  required=False,
                  osc_name=None,
-                 attr_name=None):
+                 attr_name=None,
+                 init=True,
+                 compare=True):
         '''Args:
             name: The pythonopenscad name of this parameter.
             osc_name: The name used by OpenScad. Defaults to name.
@@ -130,6 +134,8 @@ class Arg(object):
             default:_value: Default value for argument (this will be converted by typ).
             docstring: The python doc for the arg.
             required: Throws if the value is not provided.
+            init: If True then the arg is added to the __init__ function.
+            compare: If True then the arg is compared in the equals function.
         '''
         self.name = name
         self.osc_name = osc_name or name
@@ -138,9 +144,18 @@ class Arg(object):
         self.default_value = default_value
         self.docstring = docstring
         self.required = required
+        self.init = init
+        self.compare = compare
         
     def to_dataclass_field(self):
-        return field(default=self.default_value)
+        kwds = dict()
+        if not self.required:
+            kwds['default'] = self.default_value
+        if not self.init:
+            kwds['init'] = False
+        if not self.compare:
+            kwds['compare'] = False
+        return field(**kwds)
     
     def annotation(self):
         return (self.name, self.typ)
@@ -545,7 +560,7 @@ class CodeDumper(object):
             self.is_last = is_last
 
     DUMPS_OPENSCAD = True
-
+    
     def get(self):
         return self.level, self.is_last
 
@@ -554,7 +569,7 @@ class CodeDumper(object):
                  indent_multiple=2,
                  writer=None,
                  str_quotes='"',
-                 block_ends=(' {', '}', ';', '//'),
+                 block_ends=(' {', '}', ';', '//', 'module', '', ''),
                  target_max_column=100):
         '''
         Args:
@@ -562,6 +577,7 @@ class CodeDumper(object):
            indent_multiple: the number of indent_char added per indent level.
            writer: A writer, like StringWriter.
            target_max_column: The max column number where line continuation may be used.
+           variables: A list of variables to be defined at the top of the script.
         '''
         self.indent_char = indent_char
         self.indent_multiple = indent_multiple
@@ -573,7 +589,9 @@ class CodeDumper(object):
         self.current_indent_string = ''
         self.is_last = False
         self.indent_level_stack = []
-
+        self.modules_dict = dict()
+        self.modules_num = defaultdict(int)
+        
     def check_indent_level(self, level):
         '''Check the adding of the resulting indent level will be in range.
         Args:
@@ -673,6 +691,58 @@ class CodeDumper(object):
     def get_modifiers_prefix_suffix(self, obj):
         '''Returns the OpenScad modifiers string.'''
         return (obj.get_modifiers(), '')
+    
+    def add_modules(self, modules: List['Module']):
+        '''Adds the modules to the output. If a module name is already in use then
+        a new name is generated.'''
+        
+        for module in modules:
+            while module.get_name() in self.modules_dict:
+                other_module = self.modules_dict[module.name]
+                if other_module != module:
+                    # Two different modules with the same name. Change the name of the new one.
+                    newnum = 1 + self.modules_num[module.name]
+                    self.modules_num[module.name] = newnum
+                    # In theoru this name could a manuallu created name, so we need to
+                    # continue to increment until we find a unique name.
+                    module.gen_name = f'{module.name}_{newnum}'
+                else:
+                    break
+                    
+            self.modules_dict[module.get_name()] = module
+
+    def dump_modules(self):
+        '''Writes the modules to the output.'''
+        start_comment = self.block_ends[3]
+        if self.modules_dict:
+            self.add_line('')
+            self.add_line(f'{start_comment} Modules.')
+        module_names = [k for k in self.modules_dict.keys()]
+        module_names.sort()
+        for module_name in module_names:
+            self.render_modules(self.modules_dict[module_name])
+
+    def render_modules(self, module):
+        '''Returns a string representing the given variable.'''
+        start_func = self.block_ends[0]
+        end_func = self.block_ends[1]
+        start_comment = self.block_ends[3]
+        name = module.get_name()
+        metadataName = module.getMetadataName()
+        self.add_line('')
+        if metadataName:
+            comment = start_comment + ' ' + repr(metadataName)
+            self.add_line(comment)
+            
+        end_func_decl = self.block_ends[6]
+        return_func = self.block_ends[5]
+            
+        define_module = self.block_ends[4]
+        self.add_line(f'{define_module} {name}(){end_func_decl}{return_func}{start_func}')
+        self.push_increase_indent()
+        module.code_dump_contained(self)
+        self.pop_indent_level()
+        self.add_line(f'{end_func} {start_comment} end module {name}')
 
 
 class CodeDumperForPython(CodeDumper):
@@ -687,7 +757,7 @@ class CodeDumperForPython(CodeDumper):
     
     def __init__(self, *args, **kwds):
         kwds.setdefault('str_quotes', "'")
-        kwds.setdefault('block_ends', (' (', '),', ',', '#'))
+        kwds.setdefault('block_ends', (' (', '),', ',', '#', 'def', ' return', ':'))
         super().__init__(*args, **kwds)
         self.is_last = True
 
@@ -718,6 +788,7 @@ class CodeDumperForPython(CodeDumper):
 class PoscBase(PoscModifiers):
     
     DUMP_CONTAINER = True
+    DUMP_MODULE = False
 
     def __post_init__(self):
         for arg in self.OSC_API_SPEC.args:
@@ -767,7 +838,7 @@ class PoscBase(PoscModifiers):
         '''This is a childless node, always returns empty tuple.'''
         return ()
 
-    def code_dump(self, code_dumper: CodeDumper):
+    def code_dump_scad(self, code_dumper: CodeDumper):
         '''Dump the OpenScad equivalent of this script into the provided dumper.'''
         termial_suffix = (code_dumper.block_ends[2]
                           if code_dumper.should_add_suffix() else '')
@@ -780,37 +851,51 @@ class PoscBase(PoscModifiers):
         metadataName = self.getMetadataName()
         if metadataName:
             comment = code_dumper.block_ends[3] + ' ' + repr(metadataName)
-        if self.DUMP_CONTAINER or not code_dumper.DUMPS_OPENSCAD:
-            code_dumper.write_function(
-                function_name, params_list, mod_prefix, mod_suffix, suffix, comment)
-            if self.has_children():
-                code_dumper.push_increase_indent()
-                left = len(self.children())
-                for child in self.children():
-                    left -= 1
-                    code_dumper.set_is_last(left == 0)
-                    child.code_dump(code_dumper)
-                code_dumper.pop_indent_level()
-                code_dumper.write_line(code_dumper.block_ends[1])
-        else:
-            # Must be a LazyUnion dumping to OpenScad. Dump the children directly
-            # to invoke the "lazy" union behavior.
-            code_dumper.write_line(code_dumper.block_ends[3] + ' Start: ' + self.OSC_API_SPEC.openscad_name)
+            
+        code_dumper.write_function(
+            function_name, params_list, mod_prefix, mod_suffix, suffix, comment)
+        if self.has_children():
+            code_dumper.push_increase_indent()
+            left = len(self.children())
             for child in self.children():
+                left -= 1
+                code_dumper.set_is_last(left == 0)
                 child.code_dump(code_dumper)
-            code_dumper.write_line(code_dumper.block_ends[3] + ' End: ' + self.OSC_API_SPEC.openscad_name)
+            code_dumper.pop_indent_level()
+            code_dumper.write_line(code_dumper.block_ends[1])
+            
+    def code_dump_contained(self, code_dumper: CodeDumper):
+        code_dumper.write_line(code_dumper.block_ends[3] + ' Start: ' + self.OSC_API_SPEC.openscad_name)
+        for child in self.children():
+            child.code_dump(code_dumper)
+        code_dumper.write_line(code_dumper.block_ends[3] + ' End: ' + self.OSC_API_SPEC.openscad_name)
+            
+    def code_dump(self, code_dumper: CodeDumper):
+        if self.DUMP_CONTAINER or not code_dumper.DUMPS_OPENSCAD:
+            self.code_dump_scad(code_dumper)
+        else:
+            # Must be a LazyUnion or Module dumping to OpenScad. Dump the children directly
+            # to invoke the "lazy" union behavior.
+            self.code_dump_contained(code_dumper)
+            
+            
+    def get_modules(self):
+        return ()
+    
+    def dump_with_code_dumper(self, code_dumper: CodeDumper):
+        '''Returns the OpenScad equivalent code for this node.'''
+        code_dumper.add_modules(self.get_modules())
+        self.code_dump(code_dumper)
+        code_dumper.dump_modules()
+        return code_dumper
 
     def __str__(self):
         '''Returns the OpenScad equivalent code for this node.'''
-        dumper = CodeDumper()
-        self.code_dump(dumper)
-        return dumper.writer.get()
+        return self.dump_with_code_dumper(CodeDumper()).writer.get()
 
     def __repr__(self):
         '''Returns the SolidPython equivalent code for this node.'''
-        dumper = CodeDumperForPython()
-        self.code_dump(dumper)
-        return dumper.writer.get()
+        return self.dump_with_code_dumper(CodeDumperForPython()).writer.get()
 
     def clone(self):
         return copy.deepcopy(self)
@@ -830,18 +915,15 @@ class PoscBase(PoscModifiers):
     # OpenPyScad compat functions.
     def dumps(self):
         '''Returns a string of this object's OpenScad script.'''
-        dumper = CodeDumper()
-        self.code_dump(dumper)
-        return dumper.writer.get()
+        return self.dump_with_code_dumper(CodeDumper()).writer.get()
 
     def dump(self, fp):
         '''Writes this object's OpenScad script to the given file.
         Args:
             fp: The python file object to use.
         '''
-        dumper = CodeDumper(writer=FileWriter(fp))
-        self.code_dump(dumper)
-        dumper.writer.finish()
+        self.dump_with_code_dumper(
+            CodeDumper(writer=FileWriter(fp))).writer.finish()
 
     def write(self, filename, encoding="utf-8"):
         '''Writes the OpenScad script to the given file name.
@@ -850,6 +932,10 @@ class PoscBase(PoscModifiers):
         '''
         with open(filename, 'w', encoding=encoding) as fp:
             self.dump(fp)
+
+    def module(self, name):
+        '''Returns a variable that references this object.'''
+        return Module(name)(self)
 
     # Documentation for the following functions is generated by the decorator
     # apply_posc_transformation_attributes.
@@ -932,14 +1018,15 @@ def apply_posc_attributes(clazz):
         raise InitializerNotAllowed('class %s should not define __init__' %
                                     clazz.__name__)
     # Check for name collision.
-    for arg in clazz.OSC_API_SPEC.args:
+    args: Tuple[Arg] = clazz.OSC_API_SPEC.args
+    for arg in args:
         if hasattr(clazz, arg.attr_name):
             raise NameCollissionFieldNameReserved(
                 'There exists an attribute \'%s\' for class %s that collides with an arg.'
                 % (arg.name, clazz.__name__))
     annotations = dict((arg.annotation() for arg in clazz.OSC_API_SPEC.args))
     clazz.__annotations__ = annotations
-    for arg in clazz.OSC_API_SPEC.args:
+    for arg in args:
         setattr(clazz, arg.name, arg.to_dataclass_field())
     dataclass(repr=False)(clazz)
     clazz.__init__.__doc__ = clazz.OSC_API_SPEC.generate_init_doc()
@@ -962,8 +1049,9 @@ class PoscParentBase(PoscBase):
     '''A PoscBase class that has children. All OpenScad forms that have children use this.
     This provides basic child handling functions.'''
     def init_children(self):
-        '''Initalizes objects that contain parents.'''
+        '''Initalizes objects for parents.'''
         self._children = []
+        self._modules = []
 
     def can_have_children(self):
         '''Returns true. This node can have children.'''
@@ -976,6 +1064,10 @@ class PoscParentBase(PoscBase):
     def children(self):
         '''Returns the list of children'''
         return self._children
+    
+    def get_modules(self):
+        '''Returns the list of modules.'''
+        return self._modules
 
     def append(self, *children):
         '''Appends the children to this node.
@@ -989,11 +1081,14 @@ class PoscParentBase(PoscBase):
         Args:
           children: list of children to append.
           '''
-        # Don't add nodes that are not PoscBase nodes.
+        # Don't add nodes that are not PoscBase nodes and collect modules.
         for child in children:
             if child is None or not hasattr(child, 'OSC_API_SPEC'):
                 raise AttemptingToAddNonPoscBaseNode(
                     'Cannot append object %r as child node' % child)
+            if child.DUMP_MODULE:
+                self._modules.append(child)
+            self._modules.extend(child.get_modules())
         self._children.extend(children)
         return self
 
@@ -1382,6 +1477,30 @@ class LazyUnion(PoscParentBase):
     DUMP_CONTAINER = False  # When rendering to OpenScad, don't render the container.
     OSC_API_SPEC = OpenScadApiSpecifier('lazy_union', (), OPEN_SCAD_URL_TAIL_CSG)
 
+@apply_posc_attributes
+class Module(PoscParentBase):
+    '''This will be rendered as a module in the OpenScad script. It will be placed at the
+    end of the script. This is useful for defining shapes that are used multiple times.'''
+    DUMP_CONTAINER = False
+    DUMP_MODULE = True  # Indicate this is a variable.
+    OSC_API_SPEC = OpenScadApiSpecifier('module', (
+        Arg('name', str_strict, None, required=True,
+            docstring=
+                'The filename to import. Relative path names are relative to the script location.'),
+        Arg('gen_name', str_strict, None, init=False, compare=False,
+            docstring='The generated name to avoid name collision.'),), 
+        OPEN_SCAD_URL_TAIL_CSG)
+    
+    def get_name(self):
+        '''Returns the name of the module.'''
+        return self.gen_name if self.gen_name else self.name
+
+    def code_dump(self, code_dumper: CodeDumper):
+        code_dumper.add_line(f'{self.get_name()}();');
+        
+    def code_dump_contained(self, code_dumper: CodeDumper):
+        for child in self.children():
+            child.code_dump(code_dumper)            
 
 @apply_posc_attributes
 class Difference(PoscParentBase):
