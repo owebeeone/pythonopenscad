@@ -1503,7 +1503,7 @@ class Module(PoscParentBase):
         return self.gen_name if self.gen_name else self.name
 
     def code_dump(self, code_dumper: CodeDumper):
-        code_dumper.add_line(f'{self.get_name()}();');
+        code_dumper.write_line(f'{self.get_name()}();');
         
     def code_dump_contained(self, code_dumper: CodeDumper):
         for child in self.children():
