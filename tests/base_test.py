@@ -1,5 +1,5 @@
 '''
-Basic set of tests.
+Basic set of PythonOpenScad tests.
 
 '''
 import unittest
@@ -280,8 +280,8 @@ class Test(unittest.TestCase):
             '\n'.join([
                 "# 'a_name'",
                 'lazy_union() (',
-                'obj1();',
-                'obj2();',
+                '  obj1();',
+                '  obj2();',
                 '),',
                 '',
                 '# Modules.',
