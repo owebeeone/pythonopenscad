@@ -83,61 +83,61 @@ class Test(unittest.TestCase):
     def testCodeDumper(self):
         cd = base.CodeDumper()
         self.assertRaisesRegex(base.IndentLevelStackEmpty,
-                               'Empty indent level stack cannot be popped\.',
+                               'Empty indent level stack cannot be popped.',
                                cd.pop_indent_level)
         line = 'A line\n'
         cd.write_line(line[:-1])
-        self.assertEquals(cd.writer.get(), line)
+        self.assertEqual(cd.writer.get(), line)
 
         cd = base.CodeDumper()
         cd.push_increase_indent()
         cd.write_line(line[:-1])
-        self.assertEquals(cd.writer.get(), '  ' + line)
+        self.assertEqual(cd.writer.get(), '  ' + line)
 
         cd.pop_indent_level()
         cd.write_line(line[:-1])
-        self.assertEquals(cd.writer.get(), '  ' + line + line)
+        self.assertEqual(cd.writer.get(), '  ' + line + line)
 
         self.assertRaisesRegex(base.IndentLevelStackEmpty,
-                               'Empty indent level stack cannot be popped\.',
+                               'Empty indent level stack cannot be popped.',
                                cd.pop_indent_level)
 
     def testCodeDumper_Function(self):
         cd = base.CodeDumper()
         cd.write_function('fname', ['a=1', 'b=2'])
         expected = 'fname(a=1, b=2)'
-        self.assertEquals(cd.writer.get(), expected + ';\n')
+        self.assertEqual(cd.writer.get(), expected + ';\n')
 
         cd = base.CodeDumper()
         cd.push_increase_indent()
         cd.write_function('fname', ['a=1', 'b=2'])
-        self.assertEquals(cd.writer.get(), '  ' + expected + ';\n')
+        self.assertEqual(cd.writer.get(), '  ' + expected + ';\n')
 
         cd = base.CodeDumper()
         cd.push_increase_indent()
         cd.write_function('fname', ['a=1', 'b=2'], mod_prefix='!*')
-        self.assertEquals(cd.writer.get(), '  !*' + expected + ';\n')
+        self.assertEqual(cd.writer.get(), '  !*' + expected + ';\n')
 
         cd = base.CodeDumper()
         cd.push_increase_indent()
         cd.write_function('fname', ['a=1', 'b=2'], mod_prefix='!*', suffix='')
-        self.assertEquals(cd.writer.get(), '  !*' + expected + '\n')
+        self.assertEqual(cd.writer.get(), '  !*' + expected + '\n')
 
     def testDumper(self):
         obj = base.Cylinder(10, 11)
         obj.add_modifier(base.DEBUG)
         cd = base.CodeDumper()
         obj.code_dump(cd)
-        self.assertEquals(cd.writer.get(),
+        self.assertEqual(cd.writer.get(),
                           '#cylinder(h=10.0, r=11.0, center=false);\n')
 
     def testTranslate(self):
         obj = base.Translate((10, ))
-        self.assertEquals(str(obj), 'translate(v=[10.0, 0.0, 0.0]);\n')
+        self.assertEqual(str(obj), 'translate(v=[10.0, 0.0, 0.0]);\n')
 
     def testTranslateCylinder(self):
         obj = base.Cylinder(10, 11).translate((10, ))
-        self.assertEquals(
+        self.assertEqual(
             str(obj),
             'translate(v=[10.0, 0.0, 0.0]) {\n  cylinder(h=10.0, r=11.0, center=false);\n}\n'
         )
@@ -148,30 +148,30 @@ class Test(unittest.TestCase):
     def test_list_of(self):
         v = base.list_of(base.list_of(int, fill_to_min=0),
                          fill_to_min=[1, 1, 1])([[0]])
-        self.assertEquals(repr(v), '[[0, 0, 0], [1, 1, 1], [1, 1, 1]]')
+        self.assertEqual(repr(v), '[[0, 0, 0], [1, 1, 1], [1, 1, 1]]')
 
     def testRotateA_AX(self):
         obj = base.Rotate(10)
-        self.assertEquals(str(obj), 'rotate(a=10.0);\n')
+        self.assertEqual(str(obj), 'rotate(a=10.0);\n')
         obj = base.Rotate(10, [1, 1, 1])
-        self.assertEquals(str(obj), 'rotate(a=10.0, v=[1.0, 1.0, 1.0]);\n')
+        self.assertEqual(str(obj), 'rotate(a=10.0, v=[1.0, 1.0, 1.0]);\n')
 
     def testRotateA3(self):
         obj = base.Rotate([10])
-        self.assertEquals(str(obj), 'rotate(a=[10.0, 0.0, 0.0]);\n')
+        self.assertEqual(str(obj), 'rotate(a=[10.0, 0.0, 0.0]);\n')
 
     def test_List_of(self):
         converter = base.list_of(int, len_min_max=(None, None))
-        self.assertEquals(converter([]), [])
-        self.assertEquals(converter([1.0]), [1])
-        self.assertEquals(converter([1.0] * 100), [1] * 100)
+        self.assertEqual(converter([]), [])
+        self.assertEqual(converter([1.0]), [1])
+        self.assertEqual(converter([1.0] * 100), [1] * 100)
 
     def test_of_set(self):
         converter = base.of_set('a', 'b')
         self.assertRaisesRegex(base.InvalidValue,
                                '\'c\' is not allowed with .*', converter, 'c')
-        self.assertEquals(converter('a'), 'a')
-        self.assertEquals(converter('b'), 'b')
+        self.assertEqual(converter('a'), 'a')
+        self.assertEqual(converter('b'), 'b')
 
     def test_osc_true_false(self):
         self.assertFalse(base.OSC_FALSE)
@@ -185,11 +185,11 @@ class Test(unittest.TestCase):
         obj = base.Cylinder(h=1)
         self.assertFalse(obj.has_modifier(base.DEBUG))
         obj = base.Cylinder(h=1).add_modifier(base.DEBUG, base.TRANSPARENT)
-        self.assertEquals(obj.get_modifiers(), '#%')
+        self.assertEqual(obj.get_modifiers(), '#%')
         obj.remove_modifier(base.DEBUG)
-        self.assertEquals(obj.get_modifiers(), '%')
-        self.assertEquals(str(obj), '%cylinder(h=1.0, r=1.0, center=false);\n')
-        self.assertEquals(
+        self.assertEqual(obj.get_modifiers(), '%')
+        self.assertEqual(str(obj), '%cylinder(h=1.0, r=1.0, center=false);\n')
+        self.assertEqual(
             repr(obj),
             'cylinder(h=1.0, r=1.0, center=False).add_modifier(*{TRANSPARENT})\n'
         )
@@ -198,11 +198,11 @@ class Test(unittest.TestCase):
         
     def testMetadataName(self):
         obj = base.Sphere()
-        self.assertEquals(str(obj), 'sphere(r=1.0);\n')
+        self.assertEqual(str(obj), 'sphere(r=1.0);\n')
         obj.setMetadataName("a_name")
-        self.assertEquals(str(obj), "// 'a_name'\nsphere(r=1.0);\n")
+        self.assertEqual(str(obj), "// 'a_name'\nsphere(r=1.0);\n")
         obj.setMetadataName(('a', 'tuple'))
-        self.assertEquals(str(obj), "// ('a', 'tuple')\nsphere(r=1.0);\n")
+        self.assertEqual(str(obj), "// ('a', 'tuple')\nsphere(r=1.0);\n")
         
     def testFill(self):
         obj1 = base.Circle(r=10)
@@ -210,7 +210,7 @@ class Test(unittest.TestCase):
         
         result = base.difference()(obj1, obj2).fill()
         
-        self.assertEquals(
+        self.assertEqual(
             str(result),
             '\n'.join((
                 'fill() {',
@@ -227,11 +227,11 @@ class Test(unittest.TestCase):
         result = base.lazy_union()(obj1, obj2)
         result.setMetadataName("a_name")
         
-        self.assertEquals(
+        self.assertEqual(
             repr(result),
             '''# 'a_name'\nlazy_union() (\n  circle(r=10.0),\n  circle(r=5.0)\n),\n''')
         
-        self.assertEquals(
+        self.assertEqual(
             str(result),
             '\n'.join((
                 '// Start: lazy_union',
@@ -254,7 +254,7 @@ class Test(unittest.TestCase):
         # print('repr: ')        
         # print(self.dump_str(repr(result)))
         
-        self.assertEquals(
+        self.assertEqual(
             str(result),
             '\n'.join([
                 '// Start: lazy_union',
@@ -275,7 +275,7 @@ class Test(unittest.TestCase):
                 '} // end module obj2',
                 '']))
         
-        self.assertEquals(
+        self.assertEqual(
             repr(result),
             '\n'.join([
                 "# 'a_name'",
@@ -312,7 +312,7 @@ class Test(unittest.TestCase):
         # print('repr: ')        
         # print(self.dump_str(repr(result)))
         
-        self.assertEquals(
+        self.assertEqual(
             str(result),
             '\n'.join([
                 '// Start: lazy_union',
@@ -348,7 +348,7 @@ class Test(unittest.TestCase):
         # print('repr: ')        
         # print(self.dump_str(repr(result)))
         
-        self.assertEquals(
+        self.assertEqual(
             str(result),
             '\n'.join([
                 '// Start: lazy_union',
