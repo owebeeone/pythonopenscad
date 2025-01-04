@@ -1,27 +1,24 @@
-"""PythonOpenScad is API layer over OpenScad scripts for generating OpenScad models.
+"""PythonOpenScad is a thin layer API for generating OpenSCAD scripts.
 
-The design goal for PythonOpenScad is to remain a thin layer for OpenScad scripts
-and only provide functionality for producing such scripts. This may include binding
-to a CSG library that skips the need to invoke OpenScad altogether but this is not
-currently planned but does constrain design choices.
+PythonOpenScad aims to remain a minimal layer for generating OpenScad scripts while providing:
+* Type checking and conversion of arguments with accurate error messages
+* Support for both OpenPyScad and SolidPython style APIs
+* Comprehensive documentation with links to OpenSCAD reference docs
+* Module functionality for reducing code duplication
 
-There are 2 other Python libraries that provide more functionality, OpenPyScad and SolidPython
-as of writing this seem to have active development.
-
-PythonOpenScad features include:
-    * Error checking arguments and providing accurate value defaults.
-    * A model API that is compatible with both SolidPython and SolidPython.
-    * Python doc which is accurate and links to OpenScad reference documents.
+The primary client for PythonOpenScad is anchorSCAD, which provides higher-level 
+functionality for building complex models.
 
 See:
-    `PythonOpenScad <https://github.com/owebeeone/pythonopenscad>`
-    `OpenScad <http://www.openscad.org/documentation.html>`
+    `PythonOpenScad <https://github.com/owebeeone/pythonopenscad>` (this)
+    `OpenSCAD <http://www.openscad.org/documentation.html>`
     `OpenPyScad <http://github.com/taxpon/openpyscad>`
     `SolidPython <http://github.com/SolidCode/SolidPython>`
+    `anchorscad <https://github.com/owebeeone/anchorscad>`
 
 License:
 
-Copyright (C) 2020  Gianni Mariani
+Copyright (C) 2025 Gianni Mariani
 
 This library is free software; you can redistribute it and/or
 modify it under the terms of the GNU Lesser General Public
@@ -48,9 +45,6 @@ from typing import List, Tuple
 # Exceptions for dealing with argument checking.
 class PoscBaseException(Exception):
     """Base exception functionality"""
-
-    def __init__(self, message):
-        self.message = message
 
 
 class ConversionException(PoscBaseException):
