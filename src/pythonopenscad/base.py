@@ -36,6 +36,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
 """
 
 import copy
+from numbers import Integral
 import sys
 from dataclasses import dataclass, field
 from collections import defaultdict
@@ -336,6 +337,20 @@ def str_strict(value):
             'expected a string value but got "%r" of type %s' % (value, value.__class__.__name__)
         )
     return value
+
+@_as_converter
+def int_strict(value):
+    """Returns the given value if it is a Number object otherwise raises
+    InvalidValueForStr exception.
+    Args:
+        value: A string value.
+    Throws:
+        ValueError if the provided value is not a str.
+    """
+    if not isinstance(value, Integral):
+        raise ValueError(
+            f'expected an integer value but got "{value!r}" of type {value.__class__.__name__}')
+    return int(value)
 
 
 def of_set(*args):
@@ -977,6 +992,9 @@ class PoscBase(PoscModifiers):
 
     def linear_extrude(self, *args, **kwds):
         return Linear_Extrude(*args, **kwds)(self)
+    
+    def render(self, *args, **kwds):
+        return Render(*args, **kwds)(self)
 
     def rotate_extrude(self, *args, **kwds):
         return Rotate_Extrude(*args, **kwds)(self)
@@ -1426,6 +1444,24 @@ class Projection(PoscParentBase):
         ),
         OPEN_SCAD_URL_TAIL_2D,
         '3D_to_2D_Projection',
+    )
+    
+@apply_posc_transformation_attributes
+class Render(PoscParentBase):
+    """Forces the generation of a mesh even in preview mode."""
+
+    OSC_API_SPEC = OpenScadApiSpecifier(
+        'render',
+        (
+            Arg(
+                'convexity',
+                int_strict,
+                10,
+                'A convexity value used for optimization of rendering.',
+            ),
+        ),
+        OPEN_SCAD_URL_TAIL_OTHER,
+        'render',
     )
 
 
