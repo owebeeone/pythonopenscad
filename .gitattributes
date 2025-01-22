@@ -1,5 +1,4 @@
- Basic .gitattributes for a python repo.
-
+ 
 # Source files
 # ============
 *.pxd    text diff=python
@@ -20,8 +19,8 @@
 *.pyo    binary export-ignore
 *.pyd    binary
 
-# Jupyter notebook
-*.ipynb  text eol=lf
+
+*  text eol=lf
 
 # Note: .db, .p, and .pkl files are associated
 # with the python modules ``pickle``, ``dbm.*``,

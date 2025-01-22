@@ -1,6 +1,5 @@
 from .base import (
     Arg,
-    BASE_MODIFIERS,
     Circle,
     CodeDumper,
     CodeDumperForPython,
@@ -8,8 +7,6 @@ from .base import (
     ConversionException,
     Cube,
     Cylinder,
-    DEBUG,
-    DISABLE,
     Difference,
     DuplicateNamingOfArgs,
     Fill,
@@ -34,7 +31,6 @@ from .base import (
     Offset,
     OpenScadApiSpecifier,
     OscKeyword,
-    OscModifier,
     ParameterDefinedMoreThanOnce,
     ParameterNotDefined,
     Polygon,
@@ -49,12 +45,10 @@ from .base import (
     Resize,
     Rotate,
     Rotate_Extrude,
-    SHOW_ONLY,
     Scale,
     Sphere,
     Square,
     Surface,
-    TRANSPARENT,
     Text,
     TooManyParameters,
     Translate,
@@ -103,9 +97,20 @@ from .base import (
     union
 )
 
+from pythonopenscad.modifier import (
+    OscModifier,
+    DISABLE,
+    SHOW_ONLY,
+    DEBUG,
+    TRANSPARENT,
+    BASE_MODIFIERS_SET,
+    BASE_MODIFIERS
+)
+
 __all__ = [
     "Arg",
     "BASE_MODIFIERS",
+    "BASE_MODIFIERS_SET",
     "Circle",
     "CodeDumper",
     "CodeDumperForPython",

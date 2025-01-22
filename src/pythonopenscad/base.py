@@ -36,12 +36,22 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
 """
 
 import copy
+import math
 from numbers import Integral
 import sys
 from dataclasses import dataclass, field
 from collections import defaultdict
 from typing import List, Tuple
-
+from pythonopenscad.m3dapi import M3dRenderer, RenderContext
+from pythonopenscad.modifier import (
+    OscModifier,
+    DISABLE,
+    SHOW_ONLY,
+    DEBUG,
+    TRANSPARENT,
+    BASE_MODIFIERS_SET,
+    BASE_MODIFIERS
+)
 
 # Exceptions for dealing with argument checking.
 class PoscBaseException(Exception):
@@ -429,23 +439,6 @@ class PoscMetadataBase(object):
         return self
 
 
-class OscModifier(object):
-    """Defines an OpenScad modifier"""
-
-    def __init__(self, modifier, name):
-        self.modifier = modifier
-        self.name = name
-
-    def __repr__(self):
-        return self.name
-
-
-DISABLE = OscModifier('*', 'DISABLE')
-SHOW_ONLY = OscModifier('!', 'SHOW_ONLY')
-DEBUG = OscModifier('#', 'DEBUG')
-TRANSPARENT = OscModifier('%', 'TRANSPARENT')
-BASE_MODIFIERS = (DISABLE, SHOW_ONLY, DEBUG, TRANSPARENT)
-BASE_MODIFIERS_SET = set(BASE_MODIFIERS)
 
 
 class PoscModifiers(PoscMetadataBase):
@@ -949,6 +942,9 @@ class PoscBase(PoscModifiers):
         """
         with open(filename, 'w', encoding=encoding) as fp:
             self.dump(fp)
+            
+    def render3d(self, renderer: M3dRenderer) -> RenderContext:
+        assert False, "Not implemented"
 
     def module(self, name):
         """Returns a variable that references this object."""
@@ -1071,6 +1067,9 @@ class PoscParentBase(PoscBase):
         """Initalizes objects for parents."""
         self._children = []
         self._modules = []
+        
+    def render3dChildren(self, renderer: M3dRenderer) -> list[RenderContext]:
+        return [child.render3d(renderer) for child in self._children]
 
     def can_have_children(self):
         """Returns true. This node can have children."""
@@ -1156,6 +1155,10 @@ class Translate(PoscParentBase):
         (Arg('v', VECTOR3_FLOAT, None, '(x,y,z) translation vector.', required=True),),
         OPEN_SCAD_URL_TAIL_TRANSFORMS,
     )
+    
+    def render3d(self, renderer: M3dRenderer) -> RenderContext:
+        children_union : RenderContext = renderer.union(self.render3dChildren(renderer))
+        return children_union.translate(self.v)
 
 
 @apply_posc_transformation_attributes
@@ -1178,6 +1181,10 @@ class Rotate(PoscParentBase):
         ),
         OPEN_SCAD_URL_TAIL_TRANSFORMS,
     )
+    
+    def render3d(self, renderer: M3dRenderer) -> RenderContext:
+        children_union : RenderContext = renderer.union(self.render3dChildren(renderer))
+        return children_union.rotate(self.a, self.v)
 
 
 @apply_posc_attributes
@@ -1244,6 +1251,34 @@ class Cylinder(PoscBase):
             if v is None:
                 raise RequiredParameterNotProvided('"%s" is required and not provided' % k)
         self.check_required_parameters()
+        
+    def render3d(self, renderer: M3dRenderer) -> RenderContext:
+        return renderer.cylinder(
+            self.h, self.get_r1(), self.get_r2(), 
+            get_fragments_from_fn_fa_fs(self.get_r1(), self.fn, self.fa, self.fs),
+            self.center)
+
+
+def get_fragments_from_fn_fa_fs(r: float, fn: int | None, fa: float | None, fs: float | None) -> int:
+    # From openscad/src/utils/calc.cpp
+    # int Calc::get_fragments_from_r(double r, double fn, double fs, double fa)
+    # {
+    #   // FIXME: It would be better to refuse to create an object. Let's do more strict error handling
+    #   // in future versions of OpenSCAD
+    #   if (r < GRID_FINE || std::isinf(fn) || std::isnan(fn)) return 3;
+    #   if (fn > 0.0) return static_cast<int>(fn >= 3 ? fn : 3);
+    #   return static_cast<int>(ceil(fmax(fmin(360.0 / fa, r * 2 * M_PI / fs), 5)));
+    # }
+    GRID_FINE = 0.00000095367431640625
+    if r < GRID_FINE or math.isinf(fn) or math.isnan(fn):
+        return 3
+    if fn is not None and fn > 0.0:
+        return max(fn, 3)
+    if fa is None:
+        fa = 1
+    if fs is None:
+        fs = 1
+    return max(5, math.ceil(max(min(360.0 / fa, r * 2 * math.pi / fs), 5)))
 
 
 @apply_posc_attributes
@@ -1278,6 +1313,9 @@ class Sphere(PoscBase):
                 'Both parameters r and d are None. A value for r or d must be provided.'
             )
         self.check_required_parameters()
+    
+    def render3d(self, renderer: M3dRenderer) -> RenderContext:
+        return renderer.sphere(self.r, get_fragments_from_fn_fa_fs(self.r, self.fn, self.fa, self.fs))
 
 
 @apply_posc_attributes
@@ -1300,6 +1338,9 @@ class Cube(PoscBase):
         ),
         OPEN_SCAD_URL_TAIL_PRIMITIVES,
     )
+    
+    def render3d(self, renderer: M3dRenderer) -> RenderContext:
+        return renderer.cube(self.size)
 
 
 @apply_posc_transformation_attributes
@@ -1315,6 +1356,10 @@ class Scale(PoscParentBase):
         ),
         OPEN_SCAD_URL_TAIL_TRANSFORMS,
     )
+    
+    def render3d(self, renderer: M3dRenderer) -> RenderContext:
+        children_union : RenderContext = renderer.union(self.render3dChildren(renderer))
+        return children_union.scale(self.v)
 
 
 @apply_posc_transformation_attributes
@@ -1340,6 +1385,10 @@ class Resize(PoscParentBase):
         ),
         OPEN_SCAD_URL_TAIL_TRANSFORMS,
     )
+    
+    def render3d(self, renderer: M3dRenderer) -> RenderContext:
+        children_union : RenderContext = renderer.union(self.render3dChildren(renderer))
+        return children_union.resize(self.newsize, self.auto)
 
 
 @apply_posc_transformation_attributes
@@ -1351,6 +1400,10 @@ class Mirror(PoscParentBase):
         (Arg('v', VECTOR3_FLOAT, None, 'The normal of the plane to be mirrored.'),),
         OPEN_SCAD_URL_TAIL_TRANSFORMS,
     )
+    
+    def render3d(self, renderer: M3dRenderer) -> RenderContext:
+        children_union : RenderContext = renderer.union(self.render3dChildren(renderer))
+        return children_union.mirror(self.v)
 
 
 @apply_posc_transformation_attributes
@@ -1380,6 +1433,10 @@ class Multmatrix(PoscParentBase):
     def get_m(self):
         """Returns the matrix m. The returned value is always a 4x4 matrix."""
         return self.m
+    
+    def render3d(self, renderer: M3dRenderer) -> RenderContext:
+        children_union : RenderContext = renderer.union(self.render3dChildren(renderer))
+        return children_union.tranform(self.m)
 
 
 @apply_posc_transformation_attributes
@@ -1687,6 +1744,8 @@ class Polyhedron(PoscBase):
         OPEN_SCAD_URL_TAIL_PRIMITIVES,
     )
 
+    def render3d(self, renderer: M3dRenderer) -> RenderContext:
+        return renderer.polyhedron(self.points, self.triangles, self.faces)
 
 @apply_posc_attributes
 class Union(PoscParentBase):
@@ -1695,6 +1754,8 @@ class Union(PoscParentBase):
 
     OSC_API_SPEC = OpenScadApiSpecifier('union', (), OPEN_SCAD_URL_TAIL_CSG)
 
+    def render3d(self, renderer: M3dRenderer) -> RenderContext:
+        return renderer.union(self.render3dChildren(renderer))
 
 @apply_posc_attributes
 class LazyUnion(PoscParentBase):
@@ -1753,13 +1814,18 @@ class Difference(PoscParentBase):
 
     OSC_API_SPEC = OpenScadApiSpecifier('difference', (), OPEN_SCAD_URL_TAIL_CSG)
 
-
+    def render3d(self, renderer: M3dRenderer) -> RenderContext:
+        return renderer.difference(self.render3dChildren(renderer))
+    
 @apply_posc_attributes
 class Intersection(PoscParentBase):
     """Creates a 3D object by finding the common space contained in all the provided
     3D objects."""
 
     OSC_API_SPEC = OpenScadApiSpecifier('intersection', (), OPEN_SCAD_URL_TAIL_CSG)
+    
+    def render3d(self, renderer: M3dRenderer) -> RenderContext:
+        return renderer.intersection(self.render3dChildren(renderer))
 
 
 @apply_posc_attributes
