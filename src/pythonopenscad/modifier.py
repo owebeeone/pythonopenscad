@@ -5,14 +5,17 @@ OpenScad modifiers.
 from dataclasses import dataclass, field
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, repr=False)
 class OscModifier(object):
     """Defines an OpenScad modifier
     
     see: https://en.wikibooks.org/wiki/OpenSCAD_User_Manual/Modifier_Characters
     """
-    modifier: str = field(repr=False, compare=True)
-    name: str = field(repr=True, compare=False)
+    modifier: str = field(compare=True)
+    name: str = field(compare=False)
+
+    def __repr__(self):
+        return self.name
 
 
 DISABLE = OscModifier('*', 'DISABLE') # Ignore this subtree
