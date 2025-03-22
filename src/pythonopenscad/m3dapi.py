@@ -1,37 +1,75 @@
-from dataclasses import dataclass
-from typing import Generic, Iterable, TypeVar
+from dataclasses import dataclass, field
+from typing import Callable, Generic, Iterable, TypeVar
 import manifold3d as m3d
 import numpy as np
 import mapbox_earcut
+import stl
+from stl import mesh, Mode
 
 
-T = TypeVar('T')
+T = TypeVar("T")
+
+
+def manifold_to_stl(
+    manifold: m3d.Manifold, filename: str, file_obj=None, mode=Mode.AUTOMATIC, update_normals=True
+):
+    """Convert a manifold to STL format and either save to a file or write to a file-like object.
+
+    Args:
+        manifold: The manifold to convert
+        filename: Path to save the STL file (ignored if file_obj is provided)
+        file_obj: Optional file-like object to write to instead of a file
+        mode: Mode to use for the STL file
+        update_normals: Whether to update the normals of the mesh
+    """
+    m_mesh = manifold.to_mesh()
+    tri_verts = m_mesh.tri_verts
+    points = m_mesh.vert_properties[:, :3]
+
+    # Count number of triangles
+    num_triangles = len(tri_verts)
+
+    # Create an empty data array for the mesh
+    data = np.zeros(num_triangles, dtype=mesh.Mesh.dtype)
+
+    # Efficiently assign triangle vertices
+    data["vectors"] = points[tri_verts]
+
+    # Create the mesh
+    stl_mesh = mesh.Mesh(data)
+
+    # Save the mesh to file or write to file object
+    stl_mesh.save(filename, fh=file_obj, mode=mode, update_normals=update_normals)
+
 
 class NpArray(np.ndarray, Generic[T]):
     pass
 
+
 class Vector3(np.ndarray, Generic[T]):
     pass
+
 
 def is_iterable(v):
     """Return True if v is an iterable."""
     return isinstance(v, Iterable) and not isinstance(v, (str, bytes))
 
+
 def _make_array(v: NpArray[T] | None, t: type[T]) -> NpArray[T] | None:
-    """Condition array to be C-style contiguous and writeable.
-    """
+    """Condition array to be C-style contiguous and writeable."""
     if v is None:
         return None
-    if not isinstance(v, np.ndarray) or not (v.flags.c_contiguous and v.flags.writeable and v.dtype == t):
+    if not isinstance(v, np.ndarray) or not (
+        v.flags.c_contiguous and v.flags.writeable and v.dtype == t
+    ):
         v = np.array(v, dtype=t, order="C")
     return v
 
-def _rotVSinCos(v: np.ndarray, 
-               sinr: float, 
-               cosr: float) -> np.ndarray:
-    '''Returns a matrix that causes a rotation about an axis vector v by the 
-    given sin and cos of the rotation angle.'''
-    u = v / np.linalg.norm(v)
+
+def _rotVSinCos(v: np.ndarray, sinr: float, cosr: float) -> np.ndarray:
+    """Returns a matrix that causes a rotation about an axis vector v by the
+    given sin and cos of the rotation angle."""
+    u = v / np.linalg.norm(v[:3])
     ux = u[0]
     uy = u[1]
     uz = u[2]
@@ -43,11 +81,90 @@ def _rotVSinCos(v: np.ndarray,
     uxy = ux * uy
     uyz = uy * uz
     lcosr = 1 - cosr
-    return np.array(
-        [[cosr + ux2 * lcosr, uxy * lcosr - uz * sinr, uxz * lcosr + uy * sinr, 0],
-         [uxy * lcosr + uz * sinr, cosr + uy2 * lcosr, uyz * lcosr - ux * sinr, 0],
-         [uxz * lcosr - uy * sinr, uyz * lcosr + ux * sinr, cosr + uz2 * lcosr, 0],
-         [0.0, 0, 0, 1]])
+    return np.array([
+        [cosr + ux2 * lcosr, uxy * lcosr - uz * sinr, uxz * lcosr + uy * sinr, 0],
+        [uxy * lcosr + uz * sinr, cosr + uy2 * lcosr, uyz * lcosr - ux * sinr, 0],
+        [uxz * lcosr - uy * sinr, uyz * lcosr + ux * sinr, cosr + uz2 * lcosr, 0],
+        [0.0, 0, 0, 1],
+    ])
+
+
+def _rotXSinCos(sinr, cosr) -> np.ndarray:
+    """Returns a Gmatrix for a rotation about the X axis given a sin/cos pair."""
+    return np.array([[1.0, 0, 0, 0], [0, cosr, -sinr, 0], [0, sinr, cosr, 0], [0, 0, 0, 1]])
+
+
+def _rotYSinCos(sinr, cosr) -> np.ndarray:
+    return np.array([[cosr, 0.0, sinr, 0], [0, 1, 0, 0], [-sinr, 0, cosr, 0], [0, 0, 0, 1]])
+
+
+def _rotZSinCos(sinr, cosr) -> np.ndarray:
+    return np.array([[cosr, -sinr, 0, 0], [sinr, cosr, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]])
+
+
+def _to_radians(degs: float) -> float:
+    """Convert degrees to radians."""
+    return degs * np.pi / 180
+
+
+def _exactSinCos(degs: float) -> tuple[float, float]:
+    """Returns the sin and cos of an angle in degrees, with exact values for the
+
+    most common angles."""
+    if degs == 0:
+        return 0, 1
+    elif degs == 90:
+        return 1, 0
+    elif degs == 180:
+        return 0, -1
+    elif degs == 270:
+        return -1, 0
+    else:
+        return np.sin(_to_radians(degs)), np.cos(_to_radians(degs))
+
+
+def _rotPitchRollYaw(pitch: float, roll: float, yaw: float) -> np.ndarray:
+    """Returns a matrix that causes a rotation about the X, Y, and Z axes by the
+    given pitch, roll, and yaw angles."""
+    return (
+        _rotZSinCos(*_exactSinCos(yaw))
+        @ _rotYSinCos(*_exactSinCos(pitch))
+        @ _rotXSinCos(*_exactSinCos(roll))
+    )
+
+
+# Define constant axes and mirror matrices
+X_AXIS = np.array([1, 0, 0])
+Y_AXIS = np.array([0, 1, 0])
+
+MIRROR_X = np.array([[-1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]])
+
+MIRROR_Y = np.array([[1, 0, 0, 0], [0, -1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]])
+
+IDENTITY_TRANSFORM = np.eye(4)
+IDENTITY_TRANSFORM.flags.writeable = False
+
+
+def _mirror(axis: np.ndarray) -> np.ndarray:
+    """Mirror at the origin about any plane. The axis provided is the normal to the mirror plane.
+
+    Uses the Householder reflection matrix formula: I - 2 * (n ⊗ n) where n is the normalized normal vector
+    and ⊗ is the outer product.
+    """
+    # Normalize the axis vector
+    n = axis / np.linalg.norm(axis)
+
+    # Calculate Householder reflection matrix for the 3x3 part
+    # H = I - 2 * (n ⊗ n)
+    outer_product = np.outer(n, n)
+    reflect_3x3 = np.eye(3) - 2.0 * outer_product
+
+    # Create full 4x4 transformation matrix
+    transform = np.eye(4)
+    transform[:3, :3] = reflect_3x3
+
+    return transform
+
 
 @dataclass
 class RenderContext:
@@ -55,77 +172,149 @@ class RenderContext:
     While also wrapping manifold3d.Manifold, it also handles the OpenSCAD
     operations and flags.
     """
-    api: 'M3dRenderer'
-    manifold: m3d.Manifold
-    
-    def transform(self, transform: np.ndarray) -> 'RenderContext':
+
+    api: "M3dRenderer"
+    transform_mat: np.ndarray = field(default_factory=lambda: IDENTITY_TRANSFORM)
+    solid_manifold: tuple[m3d.Manifold, ...] = ()
+    shell_manifold: tuple[m3d.Manifold, ...] = ()
+
+    def as_transparent(self) -> "RenderContext":
+        """Applies the OpenSCAD % modifier."""
+        return RenderContext(
+            api=self.api,
+            transform_mat=self.transform_mat,
+            solid_manifold=(),
+            shell_manifold=self.shell_manifold + self.solid_manifold,
+        )
+
+    @staticmethod
+    def with_manifold(api: "M3dRenderer", manifold: m3d.Manifold) -> "RenderContext":
+        return RenderContext(api=api, transform_mat=IDENTITY_TRANSFORM, solid_manifold=(manifold,))
+
+    def with_solid(self, manifold: m3d.Manifold) -> "RenderContext":
+        solids, shells = self._apply_transforms()
+        return RenderContext(self.api, self.transform_mat, solids + (manifold,), shells)
+
+    def with_shell(self, manifold: m3d.Manifold) -> "RenderContext":
+        solids, shells = self._apply_transforms()
+        return RenderContext(self.api, self.transform_mat, solids, shells + (manifold,))
+
+    def transform(self, transform: np.ndarray) -> "RenderContext":
         if transform.shape == (4, 4):
             # assert the bottom row is [0, 0, 0, 1]
             assert np.allclose(transform[-1], [0, 0, 0, 1])
-            transform = transform[:3, :]
         else:
             assert transform.shape == (3, 4)
-        return RenderContext(self.api, self.manifold.transform(transform))
-    
-    def translate(self, v: np.ndarray) -> 'RenderContext':
-        return RenderContext(self.api, self.manifold.translate(v))
-    
-    def rotate(self, a: float | np.ndarray, v: np.ndarray | None = None) -> 'RenderContext':
+            # Add a row of [0, 0, 0, 1] to the bottom
+            transform = np.concatenate([transform, [[0, 0, 0, 1]]])
+
+        new_transform = transform @ self.transform_mat
+        return RenderContext(self.api, new_transform, self.solid_manifold, self.shell_manifold)
+
+    def translate(self, v: np.ndarray) -> "RenderContext":
+        return self.transform(
+            np.array[[1, 0, 0, v[0]], [0, 1, 0, v[1]], [0, 0, 1, v[2]], [0, 0, 0, 1]]
+        )
+
+    def rotate(self, a: float | np.ndarray, v: np.ndarray | None = None) -> "RenderContext":
         if is_iterable(a):
             if v is not None:
                 raise ValueError("Cannot specify both a vector and v for rotation")
-            a = _make_array(a, np.double)
-            return self.manifold.rotate(a)
+            return self.transform(_rotPitchRollYaw(*a))
         else:
             if v is None:
-                return self.manifold.rotate(_make_array([a, 0, 0], np.double))
-            # Give exact values for the most common angles.
-            if a == 0:
-                sinr, cosr = np.double(0), np.double(1)
-            elif a == 90:
-                sinr, cosr = np.double(1), np.double(0)
-            elif a == 180:
-                sinr, cosr = np.double(0), np.double(-1)
-            elif a == 270:
-                sinr, cosr = np.double(-1), np.double(0)
-            else:
-                r = np.double(a) * np.pi / 180
-                sinr, cosr = np.sin(r), np.cos(r)
-            transform = _rotVSinCos(v, sinr, cosr)
+                return self.transform(_rotXSinCos(*_exactSinCos(a)))
+
+            transform = _rotVSinCos(v, *_exactSinCos(a))
             return self.transform(transform)
-    
-    def mirror(self, normal: np.ndarray) -> 'RenderContext':
+
+    def mirror(self, normal: np.ndarray) -> "RenderContext":
         return RenderContext(self.api, self.manifold.mirror(_make_array(normal, np.float64)))
-    
-    def property(self, property_values: NpArray[np.float32], idx: int = 3) -> 'RenderContext':
-        property_values = _make_array(property_values, np.float32)
-        mesh = self.manifold.to_mesh()
-        properties = mesh.vert_properties
-        # Calculate required width for the properties array
-        required_width = idx + len(property_values)
-        current_width = properties.shape[1] if properties.size > 0 else 0
-        
-        # Create new array with required size
-        new_properties = np.zeros((properties.shape[0], required_width))
-        # Copy existing data
-        new_properties[:, :current_width] = properties
-        # Assign new values
-        new_properties[:, idx:idx + len(property_values)] = property_values
-        
-        return self.api.mesh(
-            vert_properties=new_properties,
-            tri_verts=mesh.tri_verts
+
+    def property(self, property_values: NpArray[np.float32], idx: int = 3) -> "RenderContext":
+        # TODO: Implement this
+        pass
+
+    def get_solids(self) -> tuple[m3d.Manifold, ...]:
+        return self.solid_manifold
+
+    def get_shells(self) -> tuple[m3d.Manifold, ...]:
+        return self.shell_manifold
+
+    def _apply_transforms(
+        self, get_type_func: Callable[[], tuple[m3d.Manifold, ...]]
+    ) -> tuple[m3d.Manifold]:
+        if self.transform_mat is IDENTITY_TRANSFORM:
+            return get_type_func()
+        transform_43 = self.transform_mat[:3, :]
+        manifs: tuple[m3d.Manifold, ...] = tuple(m.transform(transform_43) for m in get_type_func())
+        return manifs
+
+    def _apply_and_merge(
+        self, get_type_func: Callable[[], tuple[m3d.Manifold, ...]]
+    ) -> tuple[m3d.Manifold]:
+        manifs: tuple[m3d.Manifold, ...] = self._apply_transforms(get_type_func)
+        result_manifs = (
+            tuple(
+                sum(manifs[1:], manifs[0]),
+            )
+            if len(manifs) > 1
+            else manifs
         )
-        
-    def union(self, other: 'RenderContext') -> 'RenderContext':
-        return RenderContext(self.api, self.manifold + other.manifold)
-    
-    def intersect(self, other: 'RenderContext') -> 'RenderContext':
-        return RenderContext(self.api, self.manifold % other.manifold)
-    
-    def difference(self, other: 'RenderContext') -> 'RenderContext':
-        return RenderContext(self.api, self.manifold - other.manifold)
-    
+        return result_manifs
+
+    def _apply_and_merge_helper(
+        self, other: "RenderContext"
+    ) -> tuple[tuple[m3d.Manifold], tuple[m3d.Manifold], tuple[m3d.Manifold], tuple[m3d.Manifold]]:
+        solids = self._apply_and_merge(self.get_solids)
+        shells = self._apply_and_merge(self.get_shells)
+        other_solids = other._apply_and_merge(other.get_solids)
+        other_shells = other._apply_and_merge(other.get_shells)
+
+        return solids, shells, other_solids, other_shells
+
+    def union(self, other: "RenderContext") -> "RenderContext":
+        solids, shells, other_solids, other_shells = self._apply_and_merge_helper(other)
+
+        return RenderContext(
+            self.api, IDENTITY_TRANSFORM, solids + other_solids, shells + other_shells
+        )
+
+    def intersect(self, other: "RenderContext") -> "RenderContext":
+        solids, shells, other_solids, other_shells = self._apply_and_merge_helper(other)
+
+        if solids and other_solids:
+            result_solids = solids[0] ^ other_solids[0]
+        elif solids:
+            result_solids = solids[0]
+        elif other_solids:
+            result_solids = other_solids[0]
+        else:
+            result_solids = ()
+
+        # We union the shells since the significance of the shell is to show it's
+        # encolsing volume for development purposes.
+        result_shells = shells + other_shells
+
+        return RenderContext(self.api, IDENTITY_TRANSFORM, result_solids, result_shells)
+
+    def difference(self, other: "RenderContext") -> "RenderContext":
+        solids, shells, other_solids, other_shells = self._apply_and_merge_helper(other)
+
+        if solids and other_solids:
+            result_solids = solids[0] - other_solids[0]
+        elif solids:
+            result_solids = solids[0]
+        elif other_solids:
+            result_solids = ()  # When we remove a volume from nothing we get nothing.
+        else:
+            result_solids = ()
+
+        # We union the shells since the significance of the shell is to show it's
+        # encolsing volume for development purposes.
+        result_shells = shells + other_shells
+        return RenderContext(self.api, IDENTITY_TRANSFORM, result_solids, result_shells)
+
     def getResizeScale(self, newsize: np.ndarray, auto: np.ndarray | bool) -> np.ndarray:
         # This is the code from OpenSCAD's getResizeTransform() function in:
         # https://github.com/openscad/openscad/blob/master/src/geometry/GeometryUtils.h
@@ -150,7 +339,7 @@ class RenderContext:
         #     0, 0, newscale[2], 0,
         #     0, 0, 0, 1;
         #   return t;
-        
+
         # Convert auto to a numpy array if it's not already.
         if not isinstance(auto, np.ndarray):
             if is_iterable(auto):
@@ -158,75 +347,95 @@ class RenderContext:
             else:
                 auto = np.array([bool(auto), bool(auto), bool(auto)])
         newsize = _make_array(newsize, np.float32)
-        
+
+        manifold = self.get_solid_manifold()
         # Get current bounding box sizes
-        bbox: tuple[float, float, float, float, float, float] = self.manifold.bounding_box()
+        bbox: tuple[float, float, float, float, float, float] = manifold.bounding_box()
         sizes = np.array(bbox[3:]) - np.array(bbox[:3])  # high - low gives dimensions
-        
+
         # Find largest dimension
         maxdim = np.argmax(newsize)
-        
+
         # Default scale (scale with 1 if the new size is 0)
         scale = np.ones(3)
         scale[newsize > 0] = newsize[newsize > 0] / sizes[newsize > 0]
-        
+
         # Autoscale where applicable
         autoscale = scale[maxdim]
         newscale = np.where(~auto | (newsize > 0), scale, autoscale)
-        
+
         return newscale
-        
-    def resize(self, newsize: np.ndarray, auto: np.ndarray | bool) -> 'RenderContext':
-        
+
+    def resize(self, newsize: np.ndarray, auto: np.ndarray | bool) -> "RenderContext":
         newscale: np.ndarray = self.getResizeScale(newsize, auto)
         # Create a scaling transformation matrix.
         transform = np.array([
             [newscale[0], 0, 0, 0],
             [0, newscale[1], 0, 0],
             [0, 0, newscale[2], 0],
-            [0, 0, 0, 1]
+            [0, 0, 0, 1],
         ])
-        
+
         return self.transform(transform)
-    
-    def scale(self, v: np.ndarray | float) -> 'RenderContext':
+
+    def scale(self, v: np.ndarray | float) -> "RenderContext":
         if is_iterable(v):
-            xform = np.array([
-                [v[0], 0, 0, 0],
-                [0, v[1], 0, 0],
-                [0, 0, v[2], 0],
-                [0, 0, 0, 1]
-                ])
+            xform = np.array([[v[0], 0, 0, 0], [0, v[1], 0, 0], [0, 0, v[2], 0], [0, 0, 0, 1]])
         else:
-            xform = np.array([
-                [v, 0, 0, 0],
-                [0, v, 0, 0],
-                [0, 0, v, 0],
-                [0, 0, 0, 1]
-                ])
+            xform = np.array([[v, 0, 0, 0], [0, v, 0, 0], [0, 0, v, 0], [0, 0, 0, 1]])
         return self.transform(xform)
-    
-    
+
+    def get_solid_manifold(self) -> m3d.Manifold:
+        solids = self._apply_and_merge(self.get_solids)
+        return solids[0] if solids else m3d.Manifold()
+
+    def get_shell_manifolds(self) -> tuple[m3d.Manifold, ...]:
+        shells = self._apply_and_merge(self.get_shells)
+        return shells[0] if shells else m3d.Manifold()
+
+    def write_solid_stl(
+        self, filename: str, mode: Mode = Mode.AUTOMATIC, update_normals: bool = True
+    ):
+        """Write the solid manifold to an STL file."""
+        manifold = self.get_solid_manifold()
+        manifold_to_stl(manifold, filename, mode=mode, update_normals=update_normals)
+
+    def write_shell_stl(
+        self, filename: str, mode: Mode = Mode.AUTOMATIC, update_normals: bool = True
+    ):
+        """Write the shell manifolds to an STL file."""
+        manifold = self.get_shell_manifolds()
+        manifold_to_stl(manifold, filename, mode=mode, update_normals=update_normals)
+
 
 class M3dRenderer:
     def cube(self, size: tuple[float, float, float] | float, center: bool = False) -> RenderContext:
         if is_iterable(size):
             size = np.array(size)
         else:
-            size = np.array([size, size, size]) 
-        return RenderContext(self, m3d.Manifold.cube(size, center))
+            size = np.array([size, size, size])
+        return RenderContext(self, IDENTITY_TRANSFORM, (m3d.Manifold.cube(size, center),))
 
     def sphere(self, radius: float, fn: int = 16) -> RenderContext:
-        return RenderContext(self, m3d.Manifold.sphere(radius=radius, circular_segments=fn))
+        return RenderContext(
+            self, IDENTITY_TRANSFORM, (m3d.Manifold.sphere(radius=radius, circular_segments=fn),)
+        )
 
     def cylinder(
         self, h: float, r_base: float, r_top: float = -1.0, fn: int = 0, center: bool = False
     ) -> RenderContext:
         return RenderContext(
             self,
-            m3d.Manifold.cylinder(
-                height=h, radius_low=r_base, radius_high=r_top, circular_segments=fn, center=center
-            )
+            IDENTITY_TRANSFORM,
+            (
+                m3d.Manifold.cylinder(
+                    height=h,
+                    radius_low=r_base,
+                    radius_high=r_top,
+                    circular_segments=fn,
+                    center=center,
+                ),
+            ),
         )
 
     def mesh(
@@ -258,27 +467,7 @@ class M3dRenderer:
         std::vector<I> triVerts;
         /// Optional: A list of only the vertex indicies that need to be merged to
         /// reconstruct the manifold.
-        std::vector<I> mergeFromVert;
-        /// Optional: The same length as mergeFromVert, and the corresponding value
-        /// contains the vertex to merge with. It will have an identical position, but
-        /// the other properties may differ.
-        std::vector<I> mergeToVert;
-        /// Optional: Indicates runs of triangles that correspond to a particular
-        /// input mesh instance. The runs encompass all of triVerts and are sorted
-        /// by runOriginalID. Run i begins at triVerts[runIndex[i]] and ends at
-        /// triVerts[runIndex[i+1]]. All runIndex values are divisible by 3. Returned
-        /// runIndex will always be 1 longer than runOriginalID, but same length is
-        /// also allowed as input: triVerts.size() will be automatically appended in
-        /// this case.
-        std::vector<I> runIndex;
-        /// Optional: The OriginalID of the mesh this triangle run came from. This ID
-        /// is ideal for reapplying materials to the output mesh. Multiple runs may
-        /// have the same ID, e.g. representing different copies of the same input
-        /// mesh. If you create an input MeshGL that you want to be able to reference
-        /// as one or more originals, be sure to set unique values from ReserveIDs().
-        std::vector<uint32_t> runOriginalID;
-        /// Optional: For each run, a 3x4 transform is stored representing how the
-        /// corresponding original mesh was transformed to create this triangle run.
+        // corresponding original mesh was transformed to create this triangle run.
         /// This matrix is stored in column-major order and the length of the overall
         /// vector is 12 * runOriginalID.size().
         std::vector<Precision> runTransform;
@@ -309,115 +498,261 @@ class M3dRenderer:
             run_transform=_make_array(run_transform, np.float32),
             face_id=_make_array(face_id, np.uint32),
             halfedge_tangent=_make_array(halfedge_tangent, np.float32),
-            tolerance=tolerance
+            tolerance=tolerance,
         )
-        return RenderContext(self, m3d.Manifold(mesh))
 
-
+        return RenderContext(self, IDENTITY_TRANSFORM, (m3d.Manifold(mesh),))
 
     def polyhedron(
         self,
         verts: NpArray[np.float32] | list[list[float]],
         faces: NpArray[np.uint32] | list[list[int]] | None = None,
-        triangles: NpArray[np.uint32] | list[list[int]] | None = None
+        triangles: NpArray[np.uint32] | list[list[int]] | None = None,
     ) -> RenderContext:
         if triangles is not None and faces is not None:
             raise ValueError("Cannot specify both faces and triangles")
-        
+
         if triangles is None:
             # Convert inputs to numpy arrays if they aren't already
             verts_array = np.array(verts, dtype=np.float32)
-            
+
             # Triangulate each face and collect the indices
             tri_verts = []
             for face in faces:
                 tri_verts.extend(triangulate_3d_face(verts_array, face))
-        
+
             return self.mesh(
-                vert_properties=verts_array,
-                tri_verts=np.array(tri_verts, dtype=np.uint32)
+                vert_properties=verts_array, tri_verts=np.array(tri_verts, dtype=np.uint32)
             )
         elif faces is not None:
-            return self.mesh(
-                vert_properties=verts_array,
-                tri_verts=triangles
-            )
+            return self.mesh(vert_properties=verts_array, tri_verts=triangles)
         else:
             raise ValueError("Must specify either faces or triangles but not both.")
+
+    def difference(self, ops: list[RenderContext]) -> RenderContext:
         
-    def intersection(self, manifolds: list[RenderContext]) -> RenderContext:
-        result = manifolds[0]
-        for manifold in manifolds[1:]:
-            result = result.intersect(manifold)
-        return result
+        if len(ops) == 0:
+            raise ValueError("Must specify at least one other render context")
+        
+        if len(ops) == 1:
+            return ops[0]
+
+        ops_context = RenderContext(self.api, IDENTITY_TRANSFORM, tuple(ops[1:]))
+        
+        return ops[0].difference(ops_context)
     
-    def union(self, manifolds: list[RenderContext]) -> RenderContext:
-        result = manifolds[0]
-        for manifold in manifolds[1:]:
-            result = result.union(manifold)
-        return result
+    def union(self, ops: list[RenderContext]) -> RenderContext:
+        if len(ops) == 0:
+            raise ValueError("Must specify at least one other render context")
+        
+        if len(ops) == 1:
+            return ops[0]   
+        
+        return RenderContext(self.api, IDENTITY_TRANSFORM, tuple(ops))
     
-    def difference(self, manifolds: list[RenderContext]) -> RenderContext:
-        result = manifolds[0]
-        for manifold in manifolds[1:]:
-            result = result.difference(manifold)
-        return result
+    def intersection(self, ops: list[RenderContext]) -> RenderContext:
+        if len(ops) == 0:
+            raise ValueError("Must specify at least one other render context")
+        
+        if len(ops) == 1:
+            return ops[0]
+        
+        ops_context = RenderContext(self.api, IDENTITY_TRANSFORM, tuple(ops[1:]))
+        
+        return ops[0].intersect(ops_context)
+
+    
+    def import_file(self, file: str, layer: str, convexity: int) -> "RenderContext":
+        raise NotImplementedError("import_file is not implemented")
+    
+    def surface(self, file: str, center: bool, invert: bool, convexity: int) -> "RenderContext":
+        raise NotImplementedError("surface is not implemented")
+    
+    def fill(self, ops: "list[RenderContext]") -> "RenderContext":
+        raise NotImplementedError("fill is not implemented")
+    
+    def text(self, 
+             text: str, 
+             size: float, 
+             font: str, 
+             halign: str, 
+             valign: str, 
+             spacing: float, 
+             direction: str, 
+             language: str, 
+             script: str, 
+             fa: float, 
+             fs: float, 
+             fn: float) -> "RenderContext":
+        raise NotImplementedError("text is not implemented")
+    
+    def polygon(self, 
+                points: list[list[float]], 
+                paths: list[list[int]], 
+                convexity: int) -> "RenderContext":
+        raise NotImplementedError("polygon is not implemented")
+    
+    def square(self, size: float, center: bool) -> "RenderContext":
+        raise NotImplementedError("square is not implemented")
+    
+    def circle(self, radius: float, fa: float, fs: float, fn: float) -> "RenderContext":
+        raise NotImplementedError("circle is not implemented")
+    
+    def rotate_extrude(self, 
+                       context: "RenderContext", 
+                       angle: float, 
+                       convexity: int, 
+                       fa: float, 
+                       fs: float, 
+                       fn: float) -> "RenderContext":
+        raise NotImplementedError("rotate_extrude is not implemented")
+    
+    def linear_extrude(self, 
+                       context: "RenderContext", 
+                       height: float, 
+                       center: bool, 
+                       convexity: int, 
+                       twist: float, 
+                       slices: int, 
+                       scale_: float, 
+                       fa: float, 
+                       fs: float, 
+                       fn: float) -> "RenderContext":
+        raise NotImplementedError("linear_extrude is not implemented")
+    
+    def hull(self, ops: list[RenderContext]) -> "RenderContext":
+        raise NotImplementedError("hull is not implemented")
+    
+    def minkowski(self, ops: list[RenderContext]) -> "RenderContext":
+        raise NotImplementedError("minkowski is not implemented")
+    
+    def render(self, ops: list[RenderContext], convexity: int) -> "RenderContext":
+        return self.union(ops)
+    
+    def projection(self, ops: list[RenderContext], cut: bool) -> "RenderContext":
+        raise NotImplementedError("projection is not implemented")
+    
+    def offset(self, 
+               ops: list[RenderContext], 
+               r: float, 
+               delta: float, 
+               chamfer: bool, 
+               fa: float, 
+               fs: float, 
+               fn: float) -> "RenderContext":
+        raise NotImplementedError("Offset is not implemented")
+    
+    def color(self, c: str, alpha: float) -> "RenderContext":
+        raise NotImplementedError("color is not implemented")   
 
 def triangulate_3d_face(verts_array: np.ndarray, face: list[int]) -> list[list[int]]:
-    """Triangulate a 3D face using earcut after projecting to 2D.
-    
+    """Triangulate a 3D face using earcut. The face is assumed to be close to
+    planar and the surface is rotated to ensure the normal is pointing in the
+    +Z direction.
+
     Args:
         verts_array: Array of vertex coordinates
         face: List of vertex indices defining the face
-        
+
     Returns:
         List of lists of vertex indices defining triangles
     """
     # Skip triangulation for triangles
     if len(face) == 3:
         return [face]
-        
+
     # Get the vertices for this face, taking only x,y,z coordinates
     face_verts = np.array([verts_array[idx][:3] for idx in face])
-    
+
     # Compute face normal using Newell's method with vectorized operations
     v1 = face_verts
     v2 = np.roll(face_verts, -1, axis=0)  # Shifted vertices for pairs
-    normal = np.sum([
-        (v1[:, 1] - v2[:, 1]) * (v1[:, 2] + v2[:, 2]),  # x component
-        (v1[:, 2] - v2[:, 2]) * (v1[:, 0] + v2[:, 0]),  # y component
-        (v1[:, 0] - v2[:, 0]) * (v1[:, 1] + v2[:, 1])   # z component
-    ], axis=1)
+    normal = np.sum(
+        [
+            (v1[:, 1] - v2[:, 1]) * (v1[:, 2] + v2[:, 2]),  # x component
+            (v1[:, 2] - v2[:, 2]) * (v1[:, 0] + v2[:, 0]),  # y component
+            (v1[:, 0] - v2[:, 0]) * (v1[:, 1] + v2[:, 1]),  # z component
+        ],
+        axis=1,
+    )
     normal = normal / np.linalg.norm(normal)
-    
+
     # Create rotation matrix to align normal with Z axis
-    if not np.allclose(normal, [0, 0, 1]):
+    # We always want the normal to point approximately in +Z direction to ensure
+    # consistent triangulation
+    cos_theta = np.dot(normal, [0, 0, 1])
+    flip_order = False
+    # Always rotate to align with +Z if the normal is not already close to +Z.
+    if abs(cos_theta) < 0.93:
         z_axis = np.array([0, 0, 1])
         rotation_axis = np.cross(normal, z_axis)
-        rotation_axis = rotation_axis / np.linalg.norm(rotation_axis)
-        cos_theta = np.dot(normal, z_axis)
+        norm_rotation_axis = np.linalg.norm(rotation_axis)
+
+        if norm_rotation_axis < 1e-10:  # If rotation axis is too small, use X axis
+            rotation_axis = np.array([1, 0, 0])
+        else:
+            rotation_axis = rotation_axis / norm_rotation_axis
+
+        # Calculate sin_theta from cos_theta, always producing a positive sine value
+        # Note: This is a simplification that works for our purposes because:
+        # 1. When cos_theta > 0 (normal pointing toward +Z), positive sin_theta gives correct rotation
+        # 2. When cos_theta < 0 (normal pointing toward -Z), positive sin_theta creates a rotation that
+        #    effectively flips the face's winding order, which is what we want for projection to +Z
+        # This "incorrect" sine calculation actually works in our favor by automatically handling
+        # the winding order change needed when rotating from -Z to +Z direction.
         sin_theta = np.sqrt(1 - cos_theta**2)
-        
+
         # Rodriguez rotation formula
         K = np.array([
             [0, -rotation_axis[2], rotation_axis[1]],
             [rotation_axis[2], 0, -rotation_axis[0]],
-            [-rotation_axis[1], rotation_axis[0], 0]
+            [-rotation_axis[1], rotation_axis[0], 0],
         ])
         R = np.eye(3) + sin_theta * K + (1 - cos_theta) * (K @ K)
-        
+
         # Apply rotation to vertices
         face_verts = face_verts @ R.T
-    
-    # Project to 2D by dropping Z coordinate
+    else:
+        if cos_theta < 0:
+            flip_order = True
+
+    # Project to 2D by dropping Z coordinate (now facing +/-Z)
     verts_2d = face_verts[:, :2]
-    
+
     # Create ring array (number of vertices in each ring/polygon)
     rings = [len(face)]
-    
+
     # Triangulate
-    triangles = mapbox_earcut.triangulate_float64(verts_2d, rings)
-    
+    triangles = mapbox_earcut.triangulate_float32(verts_2d, rings)
+
     # Convert triangle indices back to original vertex indices and group into triplets
-    return [[face[triangles[i]], face[triangles[i+1]], face[triangles[i+2]]] 
-            for i in range(0, len(triangles), 3)]
+    tris = [
+        [face[triangles[i]], face[triangles[i + 1]], face[triangles[i + 2]]]
+        for i in range(0, len(triangles), 3)
+    ]
+
+    # Carefully check if we need to flip to preserve proper ordering
+    # We need to check if the earcut triangulation preserved the input winding order
+
+    # # Test case: Check if the first edge in the first triangle follows the face winding
+    # if len(tris) > 0:
+    #     first_tri = tris[0]
+    #     # Find the position of first_tri[0] in the original face
+    #     idx = face.index(first_tri[0])
+    #     # Check if first_tri[1] is the next vertex in the face (considering wrapping)
+    #     next_expected = face[(idx + 1) % len(face)]
+    #     # If the next vertex doesn't match the expected one, we need to flip all triangles
+    #     if first_tri[1] != next_expected:
+    #         if not flip_order:
+    #             flip_order = True
+    #             print(f"Incorrect flip_order {flip_order} {cos_theta}", end=" ")
+    #         print(f"Flipping face: {cos_theta}")
+    #     else:
+    #         if flip_order:
+    #             flip_order = False
+    #             print(f"Incorrect flip_order {flip_order} {cos_theta}", end=" ")
+    #         print(f"No flip needed for face: {cos_theta}")
+    if flip_order and len(tris) > 0:
+        tris = [[tri[0], tri[2], tri[1]] for tri in tris]
+
+    return tris

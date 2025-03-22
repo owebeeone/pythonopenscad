@@ -18,7 +18,14 @@ classifiers = [
     "License :: OSI Approved :: GNU Lesser General Public License v2 or later (LGPLv2+)",
     "Operating System :: OS Independent",
 ]
-dependencies = []
+
+dependencies = [
+    "distributed>=2025.1.0",
+    "numpy>=2.2.1",
+    "manifold3d>=3.0.1",
+    "mapbox-earcut>=1.0.3",
+    "mapbox>=0.18.1",
+]
 
 [project.urls]
 Homepage = "https://github.com/owebeeone/pythonopenscad"
