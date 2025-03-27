@@ -144,7 +144,7 @@ def test_triangulate_3d_face():
 
     face = [0, 1, 2, 3]
 
-    triangles = triangulate_3d_face(verts, face)
+    triangles = triangulate_3d_face(verts, [face])
     assert len(triangles) == 2  # Should produce 2 triangles (6 indices)
 
     # Verify that all indices are within bounds
@@ -157,7 +157,7 @@ def test_triangulate_3d_face_already_triangle():
 
     face = [0, 1, 2]
 
-    triangles = triangulate_3d_face(verts, face)
+    triangles = triangulate_3d_face(verts, [face])
     assert triangles == [face]  # Should return the same face unchanged
 
 
@@ -175,7 +175,7 @@ def test_triangulate_3d_face_non_planar():
 
     face = [0, 1, 2, 3]
 
-    triangles = triangulate_3d_face(verts, face)
+    triangles = triangulate_3d_face(verts, [face])
     assert len(triangles) == 2  # Should still produce 2 triangles
     assert all(0 <= idx < len(verts) for tri in triangles for idx in tri)
 

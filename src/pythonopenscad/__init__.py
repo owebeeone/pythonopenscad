@@ -107,6 +107,27 @@ from pythonopenscad.modifier import (
     BASE_MODIFIERS
 )
 
+from pythonopenscad.m3dapi import (
+    M3dRenderer,
+    RenderContext,
+    RenderContextManifold,
+    RenderContextCrossSection,
+    Mode
+)
+
+# Try to import the viewer module, but don't fail if OpenGL is not available
+try:
+    from pythonopenscad.viewer import (
+        BoundingBox,
+        Model,
+        Viewer,
+        create_viewer_with_models,
+        is_opengl_available
+    )
+    HAS_VIEWER = True
+except ImportError:
+    HAS_VIEWER = False
+
 __all__ = [
     "Arg",
     "BASE_MODIFIERS",
@@ -210,5 +231,20 @@ __all__ = [
     "surface",
     "text",
     "translate",
-    "union"
+    "union",
+    "M3dRenderer",
+    "RenderContext",
+    "RenderContextManifold",
+    "RenderContextCrossSection",
+    "Mode"
 ]
+
+# Add viewer classes if available
+if HAS_VIEWER:
+    __all__.extend([
+        "BoundingBox",
+        "Model",
+        "Viewer",
+        "create_viewer_with_models",
+        "is_opengl_available"
+    ])

@@ -13,7 +13,7 @@ def test_simple_square():
     
     face = [0, 1, 2, 3]
     
-    triangles = triangulate_3d_face(verts, face)
+    triangles = triangulate_3d_face(verts, [face])
     assert len(triangles) == 2  # Should produce 2 triangles
     assert all(0 <= idx < len(verts) for tri in triangles for idx in tri)
     
@@ -43,7 +43,7 @@ def test_already_triangle():
     
     face = [0, 1, 2]
     
-    triangles = triangulate_3d_face(verts, face)
+    triangles = triangulate_3d_face(verts, [face])
     assert triangles == [face]  # Should return the same face unchanged
 
 def test_non_planar_face():
@@ -57,7 +57,7 @@ def test_non_planar_face():
     
     face = [0, 1, 2, 3]
     
-    triangles = triangulate_3d_face(verts, face)
+    triangles = triangulate_3d_face(verts, [face])
     assert len(triangles) == 2  # Should still produce 2 triangles
     assert all(0 <= idx < len(verts) for tri in triangles for idx in tri)
 
@@ -73,7 +73,7 @@ def test_pentagon():
     
     face = [0, 1, 2, 3, 4]
     
-    triangles = triangulate_3d_face(verts, face)
+    triangles = triangulate_3d_face(verts, [face])
     assert len(triangles) == 3  # A pentagon should be triangulated into 3 triangles
     assert all(0 <= idx < len(verts) for tri in triangles for idx in tri)
     
@@ -104,7 +104,7 @@ def test_vertical_face():
     
     face = [0, 1, 2, 3]
     
-    triangles = triangulate_3d_face(verts, face)
+    triangles = triangulate_3d_face(verts, [face])
     assert len(triangles) == 2  # Should produce 2 triangles
     assert all(0 <= idx < len(verts) for tri in triangles for idx in tri)
 
@@ -123,7 +123,7 @@ def test_concave_face():
     
     face = [0, 1, 2, 3, 4, 5, 6, 7]
     
-    triangles = triangulate_3d_face(verts, face)
+    triangles = triangulate_3d_face(verts, [face])
     assert len(triangles) == 6  # A U-shape should be triangulated into 6 triangles
     assert all(0 <= idx < len(verts) for tri in triangles for idx in tri)
 
@@ -138,7 +138,7 @@ def test_slanted_face():
     
     face = [0, 1, 2, 3]
     
-    triangles = triangulate_3d_face(verts, face)
+    triangles = triangulate_3d_face(verts, [face])
     assert len(triangles) == 2  # Should produce 2 triangles
     assert all(0 <= idx < len(verts) for tri in triangles for idx in tri)
 
@@ -155,7 +155,7 @@ def test_area_preservation():
     face = [0, 1, 2, 3]
     original_area = 4.0  # 2x2 square
     
-    triangles = triangulate_3d_face(verts, face)
+    triangles = triangulate_3d_face(verts, [face])
     
     # Calculate total area of triangles
     total_area = 0
@@ -178,7 +178,7 @@ def test_winding_order():
     ], dtype=np.float32)
     
     face = [0, 1, 2, 3]  # CCW order
-    triangles = triangulate_3d_face(verts, face)
+    triangles = triangulate_3d_face(verts, [face])
     
     # Check each triangle maintains CCW order
     for tri in triangles:
@@ -187,6 +187,62 @@ def test_winding_order():
         normal = np.cross(v1, v2)
         # For CCW order in XY plane, normal should point in +Z direction
         assert normal[2] > 0
+
+def test_polygon_with_hole():
+    """Test triangulation of a polygon with a hole."""
+    verts = np.array([
+        # Outer square vertices (CCW)
+        [0, 0, 0],    # 0
+        [4, 0, 0],    # 1
+        [4, 4, 0],    # 2
+        [0, 4, 0],    # 3
+        # Inner square vertices (CW to make it a hole)
+        [1, 1, 0],    # 4
+        [1, 3, 0],    # 5
+        [3, 3, 0],    # 6
+        [3, 1, 0],    # 7
+    ], dtype=np.float32)
+    
+    # Define outer polygon (CCW) and inner polygon (CW)
+    outer = [0, 1, 2, 3]
+    inner = [4, 7, 6, 5]  # CW order makes this a hole
+    face = [outer, inner]
+    
+    triangles = triangulate_3d_face(verts, face)
+    
+    # A square with a square hole should be triangulated into 8 triangles
+    assert len(triangles) == 8
+    
+    # Verify all indices are valid
+    assert all(0 <= idx < len(verts) for tri in triangles for idx in tri)
+    
+    # Verify that all original outer edges are preserved
+    outer_edges = {(outer[i], outer[(i+1)%4]) for i in range(4)}
+    inner_edges = {(inner[i], inner[(i+1)%4]) for i in range(4)}
+    triangulation_edges = set()
+    for tri in triangles:
+        triangulation_edges.add((tri[0], tri[1]))
+        triangulation_edges.add((tri[1], tri[2]))
+        triangulation_edges.add((tri[2], tri[0]))
+        triangulation_edges.add((tri[1], tri[0]))
+        triangulation_edges.add((tri[2], tri[1]))
+        triangulation_edges.add((tri[0], tri[2]))
+    
+    # Check that each original edge appears in the triangulation
+    for e1, e2 in outer_edges | inner_edges:
+        assert ((e1, e2) in triangulation_edges or 
+                (e2, e1) in triangulation_edges), f"Edge {(e1, e2)} not found in triangulation"
+    
+    # Calculate and verify area (outer square - inner square)
+    expected_area = 16.0 - 4.0  # 4x4 outer - 2x2 inner = 12
+    total_area = 0
+    for tri in triangles:
+        v1 = verts[tri[1]] - verts[tri[0]]
+        v2 = verts[tri[2]] - verts[tri[0]]
+        area = np.linalg.norm(np.cross(v1, v2)) / 2
+        total_area += area
+    
+    np.testing.assert_almost_equal(total_area, expected_area, decimal=5)
 
 if __name__ == '__main__':
     pytest.main([__file__]) 
