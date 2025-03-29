@@ -1,5 +1,6 @@
-from dataclasses import dataclass, field
-from typing import Callable, Generic, Iterable, Self, TypeVar
+from dataclasses import dataclass, field, replace
+from itertools import chain
+from typing import Any, Callable, Generic, Iterable, Self, TypeVar
 import manifold3d as m3d
 import numpy as np
 import mapbox_earcut
@@ -8,6 +9,160 @@ from stl import mesh, Mode
 
 
 TM3d = TypeVar("T")
+
+# Colour map derived from:
+# https://github.com/openscad/openscad/blob/master/src/core/ColorNode.cc#L51
+COLOUR_MAP = {
+    "aliceblue": (240/255, 248/255, 255/255),
+    'antiquewhite': (250/255, 235/255, 215/255),
+    'aqua': (0/255, 255/255, 255/255),
+    'aquamarine': (127/255, 255/255, 212/255),
+    'azure': (240/255, 255/255, 255/255),
+    'beige': (245/255, 245/255, 220/255),
+    'bisque': (255/255, 228/255, 196/255),
+    'black': (0/255, 0/255, 0/255),
+    'blanchedalmond': (255/255, 235/255, 205/255),
+    'blue': (0/255, 0/255, 255/255),
+    'blueviolet': (138/255, 43/255, 226/255),
+    'brown': (165/255, 42/255, 42/255),
+    'burlywood': (222/255, 184/255, 135/255),
+    'cadetblue': (95/255, 158/255, 160/255),
+    'chartreuse': (127/255, 255/255, 0/255),
+    'chocolate': (210/255, 105/255, 30/255),
+    'coral': (255/255, 127/255, 80/255),
+    'cornflowerblue': (100/255, 149/255, 237/255),
+    'cornsilk': (255/255, 248/255, 220/255),
+    'crimson': (220/255, 20/255, 60/255),
+    'cyan': (0/255, 255/255, 255/255),
+    'darkblue': (0/255, 0/255, 139/255),
+    'darkcyan': (0/255, 139/255, 139/255),
+    'darkgoldenrod': (184/255, 134/255, 11/255),
+    'darkgray': (169/255, 169/255, 169/255),
+    'darkgreen': (0/255, 100/255, 0/255),
+    'darkgrey': (169/255, 169/255, 169/255),
+    'darkkhaki': (189/255, 183/255, 107/255),
+    'darkmagenta': (139/255, 0/255, 139/255),
+    'darkolivegreen': (85/255, 107/255, 47/255),
+    'darkorange': (255/255, 140/255, 0/255),
+    'darkorchid': (153/255, 50/255, 204/255),
+    'darkred': (139/255, 0/255, 0/255),
+    'darksalmon': (233/255, 150/255, 122/255),
+    'darkseagreen': (143/255, 188/255, 143/255),
+    'darkslateblue': (72/255, 61/255, 139/255),
+    'darkslategray': (47/255, 79/255, 79/255),
+    'darkslategrey': (47/255, 79/255, 79/255),
+    'darkturquoise': (0/255, 206/255, 209/255),
+    'darkviolet': (148/255, 0/255, 211/255),
+    'deeppink': (255/255, 20/255, 147/255),
+    'deepskyblue': (0/255, 191/255, 255/255),
+    'dimgray': (105/255, 105/255, 105/255),
+    'dimgrey': (105/255, 105/255, 105/255),
+    'dodgerblue': (30/255, 144/255, 255/255),
+    'firebrick': (178/255, 34/255, 34/255),
+    'floralwhite': (255/255, 250/255, 240/255),
+    'forestgreen': (34/255, 139/255, 34/255),
+    'fuchsia': (255/255, 0/255, 255/255),
+    'gainsboro': (220/255, 220/255, 220/255),
+    'ghostwhite': (248/255, 248/255, 255/255),
+    'gold': (255/255, 215/255, 0/255),
+    'goldenrod': (218/255, 165/255, 32/255),
+    'gray': (128/255, 128/255, 128/255),
+    'green': (0/255, 128/255, 0/255),
+    'greenyellow': (173/255, 255/255, 47/255),
+    'grey': (128/255, 128/255, 128/255),
+    'honeydew': (240/255, 255/255, 240/255),
+    'hotpink': (255/255, 105/255, 180/255),
+    'indianred': (205/255, 92/255, 92/255),
+    'indigo': (75/255, 0/255, 130/255),
+    'ivory': (255/255, 255/255, 240/255),
+    'khaki': (240/255, 230/255, 140/255),
+    'lavender': (230/255, 230/255, 250/255),
+    'lavenderblush': (255/255, 240/255, 245/255),
+    'lawngreen': (124/255, 252/255, 0/255),
+    'lemonchiffon': (255/255, 250/255, 205/255),
+    'lightblue': (173/255, 216/255, 230/255),
+    'lightcoral': (240/255, 128/255, 128/255),
+    'lightcyan': (224/255, 255/255, 255/255),
+    'lightgoldenrodyellow': (250/255, 250/255, 210/255),
+    'lightgray': (211/255, 211/255, 211/255),
+    'lightgreen': (144/255, 238/255, 144/255),
+    'lightgrey': (211/255, 211/255, 211/255),
+    'lightpink': (255/255, 182/255, 193/255),
+    'lightsalmon': (255/255, 160/255, 122/255),
+    'lightseagreen': (32/255, 178/255, 170/255),
+    'lightskyblue': (135/255, 206/255, 250/255),
+    'lightslategray': (119/255, 136/255, 153/255),
+    'lightslategrey': (119/255, 136/255, 153/255),
+    'lightsteelblue': (176/255, 196/255, 222/255),
+    'lightyellow': (255/255, 255/255, 224/255),
+    'lime': (0/255, 255/255, 0/255),
+    'limegreen': (50/255, 205/255, 50/255),
+    'linen': (250/255, 240/255, 230/255),
+    'magenta': (255/255, 0/255, 255/255),
+    'maroon': (128/255, 0/255, 0/255),
+    'mediumaquamarine': (102/255, 205/255, 170/255),
+    'mediumblue': (0/255, 0/255, 205/255),
+    'mediumorchid': (186/255, 85/255, 211/255),
+    'mediumpurple': (147/255, 112/255, 219/255),
+    'mediumseagreen': (60/255, 179/255, 113/255),
+    'mediumslateblue': (123/255, 104/255, 238/255),
+    'mediumspringgreen': (0/255, 250/255, 154/255),
+    'mediumturquoise': (72/255, 209/255, 204/255),
+    'mediumvioletred': (199/255, 21/255, 133/255),
+    'midnightblue': (25/255, 25/255, 112/255),
+    'mintcream': (245/255, 255/255, 250/255),
+    'mistyrose': (255/255, 228/255, 225/255),
+    'moccasin': (255/255, 228/255, 181/255),
+    'navajowhite': (255/255, 222/255, 173/255),
+    'navy': (0/255, 0/255, 128/255),
+    'oldlace': (253/255, 245/255, 230/255),
+    'olive': (128/255, 128/255, 0/255),
+    'olivedrab': (107/255, 142/255, 35/255),
+    'orange': (255/255, 165/255, 0/255),
+    'orangered': (255/255, 69/255, 0/255),
+    'orchid': (218/255, 112/255, 214/255),
+    'palegoldenrod': (238/255, 232/255, 170/255),
+    'palegreen': (152/255, 251/255, 152/255),
+    'paleturquoise': (175/255, 238/255, 238/255),
+    'palevioletred': (219/255, 112/255, 147/255),
+    'papayawhip': (255/255, 239/255, 213/255),
+    'peachpuff': (255/255, 218/255, 185/255),
+    'peru': (205/255, 133/255, 63/255),
+    'pink': (255/255, 192/255, 203/255),
+    'plum': (221/255, 160/255, 221/255),
+    'powderblue': (176/255, 224/255, 230/255),
+    'purple': (128/255, 0/255, 128/255),
+    'rebeccapurple': (102/255, 51/255, 153/255),
+    'red': (255/255, 0/255, 0/255),
+    'rosybrown': (188/255, 143/255, 143/255),
+    'royalblue': (65/255, 105/255, 225/255),
+    'saddlebrown': (139/255, 69/255, 19/255),
+    'salmon': (250/255, 128/255, 114/255),
+    'sandybrown': (244/255, 164/255, 96/255),
+    'seagreen': (46/255, 139/255, 87/255),
+    'seashell': (255/255, 245/255, 238/255),
+    'sienna': (160/255, 82/255, 45/255),
+    'silver': (192/255, 192/255, 192/255),
+    'skyblue': (135/255, 206/255, 235/255),
+    'slateblue': (106/255, 90/255, 205/255),
+    'slategray': (112/255, 128/255, 144/255),
+    'slategrey': (112/255, 128/255, 144/255),
+    'snow': (255/255, 250/255, 250/255),
+    'springgreen': (0/255, 255/255, 127/255),
+    'steelblue': (70/255, 130/255, 180/255),
+    'tan': (210/255, 180/255, 140/255),
+    'teal': (0/255, 128/255, 128/255),
+    'thistle': (216/255, 191/255, 216/255),
+    'tomato': (255/255, 99/255, 71/255),
+    'turquoise': (64/255, 224/255, 208/255),
+    'violet': (238/255, 130/255, 238/255),
+    'wheat': (245/255, 222/255, 179/255),
+    'white': (255/255, 255/255, 255/255),
+    'whitesmoke': (245/255, 245/255, 245/255),
+    'yellow': (255/255, 255/255, 0/255),
+    'yellowgreen': (154/255, 205/255, 50/255),
+    'transparent': (0/255, 0/255, 0/255, 0/255),
+}
 
 
 def manifold_to_stl(
@@ -55,7 +210,7 @@ def is_iterable(v):
     return isinstance(v, Iterable) and not isinstance(v, (str, bytes))
 
 
-def _make_array(v: NpArray[TM3d] | None, t: type[TM3d]) -> NpArray[TM3d] | None:
+def _make_array(v: NpArray[np.float32 | np.float64] | None, t: type[np.float32 | np.float64]) -> NpArray[np.float32 | np.float64] | None:
     """Condition array to be C-style contiguous and writeable."""
     if v is None:
         return None
@@ -168,7 +323,7 @@ def _mirror(axis: np.ndarray) -> np.ndarray:
 
 TM3d = TypeVar("TM3d", bound=m3d.Manifold | m3d.CrossSection)
 
-@dataclass
+@dataclass(init=False)
 class RenderContext(Generic[TM3d]):
     """Each level of the rendering phase produces a RenderContext.
     While also wrapping manifold3d.Manifold, it also handles the OpenSCAD
@@ -177,16 +332,16 @@ class RenderContext(Generic[TM3d]):
 
     api: "M3dRenderer"
     transform_mat: np.ndarray = field(default_factory=lambda: IDENTITY_TRANSFORM)
-    solid_manifold: tuple[TM3d, ...] = ()
-    shell_manifold: tuple[TM3d, ...] = ()
+    solid_objs: tuple[TM3d, ...] = ()
+    shell_objs: tuple[TM3d, ...] = ()
 
     def as_transparent(self) -> Self:
         """Applies the OpenSCAD % modifier."""
         return RenderContext(
             api=self.api,
             transform_mat=self.transform_mat,
-            solid_manifold=(),
-            shell_manifold=self.shell_manifold + self.solid_manifold,
+            solid_objs=(),
+            shell_objs=self.shell_objs + self.solid_objs,
         )
 
     def transform(self, transform: np.ndarray) -> Self:
@@ -199,7 +354,8 @@ class RenderContext(Generic[TM3d]):
             transform = np.concatenate([transform, [[0, 0, 0, 1]]])
 
         new_transform = transform @ self.transform_mat
-        return RenderContext(self.api, new_transform, self.solid_manifold, self.shell_manifold)
+        cls = type(self)
+        return cls(self.api, new_transform, self.solid_objs, self.shell_objs)
 
     def translate(self, v: np.ndarray) -> Self:
         return self.transform(
@@ -226,10 +382,10 @@ class RenderContext(Generic[TM3d]):
         pass
 
     def get_solids(self) -> tuple[TM3d, ...]:
-        return self.solid_manifold
+        return self.solid_objs
 
     def get_shells(self) -> tuple[TM3d, ...]:
-        return self.shell_manifold
+        return self.shell_objs
 
     def _apply_transforms(
         self, get_type_func: Callable[[], tuple[TM3d, ...]]
@@ -245,9 +401,7 @@ class RenderContext(Generic[TM3d]):
     ) -> tuple[TM3d, ...]:
         manifs = self._apply_transforms(get_type_func)
         result_manifs = (
-            tuple(
-                sum(manifs[1:], manifs[0]),
-            )
+            (sum(manifs[1:], start=manifs[0]),)
             if len(manifs) > 1
             else manifs
         )
@@ -266,7 +420,8 @@ class RenderContext(Generic[TM3d]):
     def union(self, other: Self) -> Self:
         solids, shells, other_solids, other_shells = self._apply_and_merge_helper(other)
 
-        return RenderContext(
+        cls = type(self)
+        return cls(
             self.api, IDENTITY_TRANSFORM, solids + other_solids, shells + other_shells
         )
 
@@ -274,11 +429,11 @@ class RenderContext(Generic[TM3d]):
         solids, shells, other_solids, other_shells = self._apply_and_merge_helper(other)
 
         if solids and other_solids:
-            result_solids = solids[0] ^ other_solids[0]
+            result_solids = (solids[0] ^ other_solids[0],)
         elif solids:
-            result_solids = solids[0]
+            result_solids = (solids[0],)
         elif other_solids:
-            result_solids = other_solids[0]
+            result_solids = (other_solids[0],)
         else:
             result_solids = ()
 
@@ -286,15 +441,16 @@ class RenderContext(Generic[TM3d]):
         # encolsing volume for development purposes.
         result_shells = shells + other_shells
 
-        return RenderContext(self.api, IDENTITY_TRANSFORM, result_solids, result_shells)
+        cls = type(self)
+        return cls(self.api, IDENTITY_TRANSFORM, result_solids, result_shells)
 
     def difference(self, other: Self) -> Self:
         solids, shells, other_solids, other_shells = self._apply_and_merge_helper(other)
 
         if solids and other_solids:
-            result_solids = solids[0] - other_solids[0]
+            result_solids = (solids[0] - other_solids[0],)
         elif solids:
-            result_solids = solids[0]
+            result_solids = (solids[0],)
         elif other_solids:
             result_solids = ()  # When we remove a volume from nothing we get nothing.
         else:
@@ -303,7 +459,9 @@ class RenderContext(Generic[TM3d]):
         # We union the shells since the significance of the shell is to show it's
         # encolsing volume for development purposes.
         result_shells = shells + other_shells
-        return RenderContext(self.api, IDENTITY_TRANSFORM, result_solids, result_shells)
+        
+        cls = type(self)
+        return cls(self.api, IDENTITY_TRANSFORM, result_solids, result_shells)
 
     def getResizeScale(self, newsize: np.ndarray, auto: np.ndarray | bool) -> np.ndarray:
         # This is the code from OpenSCAD's getResizeTransform() function in:
@@ -376,12 +534,21 @@ class RenderContext(Generic[TM3d]):
         return self.transform(xform)
 
 
-        
+
+@dataclass
 class RenderContextManifold(RenderContext[m3d.Manifold]):
+    
+    def __post_init__(self):
+        for solid in self.solid_objs:
+            if not isinstance(solid, m3d.Manifold):
+                raise ValueError("All solid objects must be manifolds")
+        for shell in self.shell_objs:
+            if not isinstance(shell, m3d.Manifold):
+                raise ValueError("All shell objects must be manifolds")
     
     @staticmethod
     def with_manifold(api: "M3dRenderer", manifold: m3d.Manifold) -> "RenderContextManifold":
-        return RenderContextManifold(api=api, transform_mat=IDENTITY_TRANSFORM, solid_manifold=(manifold,))
+        return RenderContextManifold(api=api, transform_mat=IDENTITY_TRANSFORM, solid_objs=(manifold,))
 
     def with_solid(self, manifold: m3d.Manifold) -> Self:
         solids, shells = self._apply_transforms()
@@ -413,36 +580,103 @@ class RenderContextManifold(RenderContext[m3d.Manifold]):
         manifold = self.get_shell_manifolds()
         manifold_to_stl(manifold, filename, mode=mode, update_normals=update_normals)
 
+@dataclass
 class RenderContextCrossSection(RenderContext[m3d.CrossSection]):
-    pass
+    
+    def __post_init__(self):
+        for solid in self.solid_objs:
+            if not isinstance(solid, m3d.CrossSection):
+                raise ValueError("All solid objects must be manifolds")
+        for shell in self.shell_objs:
+            if not isinstance(shell, m3d.CrossSection):
+                raise ValueError("All shell objects must be manifolds")
+            
+
+def set_property(manifold: m3d.Manifold, prop: np.ndarray, prop_index: int) -> m3d.Manifold:
+    """
+    Set a constant property on a manifold on all vertices.
+    """
+    
+    min_num_props = prop_index + len(prop)
+    curr_num_props = manifold.num_prop()
+    if curr_num_props < min_num_props:
+        num_props = min_num_props
+    else:
+        num_props = curr_num_props
+
+    prop_len = len(prop)
+    
+    apply_func: Callable[[np.ndarray, np.ndarray], np.ndarray] | None = None
+    # Select the appropriate apply function based on the property index and current 
+    # number of properties.
+    if prop_index == 0:
+        if curr_num_props > len(prop):
+            apply_func = lambda pos, curr_props: np.concatenate((prop, curr_props[prop_len:]))
+        else:
+            apply_func = lambda pos, curr_props: prop
+    elif num_props > curr_num_props:
+        apply_func = lambda pos, curr_props: np.concatenate((curr_props[:prop_index], prop))
+    elif curr_num_props < prop_index:
+        padding = np.zeros(prop_index - curr_num_props)
+        apply_func = lambda pos, curr_props: np.concatenate((curr_props[:prop_index], padding, prop))
+    else:
+        apply_func = lambda pos, curr_props: np.concatenate(
+                (curr_props[:prop_index], 
+                 prop, 
+                 curr_props[prop_index + prop_len:]))
+
+    manifold = manifold.set_properties(num_props, apply_func)
+    
+    return manifold
 
 
+@dataclass(frozen=True)
 class M3dRenderer:
+    
+    NORMALS_PROP_INDEX = 4
+    COLOR_PROP_INDEX = 0
+
+    color_prop: np.ndarray = field(default_factory=lambda: np.array([0.976, 0.843, 0.173, 1.0]))
+    
+    def with_color(self, color: np.ndarray | list[float]) -> Self:
+        """Returns a new renderer with the specified color and alpha.
+        """
+        if not isinstance(color, np.ndarray):
+            color = np.array(color)
+        if color.shape != (4,):
+            raise ValueError("Color must be a 4-element array")
+        return replace(self, color_prop=color)
+    
+    def _apply_properties(self, manifold: m3d.Manifold) -> m3d.Manifold:
+        manifold = manifold.calculate_normals(self.NORMALS_PROP_INDEX)
+        manifold = set_property(manifold, self.color_prop, self.COLOR_PROP_INDEX)
+        return manifold
+    
     def cube(self, size: tuple[float, float, float] | float, center: bool = False) -> RenderContextManifold:
         if is_iterable(size):
             size = np.array(size)
         else:
             size = np.array([size, size, size])
-        return RenderContextManifold.with_manifold(self, m3d.Manifold.cube(size, center))
+            
+        
+        return RenderContextManifold.with_manifold(self, self._apply_properties(m3d.Manifold.cube(size, center)))
 
     def sphere(self, radius: float, fn: int = 16) -> RenderContext:
         return RenderContextManifold.with_manifold(
-            self, m3d.Manifold.sphere(radius=radius, circular_segments=fn))
+            self, self._apply_properties(m3d.Manifold.sphere(radius=radius, circular_segments=fn)))
 
     def cylinder(
         self, h: float, r_base: float, r_top: float = -1.0, fn: int = 0, center: bool = False
     ) -> RenderContext:
         return RenderContextManifold.with_manifold(
             self,
-            m3d.Manifold.cylinder(
-                m3d.Manifold.cylinder(
-                    height=h,
-                    radius_low=r_base,
-                    radius_high=r_top,
-                    circular_segments=fn,
-                    center=center,
-                ),
-            ),
+            self._apply_properties(m3d.Manifold.cylinder(
+                height=h,
+                radius_low=r_base,
+                radius_high=r_top,
+                circular_segments=fn,
+                center=center,
+            ))
         )
 
     def mesh(
@@ -494,21 +728,34 @@ class M3dRenderer:
         /// Tolerance may be enlarged when floating point error accumulates.
         Precision tolerance = 0;
         """
+        
+        vert_properties = _make_array(vert_properties, np.float32)
+        
+        if vert_properties is None:
+            raise ValueError("vert_properties must be a numpy array")
+        
+        if vert_properties.shape[1] == 3:
+            # Create array with right shape and fill with color values
+            color_array = np.tile(self.color_prop, (vert_properties.shape[0], 1))
+            vert_properties = np.column_stack((vert_properties, color_array))
 
         mesh = m3d.Mesh(
-            vert_properties=_make_array(vert_properties, np.float32),
-            tri_verts=_make_array(tri_verts, np.uint32),
-            merge_from_vert=_make_array(merge_from_vert, np.uint32),
-            merge_to_vert=_make_array(merge_to_vert, np.uint32),
-            run_index=_make_array(run_index, np.uint32),
+            vert_properties=vert_properties,
+            tri_verts=tri_verts,
+            merge_from_vert=merge_from_vert,
+            merge_to_vert=merge_to_vert,
+            run_index=run_index,
             run_original_id=_make_array(run_original_id, np.uint32),
             run_transform=_make_array(run_transform, np.float32),
             face_id=_make_array(face_id, np.uint32),
             halfedge_tangent=_make_array(halfedge_tangent, np.float32),
             tolerance=tolerance,
         )
+        
+        manifold = m3d.Manifold(mesh)
+        manifold = manifold.calculate_normals(self.NORMALS_PROP_INDEX)
 
-        return RenderContextManifold.with_manifold(self, m3d.Manifold(mesh))
+        return RenderContextManifold.with_manifold(self, manifold)
 
     def polyhedron(
         self,
@@ -546,10 +793,14 @@ class M3dRenderer:
             return ops[0]
         
         cls = type(ops[0])
-
-        ops_context = cls(self.api, IDENTITY_TRANSFORM, tuple(ops[1:]))
         
-        return ops[0].difference(ops_context)
+        cls = type(ops[0])
+        solids = tuple(chain(*(op._apply_and_merge(op.get_solids) for op in ops[1:])))
+        shells = tuple(chain(*(op._apply_and_merge(op.get_shells) for op in ops[1:])))
+        
+        rhs = cls(self, transform_mat=IDENTITY_TRANSFORM, solid_objs=solids, shell_objs=shells)
+        
+        return ops[0].difference(rhs)
     
     def union(self, ops: list[RenderContextManifold | RenderContextCrossSection]) \
         -> RenderContextManifold | RenderContextCrossSection:
@@ -561,7 +812,10 @@ class M3dRenderer:
         
         cls = type(ops[0])  
         
-        return cls(self, IDENTITY_TRANSFORM, tuple(ops))
+        solids = tuple(chain(*(op._apply_and_merge(op.get_solids) for op in ops)))
+        shells = tuple(chain(*(op._apply_and_merge(op.get_shells) for op in ops)))
+        
+        return cls(self, transform_mat=IDENTITY_TRANSFORM, solid_objs=solids, shell_objs=shells)
     
     def intersection(self, ops: list[RenderContextManifold | RenderContextCrossSection]) \
         -> RenderContextManifold | RenderContextCrossSection:
@@ -572,9 +826,16 @@ class M3dRenderer:
             return ops[0]
         
         cls = type(ops[0])
-        ops_context = cls(self, IDENTITY_TRANSFORM, tuple(ops[1:]))
+        solids = tuple(chain(*(op._apply_transforms(op.get_solids) for op in ops)))
+        shells = tuple(chain(*(op._apply_and_merge(op.get_shells) for op in ops)))
+
+        intersected = solids[0]
+        for solid in solids[1:]:
+            intersected = intersected ^ solid
         
-        return ops[0].intersect(ops_context)
+        rhs = cls(self, transform_mat=IDENTITY_TRANSFORM, solid_objs=(solids,), shell_objs=shells)
+        
+        return ops[0].intersect(rhs)
 
     
     def import_file(self, file: str, layer: str, convexity: int) \
@@ -661,8 +922,37 @@ class M3dRenderer:
                fn: float) -> RenderContextCrossSection:
         raise NotImplementedError("offset is not implemented")
     
-    def color(self, c: str, alpha: float) -> "RenderContext":
-        raise NotImplementedError("color is not implemented")   
+    def color(self, c: str | np.ndarray | None = None, alpha: float | None = None) -> "M3dRenderer":
+        """Returns a new renderer with the specified color and alpha.
+        """
+        if c is None:
+            if alpha is None:
+                raise ValueError("Both color and alpha cannot be None")
+            if alpha > 1.0 or alpha < 0.0:
+                raise ValueError("Alpha must be between 0.0 and 1.0")
+            return self.with_color(np.concatenate((self.color_prop[:3], [alpha])))
+        elif isinstance(c, str):
+            color = COLOUR_MAP.get(c.lower())
+            if color is None:
+                raise ValueError(f"Invalid color: {c}")
+            if alpha is None:
+                alpha = 1.0
+            if alpha > 1.0 or alpha < 0.0:
+                raise ValueError("Alpha must be between 0.0 and 1.0")
+            return self.with_color(np.concatenate((color, [alpha])))
+        elif isinstance(c, np.ndarray):
+            if c.shape == (3,):
+                if alpha is None:
+                    alpha = 1.0
+                if alpha > 1.0 or alpha < 0.0:
+                    raise ValueError("Alpha must be between 0.0 and 1.0")   
+                c = np.concatenate((c, [alpha]))
+            elif c.shape != (4,):
+                raise ValueError("Color must be a 3 or 4 element numpy array")
+        else:
+            raise ValueError("Color must be a string or a numpy array")
+
+        return self.with_color(c)
     
 
 def _triangulate(verts_array: np.ndarray, rings: list[int]) -> list[list[int]]:

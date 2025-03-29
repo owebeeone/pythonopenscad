@@ -943,7 +943,7 @@ class PoscBase(PoscModifiers):
         with open(filename, 'w', encoding=encoding) as fp:
             self.dump(fp)
             
-    def render3d(self, renderer: M3dRenderer) -> RenderContext:
+    def renderObj(self, renderer: M3dRenderer) -> RenderContext:
         assert False, "Not implemented"
 
     def module(self, name):
@@ -1156,7 +1156,7 @@ class Translate(PoscParentBase):
         OPEN_SCAD_URL_TAIL_TRANSFORMS,
     )
     
-    def render3d(self, renderer: M3dRenderer) -> RenderContext:
+    def renderObj(self, renderer: M3dRenderer) -> RenderContext:
         children_union : RenderContext = renderer.union(self.render3dChildren(renderer))
         return children_union.translate(self.v)
 
@@ -1182,7 +1182,7 @@ class Rotate(PoscParentBase):
         OPEN_SCAD_URL_TAIL_TRANSFORMS,
     )
     
-    def render3d(self, renderer: M3dRenderer) -> RenderContext:
+    def renderObj(self, renderer: M3dRenderer) -> RenderContext:
         children_union : RenderContext = renderer.union(self.render3dChildren(renderer))
         return children_union.rotate(self.a, self.v)
 
@@ -1252,7 +1252,7 @@ class Cylinder(PoscBase):
                 raise RequiredParameterNotProvided('"%s" is required and not provided' % k)
         self.check_required_parameters()
         
-    def render3d(self, renderer: M3dRenderer) -> RenderContext:
+    def renderObj(self, renderer: M3dRenderer) -> RenderContext:
         return renderer.cylinder(
             self.h, self.get_r1(), self.get_r2(), 
             get_fragments_from_fn_fa_fs(self.get_r1(), self.fn, self.fa, self.fs),
@@ -1314,7 +1314,7 @@ class Sphere(PoscBase):
             )
         self.check_required_parameters()
     
-    def render3d(self, renderer: M3dRenderer) -> RenderContext:
+    def renderObj(self, renderer: M3dRenderer) -> RenderContext:
         return renderer.sphere(self.r, get_fragments_from_fn_fa_fs(self.r, self.fn, self.fa, self.fs))
 
 
@@ -1339,7 +1339,7 @@ class Cube(PoscBase):
         OPEN_SCAD_URL_TAIL_PRIMITIVES,
     )
     
-    def render3d(self, renderer: M3dRenderer) -> RenderContext:
+    def renderObj(self, renderer: M3dRenderer) -> RenderContext:
         return renderer.cube(self.size)
 
 
@@ -1357,7 +1357,7 @@ class Scale(PoscParentBase):
         OPEN_SCAD_URL_TAIL_TRANSFORMS,
     )
     
-    def render3d(self, renderer: M3dRenderer) -> RenderContext:
+    def renderObj(self, renderer: M3dRenderer) -> RenderContext:
         children_union : RenderContext = renderer.union(self.render3dChildren(renderer))
         return children_union.scale(self.v)
 
@@ -1386,7 +1386,7 @@ class Resize(PoscParentBase):
         OPEN_SCAD_URL_TAIL_TRANSFORMS,
     )
     
-    def render3d(self, renderer: M3dRenderer) -> RenderContext:
+    def renderObj(self, renderer: M3dRenderer) -> RenderContext:
         children_union : RenderContext = renderer.union(self.render3dChildren(renderer))
         return children_union.resize(self.newsize, self.auto)
 
@@ -1401,7 +1401,7 @@ class Mirror(PoscParentBase):
         OPEN_SCAD_URL_TAIL_TRANSFORMS,
     )
     
-    def render3d(self, renderer: M3dRenderer) -> RenderContext:
+    def renderObj(self, renderer: M3dRenderer) -> RenderContext:
         children_union : RenderContext = renderer.union(self.render3dChildren(renderer))
         return children_union.mirror(self.v)
 
@@ -1434,7 +1434,7 @@ class Multmatrix(PoscParentBase):
         """Returns the matrix m. The returned value is always a 4x4 matrix."""
         return self.m
     
-    def render3d(self, renderer: M3dRenderer) -> RenderContext:
+    def renderObj(self, renderer: M3dRenderer) -> RenderContext:
         children_union : RenderContext = renderer.union(self.render3dChildren(renderer))
         return children_union.tranform(self.m)
 
@@ -1459,9 +1459,10 @@ class Color(PoscParentBase):
         OPEN_SCAD_URL_TAIL_TRANSFORMS,
     )
     
-    def render3d(self, renderer: M3dRenderer) -> RenderContext:
-        children_union : RenderContext = renderer.union(self.render3dChildren(renderer))
-        return children_union.color(self.c, self.alpha)
+    def renderObj(self, renderer: M3dRenderer) -> RenderContext:
+        color_renderer = renderer.color(self.c, self.alpha)
+        children_union : RenderContext = renderer.union(self.render3dChildren(color_renderer))
+        return children_union
 
 
 @apply_posc_transformation_attributes
@@ -1488,7 +1489,7 @@ class Offset(PoscParentBase):
             self.r = 1.0
         self.check_required_parameters()
         
-    def render3d(self, renderer: M3dRenderer) -> RenderContext:
+    def renderObj(self, renderer: M3dRenderer) -> RenderContext:
         self.offset(
             self.render3dChildren(renderer), 
             self.r, 
@@ -1517,7 +1518,7 @@ class Projection(PoscParentBase):
         '3D_to_2D_Projection',
     )
     
-    def render3d(self, renderer: M3dRenderer) -> RenderContext:
+    def renderObj(self, renderer: M3dRenderer) -> RenderContext:
         return renderer.projection(self.render3dChildren(renderer), self.cut)
     
 @apply_posc_transformation_attributes
@@ -1538,7 +1539,7 @@ class Render(PoscParentBase):
         'render',
     )
     
-    def render3d(self, renderer: M3dRenderer) -> RenderContext:
+    def renderObj(self, renderer: M3dRenderer) -> RenderContext:
         return renderer.render(self.render3dChildren(renderer), self.convexity)
 
 
@@ -1548,7 +1549,7 @@ class Minkowski(PoscParentBase):
 
     OSC_API_SPEC = OpenScadApiSpecifier('minkowski', (), OPEN_SCAD_URL_TAIL_TRANSFORMS)
     
-    def render3d(self, renderer: M3dRenderer) -> RenderContext:
+    def renderObj(self, renderer: M3dRenderer) -> RenderContext:
         return renderer.minkowski(self.render3dChildren(renderer))
 
 
@@ -1558,7 +1559,7 @@ class Hull(PoscParentBase):
 
     OSC_API_SPEC = OpenScadApiSpecifier('hull', (), OPEN_SCAD_URL_TAIL_TRANSFORMS)
     
-    def render3d(self, renderer: M3dRenderer) -> RenderContext:
+    def renderObj(self, renderer: M3dRenderer) -> RenderContext:
         return renderer.hull(self.render3dChildren(renderer))
 
 
@@ -1604,7 +1605,7 @@ class Linear_Extrude(PoscParentBase):
         'Linear_Extrude',
     )
     
-    def render3d(self, renderer: M3dRenderer) -> RenderContext:
+    def renderObj(self, renderer: M3dRenderer) -> RenderContext:
         context = self.render3dChildren(renderer)
         return renderer.linear_extrude(context, self.height, self.center, self.convexity, 
                                        self.twist, self.slices, self.scale_, self.fa, self.fs, 
@@ -1630,7 +1631,7 @@ class Rotate_Extrude(PoscParentBase):
         'Rotate_Extrude',
     )
     
-    def render3d(self, renderer: M3dRenderer) -> RenderContext:
+    def renderObj(self, renderer: M3dRenderer) -> RenderContext:
         context = self.render3dChildren(renderer)
         return renderer.rotate_extrude(context, 
                                        self.angle, 
@@ -1672,7 +1673,7 @@ class Circle(PoscBase):
             raise RequiredParameterNotProvided('r or d is required and not provided')
         self.check_required_parameters()
         
-    def render3d(self, renderer: M3dRenderer) -> RenderContext:
+    def renderObj(self, renderer: M3dRenderer) -> RenderContext:
         return renderer.circle(self.r, self.fa, self.fs, self.fn)
 
 
@@ -1699,7 +1700,7 @@ class Square(PoscBase):
         OPEN_SCAD_URL_TAIL_2D,
     )
 
-    def render3d(self, renderer: M3dRenderer) -> RenderContext:
+    def renderObj(self, renderer: M3dRenderer) -> RenderContext:
         return renderer.square(self.size, self.center)
 
 
@@ -1733,7 +1734,7 @@ class Polygon(PoscBase):
         'Polygons',
     )
     
-    def render3d(self, renderer: M3dRenderer) -> RenderContext:
+    def renderObj(self, renderer: M3dRenderer) -> RenderContext:
         return renderer.polygon(self.points, self.paths, self.convexity)
 
 
@@ -1762,7 +1763,7 @@ class Text(PoscBase):
         '',
     )
     
-    def render3d(self, renderer: M3dRenderer) -> RenderContext:
+    def renderObj(self, renderer: M3dRenderer) -> RenderContext:
         return renderer.text(
             self.text, 
             self.size, 
@@ -1809,7 +1810,7 @@ class Polyhedron(PoscBase):
         OPEN_SCAD_URL_TAIL_PRIMITIVES,
     )
 
-    def render3d(self, renderer: M3dRenderer) -> RenderContext:
+    def renderObj(self, renderer: M3dRenderer) -> RenderContext:
         return renderer.polyhedron(self.points, self.triangles, self.faces)
 
 @apply_posc_attributes
@@ -1819,7 +1820,7 @@ class Union(PoscParentBase):
 
     OSC_API_SPEC = OpenScadApiSpecifier('union', (), OPEN_SCAD_URL_TAIL_CSG)
 
-    def render3d(self, renderer: M3dRenderer) -> RenderContext:
+    def renderObj(self, renderer: M3dRenderer) -> RenderContext:
         return renderer.union(self.render3dChildren(renderer))
 
 @apply_posc_attributes
@@ -1830,7 +1831,7 @@ class LazyUnion(PoscParentBase):
     DUMP_CONTAINER = False  # When rendering to OpenScad, don't render the container.
     OSC_API_SPEC = OpenScadApiSpecifier('lazy_union', (), OPEN_SCAD_URL_TAIL_CSG)
     
-    def render3d(self, renderer: M3dRenderer) -> RenderContext:
+    def renderObj(self, renderer: M3dRenderer) -> RenderContext:
         return renderer.union(self.render3dChildren(renderer))
 
 
@@ -1874,7 +1875,7 @@ class Module(PoscParentBase):
         for child in self.children():
             child.code_dump(code_dumper)
 
-    def render3d(self, renderer: M3dRenderer) -> RenderContext:
+    def renderObj(self, renderer: M3dRenderer) -> RenderContext:
         return renderer.union(self.render3dChildren(renderer))
 
 @apply_posc_attributes
@@ -1884,7 +1885,7 @@ class Difference(PoscParentBase):
 
     OSC_API_SPEC = OpenScadApiSpecifier('difference', (), OPEN_SCAD_URL_TAIL_CSG)
 
-    def render3d(self, renderer: M3dRenderer) -> RenderContext:
+    def renderObj(self, renderer: M3dRenderer) -> RenderContext:
         return renderer.difference(self.render3dChildren(renderer))
     
 @apply_posc_attributes
@@ -1894,7 +1895,7 @@ class Intersection(PoscParentBase):
 
     OSC_API_SPEC = OpenScadApiSpecifier('intersection', (), OPEN_SCAD_URL_TAIL_CSG)
     
-    def render3d(self, renderer: M3dRenderer) -> RenderContext:
+    def renderObj(self, renderer: M3dRenderer) -> RenderContext:
         return renderer.intersection(self.render3dChildren(renderer))
 
 
@@ -1926,7 +1927,7 @@ class Import(PoscBase):
         OPEN_SCAD_URL_TAIL_IMPORTING,
     )
     
-    def render3d(self, renderer: M3dRenderer) -> RenderContext:
+    def renderObj(self, renderer: M3dRenderer) -> RenderContext:
         return renderer.import_file(self.file, self.layer, self.convexity)
 
 
@@ -1958,7 +1959,7 @@ class Surface(PoscBase):
         'Surface',
     )
     
-    def render3d(self, renderer: M3dRenderer) -> RenderContext:
+    def renderObj(self, renderer: M3dRenderer) -> RenderContext:
         return renderer.surface(self.file, self.center, self.invert, self.convexity)
 
 
@@ -1969,5 +1970,5 @@ class Fill(PoscParentBase):
 
     OSC_API_SPEC = OpenScadApiSpecifier('fill', (), OPEN_SCAD_URL_TAIL_TRANSFORMS)
     
-    def render3d(self, renderer: M3dRenderer) -> RenderContext:
+    def renderObj(self, renderer: M3dRenderer) -> RenderContext:
         return renderer.fill(self.render3dChildren(renderer))

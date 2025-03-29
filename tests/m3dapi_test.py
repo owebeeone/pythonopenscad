@@ -4,6 +4,7 @@ import manifold3d as m3d
 from pythonopenscad.m3dapi import (
     M3dRenderer,
     RenderContext,
+    RenderContextManifold,
     triangulate_3d_face,
     _make_array,
     manifold_to_stl,
@@ -18,10 +19,10 @@ def m3d_api():
 
 def assert_rendercontext(rc: RenderContext):
     assert isinstance(rc, RenderContext), "not a RenderContext"
-    assert all(isinstance(m, m3d.Manifold) for m in rc.solid_manifold), (
+    assert all(isinstance(m, m3d.Manifold) for m in rc.solid_objs), (
         "solid_manifold not all Manifold"
     )
-    assert all(isinstance(m, m3d.Manifold) for m in rc.shell_manifold), (
+    assert all(isinstance(m, m3d.Manifold) for m in rc.shell_objs), (
         "shell_manifold not all Manifold"
     )
 
@@ -135,7 +136,7 @@ def test_polyhedron():
     points = m_mesh.vert_properties[:, :3]
     
     assert len(tri_verts) == count * 4 - 4
-    assert points.shape == (128, 3)
+    assert points.shape == (256, 3) # Normals added doubles points.
 
 
 def test_triangulate_3d_face():
@@ -209,7 +210,7 @@ def test_transform():
     transform = np.eye(4)
     transform[0:3, 3] = [1.0, 2.0, 3.0]  # Translation vector
     result = cube.transform(transform)
-    assert isinstance(result, RenderContext)
+    assert isinstance(result, RenderContextManifold)
 
     # Test rotation
     angle = np.pi / 2  # 45 degrees
@@ -220,7 +221,7 @@ def test_transform():
         [0, 0, 1],
     ])
     result = cube.transform(transform)
-    assert isinstance(result, RenderContext)
+    assert isinstance(result, RenderContextManifold)
 
 
 def test_get_resize_scale():
