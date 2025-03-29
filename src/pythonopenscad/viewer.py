@@ -29,62 +29,6 @@ except ImportError:
     
 PYOPENGL_VERBOSE = True
 
-# # Check for various OpenGL features
-# HAS_OPENGL_3_3 = False  # Modern OpenGL with VAOs
-# HAS_OPENGL_VBO = False  # OpenGL with VBOs but maybe not VAOs
-# HAS_OPENGL_SHADER = False  # OpenGL with shader support
-# OPENGL_VERSION = None
-# SHADING_LANGUAGE_VERSION = None
-
-# if HAS_OPENGL:
-#     try:
-#         OPENGL_VERSION = gl.glGetString(gl.GL_VERSION)
-#     except:  # noqa: E722
-#         OPENGL_VERSION = "Unknown"
-#     warnings.warn(f"OpenGL version: {OPENGL_VERSION}")
-#     try:
-#         SHADING_LANGUAGE_VERSION = gl.glGetString(gl.GL_SHADING_LANGUAGE_VERSION)
-#     except:  # noqa: E722
-#         SHADING_LANGUAGE_VERSION = "Unknown"
-#     warnings.warn(f"GLSL version: {SHADING_LANGUAGE_VERSION}")
-#     try:
-#         # Check for VBO support
-#         HAS_OPENGL_VBO = hasattr(gl, 'glGenBuffers') and callable(gl.glGenBuffers) and bool(gl.glGenBuffers)
-#         # Check for shader support
-#         HAS_OPENGL_SHADER = (
-#             hasattr(gl, 'glCreateShader') and callable(gl.glCreateShader) and bool(gl.glCreateShader) and
-#             hasattr(gl, 'glCreateProgram') and callable(gl.glCreateProgram) and bool(gl.glCreateProgram)
-#         )
-#         # Check for VAO support (OpenGL 3.0+)
-#         HAS_OPENGL_3_3 = HAS_OPENGL_VBO and HAS_OPENGL_SHADER and hasattr(gl, 'glGenVertexArrays') and callable(gl.glGenVertexArrays) and bool(gl.glGenVertexArrays)
-        
-#         # Check for legacy fixed-function pipeline support
-#         HAS_LEGACY_LIGHTING = hasattr(gl, 'GL_LIGHTING') and hasattr(gl, 'GL_LIGHT0')
-        
-#         # Check for legacy vertex array support
-#         HAS_LEGACY_VERTEX_ARRAYS = (
-#             hasattr(gl, 'GL_VERTEX_ARRAY') and
-#             hasattr(gl, 'glEnableClientState') and
-#             hasattr(gl, 'glVertexPointer')
-#         )
-#     except (AttributeError, TypeError):
-#         pass
-
-#     if PYOPENGL_VERBOSE:
-#         # Output warnings for missing features
-#         if not HAS_OPENGL_VBO:
-#             warnings.warn("OpenGL VBO functions not available. Rendering may not work.")
-#         if not HAS_OPENGL_SHADER:
-#             warnings.warn("OpenGL shader functions not available. Using fixed-function pipeline.")
-#         if not HAS_OPENGL_3_3:
-#             warnings.warn("OpenGL 3.3+ core profile features not available. Using compatibility mode.")
-#         if not HAS_LEGACY_LIGHTING and not HAS_OPENGL_SHADER:
-#             warnings.warn("Neither modern shaders nor legacy lighting available. Rendering will be unlit.")
-            
-# else:
-#     if PYOPENGL_VERBOSE:
-#         warnings.warn("OpenGL not available. Install PyOpenGL to use the viewer.")
-
 
 @dataclass
 class GLContext:
@@ -1072,6 +1016,7 @@ class Viewer:
      B - Toggle backface culling
      W - Toggle wireframe mode
      R - Reset view
+     X - Toggle bounding box (off/wireframe/solid)
      ESC - Close viewer
     """
 
@@ -1160,6 +1105,7 @@ class Viewer:
         # Rendering state
         self.backface_culling = False
         self.wireframe_mode = False
+        self.bounding_box_mode = 0  # 0: off, 1: wireframe, 2: solid
         
         # Store callback references to prevent garbage collection
         self.callbacks = {}
@@ -1905,6 +1851,9 @@ class Viewer:
                     model.draw()
                     rendering_success = True
                     
+                # Draw bounding box if enabled
+                self._draw_bounding_box()
+                    
             except Exception as e:
                 if PYOPENGL_VERBOSE:
                     print(f"Viewer: Error during normal rendering: {str(e)}")
@@ -2175,6 +2124,12 @@ class Viewer:
                 if PYOPENGL_VERBOSE:
                     print("Viewer: Wireframe mode disabled")
             glut.glutPostRedisplay()
+        elif key == b'x':
+            # Toggle bounding box mode
+            self.bounding_box_mode = (self.bounding_box_mode + 1) % 3
+            if PYOPENGL_VERBOSE:
+                print(f"Viewer: Bounding box mode set to {self.bounding_box_mode}")
+            glut.glutPostRedisplay()
     
     def _reset_view(self):
         """Reset camera and model transformations to defaults."""
@@ -2187,6 +2142,127 @@ class Viewer:
         # Reset mouse rotation tracking
         self.yaw = -90.0
         self.pitch = 0.0
+
+    def _draw_bounding_box(self):
+        """Draw the scene bounding box in the current mode (off/wireframe/solid)."""
+        if self.bounding_box_mode == 0:
+            return
+            
+        # Store current backface culling state and disable it for the bounding box
+        was_culling_enabled = gl.glIsEnabled(gl.GL_CULL_FACE)
+        if was_culling_enabled:
+            gl.glDisable(gl.GL_CULL_FACE)
+            
+        # Get bounding box coordinates
+        min_x, min_y, min_z = self.bounding_box.min_point
+        max_x, max_y, max_z = self.bounding_box.max_point
+        
+        # Set up transparency for solid mode
+        if self.bounding_box_mode == 2:
+            try:
+                gl.glEnable(gl.GL_BLEND)
+                gl.glBlendFunc(gl.GL_SRC_ALPHA, gl.GL_ONE_MINUS_SRC_ALPHA)
+                gl.glColor4f(0.0, 1.0, 0.0, 0.2)  # Semi-transparent green
+            except Exception:
+                # If blending fails, fall back to wireframe
+                self.bounding_box_mode = 1
+                if PYOPENGL_VERBOSE:
+                    print("Viewer: Blending not supported, falling back to wireframe mode")
+        
+        # Draw the bounding box
+        if self.bounding_box_mode == 1:  # Wireframe mode
+            gl.glColor3f(0.0, 1.0, 0.0)  # Green
+            
+            # Front face
+            gl.glBegin(gl.GL_LINE_LOOP)
+            gl.glVertex3f(min_x, min_y, max_z)
+            gl.glVertex3f(max_x, min_y, max_z)
+            gl.glVertex3f(max_x, max_y, max_z)
+            gl.glVertex3f(min_x, max_y, max_z)
+            gl.glEnd()
+            
+            # Back face
+            gl.glBegin(gl.GL_LINE_LOOP)
+            gl.glVertex3f(min_x, min_y, min_z)
+            gl.glVertex3f(max_x, min_y, min_z)
+            gl.glVertex3f(max_x, max_y, min_z)
+            gl.glVertex3f(min_x, max_y, min_z)
+            gl.glEnd()
+            
+            # Connecting edges
+            gl.glBegin(gl.GL_LINES)
+            gl.glVertex3f(min_x, min_y, min_z)
+            gl.glVertex3f(min_x, min_y, max_z)
+            
+            gl.glVertex3f(max_x, min_y, min_z)
+            gl.glVertex3f(max_x, min_y, max_z)
+            
+            gl.glVertex3f(max_x, max_y, min_z)
+            gl.glVertex3f(max_x, max_y, max_z)
+            
+            gl.glVertex3f(min_x, max_y, min_z)
+            gl.glVertex3f(min_x, max_y, max_z)
+            gl.glEnd()
+            
+        else:  # Solid mode
+            # Front face
+            gl.glBegin(gl.GL_QUADS)
+            gl.glVertex3f(min_x, min_y, max_z)
+            gl.glVertex3f(max_x, min_y, max_z)
+            gl.glVertex3f(max_x, max_y, max_z)
+            gl.glVertex3f(min_x, max_y, max_z)
+            gl.glEnd()
+            
+            # Back face
+            gl.glBegin(gl.GL_QUADS)
+            gl.glVertex3f(min_x, min_y, min_z)
+            gl.glVertex3f(max_x, min_y, min_z)
+            gl.glVertex3f(max_x, max_y, min_z)
+            gl.glVertex3f(min_x, max_y, min_z)
+            gl.glEnd()
+            
+            # Top face
+            gl.glBegin(gl.GL_QUADS)
+            gl.glVertex3f(min_x, max_y, min_z)
+            gl.glVertex3f(max_x, max_y, min_z)
+            gl.glVertex3f(max_x, max_y, max_z)
+            gl.glVertex3f(min_x, max_y, max_z)
+            gl.glEnd()
+            
+            # Bottom face
+            gl.glBegin(gl.GL_QUADS)
+            gl.glVertex3f(min_x, min_y, min_z)
+            gl.glVertex3f(max_x, min_y, min_z)
+            gl.glVertex3f(max_x, min_y, max_z)
+            gl.glVertex3f(min_x, min_y, max_z)
+            gl.glEnd()
+            
+            # Right face
+            gl.glBegin(gl.GL_QUADS)
+            gl.glVertex3f(max_x, min_y, min_z)
+            gl.glVertex3f(max_x, max_y, min_z)
+            gl.glVertex3f(max_x, max_y, max_z)
+            gl.glVertex3f(max_x, min_y, max_z)
+            gl.glEnd()
+            
+            # Left face
+            gl.glBegin(gl.GL_QUADS)
+            gl.glVertex3f(min_x, min_y, min_z)
+            gl.glVertex3f(min_x, max_y, min_z)
+            gl.glVertex3f(min_x, max_y, max_z)
+            gl.glVertex3f(min_x, min_y, max_z)
+            gl.glEnd()
+        
+        # Clean up blending state
+        if self.bounding_box_mode == 2:
+            try:
+                gl.glDisable(gl.GL_BLEND)
+            except Exception:
+                pass
+                
+        # Restore backface culling state
+        if was_culling_enabled:
+            gl.glEnable(gl.GL_CULL_FACE)
 
     @staticmethod
     def create_colored_test_cube(size: float = 2.0) -> Model:
