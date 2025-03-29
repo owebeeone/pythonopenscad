@@ -8,6 +8,7 @@ import warnings
 import sys
 import time
 import signal
+from datetime import datetime
 
 import anchorscad_lib.linear as linear
 
@@ -1017,6 +1018,7 @@ class Viewer:
      W - Toggle wireframe mode
      R - Reset view
      X - Toggle bounding box (off/wireframe/solid)
+     S - Save screenshot
      ESC - Close viewer
     """
 
@@ -1024,6 +1026,11 @@ class Viewer:
     _instances: Dict[int, 'Viewer'] = {}
     _initialized = False
     _next_id = 0
+    
+    def close(self):
+        """Close the viewer."""
+        glut.glutDestroyWindow(self.window_id)
+        self.window_id = None
 
     @classmethod
     def _init_glut(cls):
@@ -2130,7 +2137,55 @@ class Viewer:
             if PYOPENGL_VERBOSE:
                 print(f"Viewer: Bounding box mode set to {self.bounding_box_mode}")
             glut.glutPostRedisplay()
-    
+        elif key == b's':
+            # Save screenshot - only on key down
+            try:
+                # Generate a default filename with timestamp
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                filename = f"screenshot_{timestamp}.png"
+                self.save_screenshot(filename)
+            except Exception as e:
+                if PYOPENGL_VERBOSE:
+                    print(f"Viewer: Failed to save screenshot: {str(e)}")
+            # Don't redisplay after saving screenshot
+
+    def save_screenshot(self, filename: str):
+        """Save the current window contents as a PNG image.
+        
+        Args:
+            filename: Path where the image should be saved
+        """
+        try:
+            # Make sure we're operating on our window
+            if self.window_id != glut.glutGetWindow() and self.window_id is not None:
+                glut.glutSetWindow(self.window_id)
+            
+            # Get the window dimensions
+            width = glut.glutGet(glut.GLUT_WINDOW_WIDTH)
+            height = glut.glutGet(glut.GLUT_WINDOW_HEIGHT)
+            
+            # Read the pixels from the current buffer
+            buffer = gl.glReadPixels(0, 0, width, height, gl.GL_RGB, gl.GL_UNSIGNED_BYTE)
+            
+            # Convert the buffer to a numpy array and flip it vertically
+            # (OpenGL reads from bottom-left, but images are typically stored top-left)
+            image = np.frombuffer(buffer, dtype=np.uint8)
+            image = image.reshape((height, width, 3))
+            image = np.flipud(image)
+            
+            # Save the image using PIL
+            from PIL import Image
+            img = Image.fromarray(image)
+            img.save(filename, 'PNG')
+            
+            if PYOPENGL_VERBOSE:
+                print(f"Viewer: Screenshot saved to {filename}")
+                
+        except Exception as e:
+            if PYOPENGL_VERBOSE:
+                print(f"Viewer: Failed to save screenshot: {str(e)}")
+            raise
+
     def _reset_view(self):
         """Reset camera and model transformations to defaults."""
         # Reset model matrix
