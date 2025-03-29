@@ -54,7 +54,6 @@ def create_primitive_models():
         Model.from_manifold(difference_manifold),
         Model.from_manifold(intersection_manifold), 
         Model.from_manifold(union_manifold),
-        # Model.from_manifold(cube_with_hole),     # Orange cube with yellow hole
     ]
     
     return models
