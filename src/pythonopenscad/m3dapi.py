@@ -359,7 +359,7 @@ class RenderContext(Generic[TM3d]):
 
     def translate(self, v: np.ndarray) -> Self:
         return self.transform(
-            np.array[[1, 0, 0, v[0]], [0, 1, 0, v[1]], [0, 0, 1, v[2]], [0, 0, 0, 1]]
+            np.array([[1, 0, 0, v[0]], [0, 1, 0, v[1]], [0, 0, 1, v[2]], [0, 0, 0, 1]])
         )
 
     def rotate(self, a: float | np.ndarray, v: np.ndarray | None = None) -> Self:
@@ -833,7 +833,7 @@ class M3dRenderer:
         for solid in solids[1:]:
             intersected = intersected ^ solid
         
-        rhs = cls(self, transform_mat=IDENTITY_TRANSFORM, solid_objs=(solids,), shell_objs=shells)
+        rhs = cls(self, transform_mat=IDENTITY_TRANSFORM, solid_objs=(intersected,), shell_objs=shells)
         
         return ops[0].intersect(rhs)
 

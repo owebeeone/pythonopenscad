@@ -1,6 +1,5 @@
 """OpenGL 3D viewer for PyOpenSCAD models."""
 
-import copy
 import numpy as np
 import ctypes
 from typing import Iterable, List, Optional, Tuple, Union, Dict, Callable, ClassVar
@@ -10,6 +9,7 @@ import sys
 import time
 import signal
 from datetime import datetime
+import manifold3d as m3d
 
 import anchorscad_lib.linear as linear
 
@@ -402,6 +402,32 @@ class Model:
         
         # Compute bounding box
         self._compute_bounding_box()
+        
+    @staticmethod
+    def from_manifold(manifold: m3d.Manifold) -> "Model":
+        """Convert a manifold3d Manifold to a viewer Model."""
+        
+        if manifold.num_prop() != 7:
+            raise ValueError("Manifold must have exactly 10 values in its property array: "
+                             f"{manifold.num_prop()} values found")
+        
+        # Get the mesh from the manifold
+        mesh = manifold.to_mesh()
+        
+        # Extract vertex positions and triangle indices
+        positions = mesh.vert_properties
+        triangles = mesh.tri_verts
+        
+        tri_indices = triangles.reshape(-1)
+        
+        # Flatten triangles and use to index positions
+        vertex_data = positions[tri_indices]
+        
+        # Flatten the vertex data to 1D
+        flattened_vertex_data = vertex_data.reshape(-1)
+        
+        # Create a model from the vertex data
+        return Model(flattened_vertex_data)
     
     def _init_gl(self):
         """Initialize OpenGL vertex buffer and array objects."""
