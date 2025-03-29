@@ -1,8 +1,9 @@
 """OpenGL 3D viewer for PyOpenSCAD models."""
 
+import copy
 import numpy as np
 import ctypes
-from typing import List, Optional, Tuple, Union, Dict, Callable, ClassVar
+from typing import Iterable, List, Optional, Tuple, Union, Dict, Callable, ClassVar
 from dataclasses import dataclass, field
 import warnings
 import sys
@@ -519,6 +520,33 @@ class Model:
                     pass
                 self.vbo = None
     
+    def column_data_generator(self, column_index_start: int, column_index_end: int):
+        """Generator that yields slices of the data array without copying."""
+        for i in range(0, len(self.data), self.stride):
+            yield self.data[i + column_index_start:i + column_index_end]
+    
+    @staticmethod
+    def min_max(arr: Iterable[np.ndarray]) -> tuple[np.ndarray, np.ndarray]:
+        """Compute min and max values in a single pass through the data.
+        
+        Args:
+            arr: Iterable of numpy arrays to compute min/max for
+            
+        Returns:
+            Tuple of (min_values, max_values) as numpy arrays
+        """
+        # Get first value without copying
+        first = next(arr)
+        min_val = first.copy()
+        max_val = first.copy()
+        
+        # Update min/max in a single pass
+        for v in arr:
+            np.minimum(min_val, v, out=min_val)
+            np.maximum(max_val, v, out=max_val)
+            
+        return min_val, max_val
+
     def _compute_bounding_box(self):
         """Compute the bounding box of the model."""
         self.bounding_box = BoundingBox()
@@ -529,19 +557,10 @@ class Model:
         
         # Extract positions from the interleaved data
         try:
-            # Get position data
-            positions = self.data[self.position_offset::self.stride]
-            if len(positions) > self.num_points:
-                positions = positions[:self.num_points]
-            
-            # Reshape to (N, 3) if needed
-            if len(positions) % 3 == 0:
-                positions = positions.reshape(-1, 3)
-            
-                # Update bounding box if we have valid positions
-                if len(positions) > 0:
-                    self.bounding_box.min_point = np.min(positions, axis=0)
-                    self.bounding_box.max_point = np.max(positions, axis=0)
+            # Get position data using generator to avoid copying
+            positions = self.column_data_generator(self.position_offset, self.position_offset + 3)
+            self.bounding_box.min_point, self.bounding_box.max_point = self.min_max(positions)
+
         except Exception as e:
             warnings.warn(f"Failed to compute bounding box: {e}")
             # Use default bounding box (centered at origin with unit size)
