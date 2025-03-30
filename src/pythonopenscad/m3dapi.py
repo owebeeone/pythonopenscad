@@ -386,14 +386,18 @@ class RenderContext(Generic[TM3d]):
 
     def get_shells(self) -> tuple[TM3d, ...]:
         return self.shell_objs
+    
+    def _to_object_transform(self) -> np.ndarray:
+        raise NotImplementedError("Subclasses must implement this")
 
     def _apply_transforms(
         self, get_type_func: Callable[[], tuple[TM3d, ...]]
     ) -> tuple[TM3d, ...]:
         if self.transform_mat is IDENTITY_TRANSFORM:
             return get_type_func()
-        transform_43 = self.transform_mat[:3, :]
-        manifs: tuple[TM3d, ...] = tuple(m.transform(transform_43) for m in get_type_func())
+        
+        obj_transform = self._to_object_transform()
+        manifs: tuple[TM3d, ...] = tuple(m.transform(obj_transform) for m in get_type_func())
         return manifs
 
     def _apply_and_merge(
@@ -533,6 +537,11 @@ class RenderContext(Generic[TM3d]):
             xform = np.array([[v, 0, 0, 0], [0, v, 0, 0], [0, 0, v, 0], [0, 0, 0, 1]])
         return self.transform(xform)
 
+    def to_single_solid(self) -> Self:
+        solids = self._apply_and_merge(self.get_solids)
+        shells = self._apply_and_merge(self.get_shells)
+        cls = type(self)
+        return cls(self.api, self.transform_mat, solids, shells)
 
 
 @dataclass
@@ -545,6 +554,10 @@ class RenderContextManifold(RenderContext[m3d.Manifold]):
         for shell in self.shell_objs:
             if not isinstance(shell, m3d.Manifold):
                 raise ValueError("All shell objects must be manifolds")
+            
+    def _to_object_transform(self) -> np.ndarray:
+        transform_43 = self.transform_mat[:3, :]
+        return transform_43
     
     @staticmethod
     def with_manifold(api: "M3dRenderer", manifold: m3d.Manifold) -> "RenderContextManifold":
@@ -552,11 +565,11 @@ class RenderContextManifold(RenderContext[m3d.Manifold]):
 
     def with_solid(self, manifold: m3d.Manifold) -> Self:
         solids, shells = self._apply_transforms()
-        return RenderContext(self.api, self.transform_mat, solids + (manifold,), shells)
+        return RenderContextManifold(self.api, self.transform_mat, solids + (manifold,), shells)
 
     def with_shell(self, manifold: m3d.Manifold) -> Self:
         solids, shells = self._apply_transforms()
-        return RenderContext(self.api, self.transform_mat, solids, shells + (manifold,))
+        return RenderContextManifold(self.api, self.transform_mat, solids, shells + (manifold,))
     
     def get_solid_manifold(self) -> m3d.Manifold:
         solids = self._apply_and_merge(self.get_solids)
@@ -590,6 +603,16 @@ class RenderContextCrossSection(RenderContext[m3d.CrossSection]):
         for shell in self.shell_objs:
             if not isinstance(shell, m3d.CrossSection):
                 raise ValueError("All shell objects must be manifolds")
+
+    def _to_object_transform(self) -> np.ndarray:
+        transform_23 = self.transform_mat[:2, [0,1,3]]
+        return transform_23
+            
+    def get_bbox(self) -> tuple[float, float, float, float]:
+        solids = self.get_solids()
+        if len(solids) != 1:
+            solids = self._apply_and_merge(self.get_solids)
+        return solids[0].bounds()
             
 
 def set_property(manifold: m3d.Manifold, prop: np.ndarray, prop_index: int) -> m3d.Manifold:
@@ -657,8 +680,6 @@ class M3dRenderer:
             size = np.array(size)
         else:
             size = np.array([size, size, size])
-            
-        
         return RenderContextManifold.with_manifold(self, self._apply_properties(m3d.Manifold.cube(size, center)))
 
     def sphere(self, radius: float, fn: int = 16) -> RenderContext:
@@ -868,37 +889,73 @@ class M3dRenderer:
                 points: list[list[float]], 
                 paths: list[list[int]], 
                 convexity: int) -> RenderContextCrossSection:
-        raise NotImplementedError("polygon is not implemented")
+        
+        if not paths:
+            paths = [list(range(len(points)))]
+        
+        points = _make_array(points, np.float32)
+        paths = [_make_array(path, np.uint32) for path in paths]
+        
+        contours = [points[path] for path in paths]
+        cross_section = m3d.CrossSection(contours, m3d.FillRule.Positive)
+        
+        return RenderContextCrossSection(self, solid_objs=(cross_section,))
     
-    def square(self, size: float, center: bool) -> RenderContextCrossSection:
-        raise NotImplementedError("square is not implemented")
+    def square(self, size: float | tuple[float, float], center: bool = False) -> RenderContextCrossSection:
+        return RenderContextCrossSection(self,
+            solid_objs=(m3d.CrossSection.square(size, True if center else False),))
     
-    def circle(self, radius: float, fa: float, fs: float, fn: float) \
-        -> RenderContextCrossSection:
-        raise NotImplementedError("circle is not implemented")
+    def circle(self, radius: float, fn: int) -> RenderContextCrossSection:
+        return RenderContextCrossSection(self,
+            solid_objs=(m3d.CrossSection.circle(radius, fn),))
     
     def rotate_extrude(self, 
                        context: RenderContextCrossSection, 
                        angle: float, 
                        convexity: int, 
-                       fa: float, 
-                       fs: float, 
-                       fn: float) -> RenderContextManifold:
-        raise NotImplementedError("rotate_extrude is not implemented")
+                       fn: int) -> RenderContextManifold:
+        assert isinstance(context, RenderContextCrossSection)
+        solids = context.get_solids()
+        if len(solids) != 1:
+            solids = context._apply_and_merge(context.get_solids)
+        solid = solids[0]
+        manifold = solid.revolve(fn, angle)
+        
+        rctxt =  RenderContextManifold(self,
+            solid_objs=(self._apply_properties(manifold),))
+        return rctxt
+    
+    
     
     def linear_extrude(self, 
-                       context: RenderContextCrossSection, 
+                       contexts: list[RenderContextCrossSection], 
                        height: float, 
-                       center: bool, 
-                       convexity: int, 
-                       twist: float, 
-                       slices: int, 
-                       scale_: float, 
-                       fa: float, 
-                       fs: float, 
-                       fn: float) -> RenderContextManifold:
-        raise NotImplementedError("linear_extrude is not implemented")
-    
+                       center: bool = False, 
+                       convexity: int | None = None, 
+                       twist: float | None = None, 
+                       slices: int | None = None, 
+                       scale: tuple[float, float] | None = None,
+                       fn: float | None = None) -> RenderContextManifold:
+        assert all(isinstance(c, RenderContextCrossSection) for c in contexts)
+        union_solids = self.union(contexts)
+        solids = union_solids._apply_and_merge(union_solids.get_solids)
+        if not scale:
+            scale = (1.0, 1.0)
+        if twist is None:
+            twist = 0.0
+        if slices is None:
+            slices = 16 if twist else 1
+        rctxt =  RenderContextManifold(self,
+            solid_objs=(self._apply_properties(solids[0].extrude(
+                height, 
+                slices, 
+                twist, 
+                scale)),))
+        
+        if center:
+            return rctxt.translate([0, 0, -height / 2])
+        return rctxt
+        
     def hull(self, ops: list[RenderContextManifold | RenderContextCrossSection]) \
     -> RenderContextManifold | RenderContextCrossSection:
         raise NotImplementedError("hull is not implemented")

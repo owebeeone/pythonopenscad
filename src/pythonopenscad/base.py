@@ -42,7 +42,7 @@ import sys
 from dataclasses import dataclass, field
 from collections import defaultdict
 from typing import List, Tuple
-from pythonopenscad.m3dapi import M3dRenderer, RenderContext
+from pythonopenscad.m3dapi import M3dRenderer, RenderContext, RenderContextCrossSection
 from pythonopenscad.modifier import (
     OscModifier,
     DISABLE,
@@ -799,10 +799,13 @@ class PoscBase(PoscModifiers):
     def __post_init__(self):
         for arg in self.OSC_API_SPEC.args:
             value = getattr(self, arg.name)
+            is_different_name = arg.name != arg.attr_name
+            if is_different_name:
+                delattr(self, arg.name)
             if value is not None:
-                if arg.name != arg.attr_name:
-                    delattr(self, arg.name)
                 setattr(self, arg.attr_name, arg.typ(value))
+            elif is_different_name:
+                setattr(self, arg.attr_name, None)
 
         self.init_children()
         # Object should be fully constructed now.
@@ -1271,9 +1274,9 @@ def get_fragments_from_fn_fa_fs(r: float, fn: int | None, fa: float | None, fs: 
     #   return static_cast<int>(ceil(fmax(fmin(360.0 / fa, r * 2 * M_PI / fs), 5)));
     # }
     GRID_FINE = 0.00000095367431640625
-    if r < GRID_FINE or math.isinf(fn) or math.isnan(fn):
+    if r < GRID_FINE or fn is not None and (math.isinf(fn) or math.isnan(fn)):
         return 3
-    if fn is not None and fn > 0.0:
+    if fn is not None and fn > 0:
         return max(fn, 3)
     if fa is None:
         fa = 1
@@ -1609,8 +1612,7 @@ class Linear_Extrude(PoscParentBase):
     def renderObj(self, renderer: M3dRenderer) -> RenderContext:
         context = self.renderObjChildren(renderer)
         return renderer.linear_extrude(context, self.height, self.center, self.convexity, 
-                                       self.twist, self.slices, self.scale_, self.fa, self.fs, 
-                                       self.fn)
+                                       self.twist, self.slices, self.scale_, self._fn)
 
 
 @apply_posc_transformation_attributes
@@ -1633,13 +1635,24 @@ class Rotate_Extrude(PoscParentBase):
     )
     
     def renderObj(self, renderer: M3dRenderer) -> RenderContext:
-        context = self.renderObjChildren(renderer)
-        return renderer.rotate_extrude(context, 
+        contexts = self.renderObjChildren(renderer)
+        # We need to know the radius so we can call get_fragments_from_fn_fa_fs.
+        # This means we need to get a bounding box of the context.
+        assert all(isinstance(c, RenderContextCrossSection) for c in contexts)
+        union_contexts: RenderContextCrossSection = renderer.union(contexts)
+        union_context: RenderContextCrossSection = union_contexts.to_single_solid()
+        min_x, min_y, max_x, max_y = union_context.get_bbox()
+        if min_x < 0:
+            if max_x > 0:
+                raise ValueError("Cannot extrude a shape that spans the Y axis.")
+            r = -min_x
+        else:
+            r = max_x
+        fn = get_fragments_from_fn_fa_fs(r, self._fn, self._fa, self._fs)
+        return renderer.rotate_extrude(union_context, 
                                        self.angle, 
                                        self.convexity, 
-                                       self.fa, 
-                                       self.fs, 
-                                       self.fn)   
+                                       fn)
 
 
 @apply_posc_attributes
@@ -1675,7 +1688,12 @@ class Circle(PoscBase):
         self.check_required_parameters()
         
     def renderObj(self, renderer: M3dRenderer) -> RenderContext:
-        return renderer.circle(self.r, self.fa, self.fs, self.fn)
+        if self.d is None:
+            r = self.r
+        else:
+            r = self.d / 2  
+        fn = get_fragments_from_fn_fa_fs(r, self._fn, self._fa, self._fs)
+        return renderer.circle(r, fn)
 
 
 @apply_posc_attributes

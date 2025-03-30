@@ -45,6 +45,32 @@ def create_primitive_models():
     
     union = posc.Union()(cube2, sphere2).translate([6.0, -4.0, 0.0])
     union_manifold = union.renderObj(renderer).get_solid_manifold()
+    
+    linear_extrusion = posc.Color("darkseagreen")(
+        posc.Translate([0.0, 0.0, 4.5])(
+            posc.Linear_Extrude(height=3.0, twist=45, slices=16, scale=(2.5, 0.5))(
+                posc.Translate([0.0, 0.0, 0.0])(posc.Square([1.0, 1.0])))
+    ))
+    linear_extrusion_manifold = linear_extrusion.renderObj(renderer).get_solid_manifold()
+    
+    rotate_extrusion = posc.Color("darkseagreen")(
+        posc.Translate([-3.0, 0.0, 4.5])(
+            posc.Rotate_Extrude(angle=360, _fn=32)(
+                posc.Translate([1.0, 0.0, 0.0])(posc.Circle(r=0.5, _fn=16)))
+    ))
+    rotate_extrusion_manifold = rotate_extrusion.renderObj(renderer).get_solid_manifold()
+    
+    # Create a polygon as a triangle with an inner triangle hole.
+    polygon = posc.Polygon(
+        [[2, 0], [0, 2], [-2, 0], [1, 0.5], [0, 1], [-1, 0.5]],
+        paths=[[0, 1, 2], [3, 5, 4]],
+        convexity=2)
+    polygon_extrusion = posc.Color("darkseagreen")(
+        posc.Translate([-6.0, 0.0, 4.5])(
+            posc.Linear_Extrude(height=3.0)(polygon))
+    )
+    polygon_extrusion_manifold = polygon_extrusion.renderObj(renderer).get_solid_manifold()
+    
 
     # Convert to viewer models
     models = [
@@ -54,6 +80,9 @@ def create_primitive_models():
         Model.from_manifold(difference_manifold),
         Model.from_manifold(intersection_manifold), 
         Model.from_manifold(union_manifold),
+        Model.from_manifold(linear_extrusion_manifold),
+        Model.from_manifold(rotate_extrusion_manifold),
+        Model.from_manifold(polygon_extrusion_manifold),
     ]
     
     return models
