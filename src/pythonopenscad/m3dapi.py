@@ -882,7 +882,7 @@ class M3dRenderer:
              script: str, 
              fa: float, 
              fs: float, 
-             fn: float) -> RenderContextCrossSection:
+             fn: int) -> RenderContextCrossSection:
         raise NotImplementedError("text is not implemented")
     
     def polygon(self, 
