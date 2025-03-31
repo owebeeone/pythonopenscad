@@ -26,8 +26,7 @@ def create_primitive_models():
         spacing=1.0,
         direction="ltr",
         language="en",
-        script="latin",
-        _fn=3
+        script="latin"
     )
 
     text_extrusion = posc.Color("darkseagreen")(

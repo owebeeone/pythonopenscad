@@ -887,12 +887,8 @@ class M3dRenderer:
              fn: int) -> RenderContextCrossSection:
         
         points, contours = render_text(text, size, font, halign, valign, spacing, direction, language, script, fa, fs, fn)
-        
-        new_contours = []
-        for contour in contours:
-            new_contours.append(contour[::-1])
-        
-        return self.polygon(points, new_contours, 10)
+
+        return self.polygon(points, contours, 10)
     
     def polygon(self, 
                 points: list[list[float]], 

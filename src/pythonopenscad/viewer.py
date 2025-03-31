@@ -408,7 +408,7 @@ class Model:
         """Convert a manifold3d Manifold to a viewer Model."""
         
         if manifold.num_prop() != 7:
-            raise ValueError("Manifold must have exactly 10 values in its property array: "
+            raise ValueError("Manifold must have exactly 7 values in its property array: "
                              f"{manifold.num_prop()} values found")
         
         # Get the mesh from the manifold

@@ -35,7 +35,7 @@ if __name__ == "__main__":
         # Regular text first
         log.info("Generating LTR example...")
         points1, contours1 = render_text(
-            "Test!", size=25, font=font_to_use, halign="center", valign="center", fn=3
+            "Test!", size=25, font=font_to_use, halign="center", valign="center", fn=None
         )
 
         # Bidirectional text with LTR base direction
@@ -46,7 +46,7 @@ if __name__ == "__main__":
             font=font_to_use,
             halign="center",
             valign="center",
-            fn=3,
+            fn=None,
             base_direction="ltr",
             script="latin",
         )  # Script hint might need adjustment
@@ -59,7 +59,7 @@ if __name__ == "__main__":
             font=font_to_use,
             halign="center",
             valign="center",
-            fn=3,
+            fn=None,
             base_direction="rtl",
             script="arabic",
         )  # Script hint might need adjustment
@@ -98,7 +98,7 @@ if __name__ == "__main__":
             if len(valid_indices) > 1:
                 contour_points = points[valid_indices]
                 clockwise = is_clockwise(contour_points)
-                fill_color = 'pink' if not clockwise else color
+                fill_color = 'pink' if clockwise else color
                 patch = plt.Polygon(
                     contour_points, closed=True, facecolor=fill_color, edgecolor="black", alpha=0.6
                 )

@@ -71,36 +71,37 @@ class FontCacheEntry:
     Handles loading and caching of font data for both fontTools and HarfBuzz.
     Acts as a container for the loaded font objects.
     """
+
     def __init__(self, font_name, size=10.0):
         self.font_name = font_name
         self.size = size
         self.pil_font = None  # PIL ImageFont object
-        self.ft_font = None   # fontTools TTFont object
-        self.hb_font = None   # HarfBuzz Font object
-        self.glyph_set = None # fontTools GlyphSet
+        self.ft_font = None  # fontTools TTFont object
+        self.hb_font = None  # HarfBuzz Font object
+        self.glyph_set = None  # fontTools GlyphSet
         self.y_axis_inverted = False
         self.scale_factor = 1.0
         self.fallback_fonts = {}
-        
+
         self._load_font()
         self._setup_harfbuzz()
         self._detect_font_orientation()
         self._load_fallback_fonts()
-        
+
     def _load_font(self):
         """Load the font using PIL and fontTools"""
         if not ImageFont or not fontTools:
             raise RuntimeError("Font loading dependencies (PIL/fontTools) not available.")
-            
+
         font_path_found = None
         font_name, font_style = self.font_name, None
-        
+
         if ":" in self.font_name:
             parts = self.font_name.split(":", 1)
             font_name = parts[0]
             if len(parts) > 1 and parts[1].startswith("style="):
                 font_style = parts[1][6:]
-        
+
         # Try loading with PIL (using path or name)
         try:
             # Attempt direct path/name load with PIL
@@ -114,18 +115,20 @@ class FontCacheEntry:
             font_path_found = self._find_font_file(font_name, font_style)
             if font_path_found:
                 try:
-                    self.pil_font = ImageFont.truetype(
-                        font_path_found, size=int(self.size * 3.937)
-                    )
+                    self.pil_font = ImageFont.truetype(font_path_found, size=int(self.size * 3.937))
                 except OSError as e:
                     log.warning(f"PIL failed to load found path '{font_path_found}': {e}")
                     font_path_found = None  # Reset if PIL fails on found path
             else:
-                log.warning(f"Could not find font file for '{font_name}' with style '{font_style}'.")
-                
+                log.warning(
+                    f"Could not find font file for '{font_name}' with style '{font_style}'."
+                )
+
         # If PIL loading failed entirely, try fallbacks
         if self.pil_font is None:
-            log.warning(f"Could not load primary font '{self.font_name}' with PIL. Trying fallbacks...")
+            log.warning(
+                f"Could not load primary font '{self.font_name}' with PIL. Trying fallbacks..."
+            )
             fallback_fonts = [
                 "Arial",
                 "Times New Roman",
@@ -146,8 +149,10 @@ class FontCacheEntry:
                 except OSError:
                     continue  # Try next fallback
             if self.pil_font is None:
-                raise ValueError(f"Could not load font '{self.font_name}' or any fallback fonts with PIL.")
-        
+                raise ValueError(
+                    f"Could not load font '{self.font_name}' or any fallback fonts with PIL."
+                )
+
         # Now load with fontTools, using found path if available
         if font_path_found:
             try:
@@ -164,10 +169,10 @@ class FontCacheEntry:
             except fontTools.ttLib.TTLibError as e:
                 log.error(f"fontTools failed to load font by name '{effective_font_name}': {e}")
                 self.ft_font = None
-                
+
         if self.ft_font is None:
             raise ValueError(f"fontTools could not load font '{self.font_name}'")
-            
+
         # Get units per EM and calculate scale factor
         try:
             units_per_em = self.ft_font["head"].unitsPerEm
@@ -178,7 +183,7 @@ class FontCacheEntry:
             log.warning(f"Could not read unitsPerEm from font: {e}. Assuming {units_per_em}")
 
         self.scale_factor = self.size / units_per_em
-        
+
         # Get glyph set for drawing outlines
         try:
             self.glyph_set = self.ft_font.getGlyphSet()
@@ -186,39 +191,39 @@ class FontCacheEntry:
             log.error(f"Failed to get glyphSet from font: {e}", exc_info=True)
             self.glyph_set = None
             raise ValueError(f"Failed to get glyphSet from font: {e}") from e
-            
+
     def _setup_harfbuzz(self):
         """Create a HarfBuzz font object from the fontTools font data"""
         if not hb:
             raise ImportError("HarfBuzz (uharfbuzz) is required for text shaping")
-            
+
         try:
             # Create an in-memory binary buffer
             mem_file = io.BytesIO()
-            
+
             # Save the font to the in-memory buffer
             self.ft_font.save(mem_file)
-            
+
             # Get the font data from the buffer
             mem_file.seek(0)
             face_data = mem_file.read()
-            
+
             # Create HarfBuzz face and font objects
             hb_face = hb.Face(face_data)
             self.hb_font = hb.Font(hb_face)
-            
+
             # Set scale based on unitsPerEm
             units_per_em = hb_face.upem
             if units_per_em <= 0:
                 units_per_em = 1000
-            
+
             self.hb_font.scale = (units_per_em, units_per_em)
-            
+
         except Exception as e:
             log.error(f"Failed to create HarfBuzz font object: {e}", exc_info=True)
             self.hb_font = None  # Ensure it's None on failure
             raise ValueError(f"Failed to create HarfBuzz font object: {e}") from e
-            
+
     def _detect_font_orientation(self):
         """Detect if the font has inverted Y axis"""
         self.y_axis_inverted = False
@@ -238,13 +243,17 @@ class FontCacheEntry:
             "FangSong",
             "KaiTi",
         ]
-        
-        if self.ft_font and hasattr(self.ft_font, "sfntVersion") and self.ft_font.sfntVersion == "ttcf":
+
+        if (
+            self.ft_font
+            and hasattr(self.ft_font, "sfntVersion")
+            and self.ft_font.sfntVersion == "ttcf"
+        ):
             pass
         elif any(inverted_font in self.font_name for inverted_font in known_inverted_fonts):
             self.y_axis_inverted = True
             return
-            
+
         if self.ft_font and hasattr(self.ft_font, "getBestCmap"):
             try:
                 cmap = self.ft_font.getBestCmap()
@@ -265,13 +274,13 @@ class FontCacheEntry:
                                 log.info(f"Detected inverted Y axis for font '{self.font_name}'")
             except Exception as e:
                 log.warning(f"Warning: Error detecting font orientation: {e}")
-                
+
     def _load_fallback_fonts(self):
         """Load fallback fonts for character support"""
         self.fallback_fonts = {}
         if not ImageFont:
             return  # Skip if PIL failed
-            
+
         fallback_font_names = ["Arial", "Times New Roman", "DejaVu Sans", "Liberation Sans"]
         try:
             for font_name in fallback_font_names:
@@ -284,7 +293,7 @@ class FontCacheEntry:
                         pass  # Ignore if fallback not found
         except Exception as e:
             log.warning(f"Warning: Error loading fallback fonts: {e}")
-            
+
     def _find_font_file(self, family, style):
         """Find font file path based on family and style name"""
         import platform
@@ -371,18 +380,18 @@ class FontCacheEntry:
                 f"Found font file '{found_path}' for family '{family}' style '{style}' (match score {best_match_score})"
             )
         return found_path
-        
+
 
 @lru_cache(maxsize=10)
 def get_font(font_name, size=10.0) -> FontCacheEntry:
     """
     Factory function that creates or returns a cached FontCache object.
     Uses LRU caching to keep the most recently used fonts in memory.
-    
+
     Args:
         font_name: Name of the font or path to font file
         size: Font size in units
-        
+
     Returns:
         FontCache object with loaded fonts
     """
@@ -447,10 +456,10 @@ class TextContext:
         try:
             # Use the cached font loader
             self._font_cache = get_font(self.font, self.size)
-            
+
             # Get references to the loaded font objects
             self._font = self._font_cache.ft_font
-            self._hb_font = self._font_cache.hb_font  
+            self._hb_font = self._font_cache.hb_font
             self._glyph_set = self._font_cache.glyph_set
             self._pil_font = self._font_cache.pil_font
             self._scale_factor = self._font_cache.scale_factor
@@ -464,13 +473,13 @@ class TextContext:
         """Gets raw outlines in font units for a specific glyph name."""
         # Initialize quality_factor and fn_scaled at the beginning of the function
         quality_factor = 1.0  # Default quality
-        if hasattr(self, 'quality') and self.quality > 0:
+        if hasattr(self, "quality") and self.quality > 0:
             quality_factor = self.quality
-            
+
         fn_scaled = 0
-        if hasattr(self, 'fn') and self.fn is not None and self.fn > 0:
+        if hasattr(self, "fn") and self.fn is not None and self.fn > 0:
             fn_scaled = self.fn * quality_factor
-        
+
         if not self._glyph_set or glyph_name not in self._glyph_set:
             log.warning(f"Glyph name '{glyph_name}' not found in glyph set.")
             # Return a fallback square shape in font units
@@ -567,20 +576,29 @@ class TextContext:
                             np.linalg.norm(p2_arr - p1_arr),
                             EPSILON,
                         )
-                        
+
                         # Apply quality parameter for tessellation density
                         quality_factor = 1.0  # Default quality factor
-                        if hasattr(self, 'quality') and self.quality > 0:
+                        if hasattr(self, "quality") and self.quality > 0:
                             quality_factor = self.quality
-                        
+
                         # Determine number of segments
                         if fn_scaled > 0:
                             num_steps = max(int(fn_scaled), 6)  # Minimum 6 for quadratic
                         else:
                             # Get steps using get_fragments_from_fn_fa_fs with quality factor
-                            num_steps = get_fragments_from_fn_fa_fs(radius, self.fn, self.fa, self.fs, quality_factor)
-                            num_steps = max(num_steps, 6)  # Ensure minimum 6 steps for quadratic curves
-                        
+                            num_steps = get_fragments_from_fn_fa_fs(
+                                radius,
+                                self._scale_factor,
+                                self.fn,
+                                self.fa,
+                                self.fs,
+                                quality_factor,
+                            )
+                            num_steps = max(
+                                num_steps, 6
+                            )  # Ensure minimum 6 steps for quadratic curves
+
                         spline = QuadraticSpline(bezier_points)
                         t_values = np.linspace(0, 1, num_steps + 1)[1:]
                         new_points = spline.evaluate(t_values)
@@ -629,20 +647,24 @@ class TextContext:
                         np.linalg.norm(p3_arr - p2_arr),
                         EPSILON,
                     )
-                    
+
                     # Apply quality parameter for tessellation density
                     quality_factor = 1.0  # Default quality factor
-                    if hasattr(self, 'quality') and self.quality > 0:
+                    if hasattr(self, "quality") and self.quality > 0:
                         quality_factor = self.quality
-                    
+
                     # Calculate segments with quality scaling
-                    if hasattr(self, 'fn') and self.fn > 0:
-                        num_steps = max(int(self.fn * quality_factor), 8)  # Scale by quality, minimum 8 for cubic
+                    if hasattr(self, "fn") and self.fn > 0:
+                        num_steps = max(
+                            int(self.fn * quality_factor), 8
+                        )  # Scale by quality, minimum 8 for cubic
                     else:
                         # Get steps using get_fragments_from_fn_fa_fs with quality factor
-                        num_steps = get_fragments_from_fn_fa_fs(radius, self.fn, self.fa, self.fs, quality_factor)
+                        num_steps = get_fragments_from_fn_fa_fs(
+                            radius, self._scale_factor, self.fn, self.fa, self.fs, quality_factor
+                        )
                         num_steps = max(num_steps, 8)  # Ensure minimum 8 steps for cubic curves
-                    
+
                     spline = CubicSpline(points)
                     t_values = np.linspace(0, 1, num_steps + 1)[1:]
                     new_points = np.array([spline.evaluate(t) for t in t_values])
@@ -716,40 +738,8 @@ class TextContext:
 
     def _apply_text_direction(self, polygons, min_coord, max_coord):
         """Apply text direction transformations based on actual bounds."""
-        if not polygons or self.direction == "ltr":
-            return polygons
-
-        min_coord = np.asarray(min_coord)
-        max_coord = np.asarray(max_coord)
-        width = max_coord[0] - min_coord[0]
-        height = max_coord[1] - min_coord[1]
-
-        # Create copies only if transformation occurs
-        directed_polygons = [poly.copy() for poly in polygons]
-
-        if self.direction == "rtl":
-            center_x = min_coord[0] + width / 2.0
-            for poly in directed_polygons:
-                poly[:, 0] = 2 * center_x - poly[:, 0]
-                poly[:] = poly[::-1]  # Reverse winding
-        elif self.direction == "ttb":
-            center_x = min_coord[0] + width / 2.0
-            center_y = min_coord[1] + height / 2.0
-            for poly in directed_polygons:
-                x_new = center_x + (poly[:, 1] - center_y)
-                y_new = center_y - (poly[:, 0] - center_x)
-                poly[:, 0], poly[:, 1] = x_new, y_new
-                poly[:] = poly[::-1]  # Reverse winding for rotation? Check needed.
-        elif self.direction == "btt":
-            center_x = min_coord[0] + width / 2.0
-            center_y = min_coord[1] + height / 2.0
-            for poly in directed_polygons:
-                x_new = center_x - (poly[:, 1] - center_y)
-                y_new = center_y + (poly[:, 0] - center_x)
-                poly[:, 0], poly[:, 1] = x_new, y_new
-                # No winding flip for 90deg CCW? Check needed.
-
-        return directed_polygons
+        # TODO: Implement text direction transformations.
+        return polygons
 
     def get_polygons(self) -> tuple[np.ndarray, list[np.ndarray]]:
         """Generates shaped text polygons using HarfBuzz."""
@@ -887,7 +877,8 @@ class TextContext:
                     continue
                 num_points = len(poly)
                 final_all_points.append(poly)
-                final_contours.append(np.arange(point_offset, point_offset + num_points))
+                contour = np.arange(point_offset, point_offset + num_points)
+                final_contours.append(contour[::-1])
                 point_offset += num_points
             else:
                 log.warning(
@@ -1027,7 +1018,6 @@ def render_text(
     base_direction: str = "ltr",
     quality: float = 1.0,
 ) -> tuple[np.ndarray, list[np.ndarray]]:
-    
     context = TextContext(
         text=text,
         size=size,
@@ -1138,7 +1128,7 @@ def get_fonts_list():
 
 
 def get_fragments_from_fn_fa_fs(
-    r: float, fn: int | None, fa: float | None, fs: float | None, quality: float = 1.0
+    r: float, scale: float, fn: int | None, fa: float | None, fs: float | None, quality: float = 1.0
 ) -> int:
     # NOTE: This function is designed for circles/arcs in OpenSCAD.
     # Its direct application to Bezier curves is non-standard.
@@ -1146,24 +1136,24 @@ def get_fragments_from_fn_fa_fs(
     # This function remains for potential future use or compatibility checks.
     GRID_FINE = 0.00000095367431640625  # From OpenSCAD source
     # OpenSCAD uses doubles, ensure calculations are float
-    r = float(r)
+    r = r * scale
     fa = float(fa) if fa is not None else 30.0  # Default $fa from OpenSCAD
     fs = float(fs) if fs is not None else 20.0  # Default $fs from OpenSCAD
     quality = float(quality) if quality is not None else 1.0  # Default quality
 
     if r < GRID_FINE:
         # print("Warning: Radius too small, using 3 fragments.")
-        return 3
+        return 2
     # Handle $fn (number) - overrides angular/size fragmentation
     if fn is not None:
         fn = float(fn)  # Ensure float for checks
         if np.isinf(fn) or np.isnan(fn):
             # print("Warning: $fn is inf or nan, using 3 fragments.")
-            return 3
+            return 2
         # $fn = 0 means use $fa/$fs
         if fn > 0:
             # Apply quality factor to fn
-            result = int(max(fn * quality, 3.0))
+            result = int(max(fn * quality, 2.0))
             # print(f"Using $fn with quality: {result}")
             return result
 
@@ -1173,7 +1163,7 @@ def get_fragments_from_fn_fa_fs(
     # Calculate number of fragments from angular resolution ($fa)
     num_angle = 360.0 / fa if fa > 0 else 360.0  # Avoid division by zero, large number if fa=0
     # Calculate number of fragments from segment size ($fs)
-    num_size = (r * 2.0 * np.pi) / fs
+    num_size = r / fs
 
     # Choose the larger number of fragments from angle/size constraints
     # Ensure it's at least 5 (OpenSCAD minimum for arc-based fragmentation)
@@ -1181,4 +1171,6 @@ def get_fragments_from_fn_fa_fs(
     # Apply quality factor
     fragments = np.ceil(base_fragments * quality)
     # print(f"Using $fa/$fs with quality: num_angle={num_angle}, num_size={num_size}, result={int(fragments)}")
+    if fragments < 2:
+        return 2
     return int(fragments)
