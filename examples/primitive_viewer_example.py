@@ -15,7 +15,19 @@ except ImportError as e:
 
 def create_primitive_models():
     """Create example 3D models using various OpenSCAD primitives and operations."""
-    renderer = M3dRenderer()
+    renderer = M3dRenderer()    
+    
+    sphere6 = posc.Translate([6, 0, 0])(posc.Color("sienna")(posc.Sphere(r=6)))
+    sphere3 = posc.Translate([-2, 0, 0])(posc.Color("orchid")(posc.Sphere(r=3)))
+    hull3d = posc.Translate([0, -14, 0])(posc.Color("sienna")(posc.Union()(posc.Hull()(sphere6, sphere3))))
+    hull3d_manifold = hull3d.renderObj(renderer).get_solid_manifold()
+    
+    circle6 = posc.Translate([6, 0, 0])(posc.Circle(r=6))
+    circle3 = posc.Translate([-2, 0, 0])(posc.Circle(r=3))
+    hull2d = posc.Hull()(circle6, circle3)
+    hull_extrusion = posc.Translate([0, 10, 0])(posc.Linear_Extrude(height=3.0)(hull2d))
+    hull_extrusion_manifold = hull_extrusion.renderObj(renderer).get_solid_manifold()
+
     
     text = posc.Text(
         "Hello, World!",
@@ -33,8 +45,6 @@ def create_primitive_models():
         posc.Translate([-8.0, 0.0, 4.5])(posc.Rotate([0, 0, 90])(posc.Linear_Extrude(height=3.0)(text)))
     )
     text_extrusion_manifold = text_extrusion.renderObj(renderer).get_solid_manifold()
-    
-    print(f"text_extrusion_manifold.num_prop(): {text_extrusion_manifold.num_prop() =}")
 
     # Create a sphere
     sphere = posc.Translate([-2.0, -2.0, 0.0])(
@@ -95,6 +105,8 @@ def create_primitive_models():
 
     # Convert to viewer models
     models = [
+        Model.from_manifold(hull_extrusion_manifold),
+        Model.from_manifold(hull3d_manifold),
         Model.from_manifold(text_extrusion_manifold),
         Model.from_manifold(sphere_manifold),
         Model.from_manifold(cube_manifold),

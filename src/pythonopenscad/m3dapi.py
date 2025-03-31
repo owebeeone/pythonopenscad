@@ -547,6 +547,8 @@ class RenderContext(Generic[TM3d]):
 @dataclass
 class RenderContextManifold(RenderContext[m3d.Manifold]):
     
+    MANIFOLD_CLASS = m3d.Manifold
+    
     def __post_init__(self):
         for solid in self.solid_objs:
             if not isinstance(solid, m3d.Manifold):
@@ -597,6 +599,8 @@ class RenderContextManifold(RenderContext[m3d.Manifold]):
 
 @dataclass
 class RenderContextCrossSection(RenderContext[m3d.CrossSection]):
+    
+    MANIFOLD_CLASS = m3d.CrossSection
     
     def __post_init__(self):
         for solid in self.solid_objs:
@@ -833,7 +837,7 @@ class M3dRenderer:
         if len(ops) == 1:
             return ops[0]   
         
-        cls = type(ops[0])  
+        cls = type(ops[0])
         
         solids = tuple(chain(*(op._apply_and_merge(op.get_solids) for op in ops)))
         shells = tuple(chain(*(op._apply_and_merge(op.get_shells) for op in ops)))
@@ -961,7 +965,19 @@ class M3dRenderer:
         
     def hull(self, ops: list[RenderContextManifold | RenderContextCrossSection]) \
     -> RenderContextManifold | RenderContextCrossSection:
-        raise NotImplementedError("hull is not implemented")
+
+        cls = type(ops[0])  
+        
+        solids = tuple(chain(*(op._apply_and_merge(op.get_solids) for op in ops)))
+        shells = tuple(chain(*(op._apply_and_merge(op.get_shells) for op in ops)))
+        
+        manifold_cls = cls.MANIFOLD_CLASS
+        solid_obj = manifold_cls.batch_hull(solids)
+        
+        if isinstance(solid_obj, m3d.Manifold):
+            solid_obj = self._apply_properties(solid_obj)
+        
+        return cls(self, transform_mat=IDENTITY_TRANSFORM, solid_objs=(solid_obj,), shell_objs=shells)
     
     def minkowski(self, ops: list[RenderContextManifold]) -> RenderContextManifold:
         raise NotImplementedError("minkowski is not implemented")
