@@ -4,7 +4,7 @@ from typing import Any, Callable, Generic, Iterable, Self, TypeVar
 import manifold3d as m3d
 import numpy as np
 import mapbox_earcut
-import stl
+from pythonopenscad.text_render import render_text
 from stl import mesh, Mode
 
 
@@ -551,6 +551,8 @@ class RenderContextManifold(RenderContext[m3d.Manifold]):
         for solid in self.solid_objs:
             if not isinstance(solid, m3d.Manifold):
                 raise ValueError("All solid objects must be manifolds")
+            # if solid.num_prop() != 7:
+            #     raise ValueError(f"Expected 7 properties got: {solid.num_prop() =}")
         for shell in self.shell_objs:
             if not isinstance(shell, m3d.Manifold):
                 raise ValueError("All shell objects must be manifolds")
@@ -883,7 +885,14 @@ class M3dRenderer:
              fa: float, 
              fs: float, 
              fn: int) -> RenderContextCrossSection:
-        raise NotImplementedError("text is not implemented")
+        
+        points, contours = render_text(text, size, font, halign, valign, spacing, direction, language, script, fa, fs, fn)
+        
+        new_contours = []
+        for contour in contours:
+            new_contours.append(contour[::-1])
+        
+        return self.polygon(points, new_contours, 10)
     
     def polygon(self, 
                 points: list[list[float]], 
@@ -898,7 +907,7 @@ class M3dRenderer:
         
         contours = [points[path] for path in paths]
         cross_section = m3d.CrossSection(contours, m3d.FillRule.Positive)
-        
+
         return RenderContextCrossSection(self, solid_objs=(cross_section,))
     
     def square(self, size: float | tuple[float, float], center: bool = False) -> RenderContextCrossSection:
@@ -924,8 +933,6 @@ class M3dRenderer:
         rctxt =  RenderContextManifold(self,
             solid_objs=(self._apply_properties(manifold),))
         return rctxt
-    
-    
     
     def linear_extrude(self, 
                        contexts: list[RenderContextCrossSection], 

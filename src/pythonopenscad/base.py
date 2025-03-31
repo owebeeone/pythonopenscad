@@ -1793,9 +1793,9 @@ class Text(PoscBase):
             self.direction,
             self.language, 
             self.script, 
-            self.fa, 
-            self.fs, 
-            self.fn)
+            self._fa, 
+            self._fs, 
+            self._fn)
 
 
 @apply_posc_attributes

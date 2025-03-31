@@ -468,7 +468,7 @@ class TextContext:
             quality_factor = self.quality
             
         fn_scaled = 0
-        if hasattr(self, 'fn') and self.fn > 0:
+        if hasattr(self, 'fn') and self.fn is not None and self.fn > 0:
             fn_scaled = self.fn * quality_factor
         
         if not self._glyph_set or glyph_name not in self._glyph_set:
@@ -1011,7 +1011,7 @@ class TextContext:
         return np.vstack(final_all_points), final_contours
 
 
-def text(
+def render_text(
     text: str,
     size: float = 10,
     font: str = "Liberation Sans",

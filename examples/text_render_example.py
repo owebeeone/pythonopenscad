@@ -1,7 +1,7 @@
 
 import sys
 import logging
-from pythonopenscad.text_render import text, get_fonts_list, get_available_fonts, extentsof
+from pythonopenscad.text_render import render_text, get_fonts_list, get_available_fonts, extentsof
 log = logging.getLogger(__name__)
 
 if __name__ == "__main__":
@@ -34,13 +34,13 @@ if __name__ == "__main__":
     try:
         # Regular text first
         log.info("Generating LTR example...")
-        points1, contours1 = text(
+        points1, contours1 = render_text(
             "Test!", size=25, font=font_to_use, halign="center", valign="center", fn=3
         )
 
         # Bidirectional text with LTR base direction
         log.info("Generating Bidi LTR example...")
-        points2, contours2 = text(
+        points2, contours2 = render_text(
             mixed_text,
             size=25,
             font=font_to_use,
@@ -53,7 +53,7 @@ if __name__ == "__main__":
 
         # Bidirectional text with RTL base direction
         log.info("Generating Bidi RTL example...")
-        points3, contours3 = text(
+        points3, contours3 = render_text(
             mixed_text,
             size=25,
             font=font_to_use,
