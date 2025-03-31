@@ -4,7 +4,38 @@ import anchorscad_lib.linear as l
 import logging
 import sys
 import os
+import io
 from pythonopenscad.text_utils import CubicSpline, QuadraticSpline, extentsof
+
+"""
+Text Rendering Module
+--------------------
+
+This module implements a text rendering system using a combination of two specialized libraries:
+
+1. fontTools/PIL (FreeType-based):
+   - Used for font discovery, loading, and accessing font properties
+   - Provides access to glyph outlines and vector data
+   - Handles font file parsing and metrics
+
+2. HarfBuzz:
+   - Used for complex text shaping across different writing systems
+   - Manages bidirectional text (mixed RTL and LTR scripts)
+   - Handles proper glyph substitution, positioning, and OpenType features
+   - Applies language-specific rendering rules
+
+The workflow involves:
+1. Loading the font file using fontTools/PIL
+2. Creating a HarfBuzz font object from the font data
+3. Using HarfBuzz for text shaping to get properly positioned glyphs
+4. Extracting glyph outlines via fontTools
+5. Converting the outlines to polygon data for rendering
+
+This dual-library approach is standard in modern text rendering pipelines, where
+each library handles the tasks it specializes in.
+
+- Claude (2024)
+"""
 
 try:
     import uharfbuzz as hb
@@ -28,7 +59,7 @@ except ImportError:
     ImageFont = None
 
 
-logging.basicConfig(level=logging.INFO)  # Or logging.WARNING
+logging.basicConfig(level=logging.WARNING)  # Or logging.WARNING
 log = logging.getLogger(__name__)
 
 EPSILON = 1e-6
@@ -96,28 +127,30 @@ class TextContext:
 
         # --- Setup HarfBuzz Font, Scale Factor, GlyphSet ---
         try:
-            # Create HarfBuzz font object from fontTools font object
-            ft_face = self._font.reader  # Get the underlying file object/path if possible
-            if ft_face:
-                ft_face.file.seek(0)
-                face_data = ft_face.file.read()
-                # Create hb.Face and then hb.Font
-                hb_face = hb.Face(face_data)
-                self._hb_font = hb.Font(hb_face)
-                # Set scale based on unitsPerEm
-                units_per_em = hb_face.upem
-                if units_per_em <= 0:
-                    units_per_em = 1000
-                self._hb_font.scale = (
-                    units_per_em,
-                    units_per_em,
-                )  # Set scale for hb.Font if needed? Usually done via buffer? Check usage. Let's scale later.
-            else:
-                # Fallback if direct reader access fails (less common)
-                log.warning("Could not get font data directly for HarfBuzz, attempting fallback.")
-                # This path might require saving font to temp file or different loading
-                raise ValueError("Failed to get font data for HarfBuzz Face creation.")
-
+            # Load the fond into harfbuzz by saving it to an in-memory buffer 
+            # and then creating a harfbuzz font object from the buffer.
+            
+            # Create an in-memory binary buffer
+            mem_file = io.BytesIO()
+            
+            # Save the font to the in-memory buffer
+            self._font.save(mem_file)
+            
+            # Get the font data from the buffer
+            mem_file.seek(0)
+            face_data = mem_file.read()
+            
+            # Create HarfBuzz face and font objects
+            hb_face = hb.Face(face_data)
+            self._hb_font = hb.Font(hb_face)
+            
+            # Set scale based on unitsPerEm
+            units_per_em = hb_face.upem
+            if units_per_em <= 0:
+                units_per_em = 1000
+            
+            self._hb_font.scale = (units_per_em, units_per_em)
+            
         except Exception as e:
             log.error(f"Failed to create HarfBuzz font object: {e}", exc_info=True)
             self._hb_font = None  # Ensure it's None on failure
@@ -246,7 +279,6 @@ class TextContext:
                 # Don't raise error here, allow fallback to rectangles in get_glyph_outlines
 
         except Exception as e:
-            log.error(f"Unexpected error loading font {self.font}: {e}", exc_info=True)
             raise ValueError(f"Error loading font {self.font}: {str(e)}") from e
 
     # --- Helper to find font file path ---
@@ -768,7 +800,7 @@ class TextContext:
             raw_contours = self._get_glyph_outlines_by_name(glyph_name)
 
             if not raw_contours:
-                log.warning(f"No outline for glyph '{glyph_name}' (GID {gid}). Advancing pen.")
+                log.info(f"No outline for glyph '{glyph_name}' (GID {gid}). Advancing pen.")
             else:
                 # Calculate final drawing position for this glyph in scaled units
                 draw_pos = pen_pos + np.array([
@@ -828,7 +860,8 @@ class TextContext:
         for poly in directed_polygons:
             if poly.ndim == 2 and poly.shape[1] == 2 and len(poly) > 0:
                 if len(poly) < 3:
-                    log.warning(f"Skipping polygon with less than 3 points: {poly}")
+                    # This is a degenerate polygon, probably a ligature. Let's ignore it.
+                    log.info(f"Skipping polygon with less than 3 points: {poly}")
                     continue
                 num_points = len(poly)
                 final_all_points.append(poly)
@@ -972,30 +1005,24 @@ def text(
     base_direction: str = "ltr",
     quality: float = 1.0,
 ) -> tuple[np.ndarray, list[np.ndarray]]:
-    try:
-        context = TextContext(
-            text=text,
-            size=size,
-            font=font,
-            halign=halign,
-            valign=valign,
-            spacing=spacing,
-            direction=direction,
-            language=language,
-            script=script,
-            fa=fa,
-            fs=fs,
-            fn=fn,
-            base_direction=base_direction,
-            quality=quality,
-        )
-        return context.get_polygons()
-    except (ImportError, ValueError, RuntimeError, TypeError) as e:  # Catch potential init errors
-        log.error(f"Error creating TextContext or getting polygons: {e}", exc_info=True)
-        return np.empty((0, 2)), []  # Return empty on error
-    except Exception as e:  # Catch unexpected errors
-        log.error(f"Unexpected error in text(): {e}", exc_info=True)
-        return np.empty((0, 2)), []
+    
+    context = TextContext(
+        text=text,
+        size=size,
+        font=font,
+        halign=halign,
+        valign=valign,
+        spacing=spacing,
+        direction=direction,
+        language=language,
+        script=script,
+        fa=fa,
+        fs=fs,
+        fn=fn,
+        base_direction=base_direction,
+        quality=quality,
+    )
+    return context.get_polygons()
 
 
 def get_available_fonts():
@@ -1133,129 +1160,3 @@ def get_fragments_from_fn_fa_fs(
     fragments = np.ceil(base_fragments * quality)
     # print(f"Using $fa/$fs with quality: num_angle={num_angle}, num_size={num_size}, result={int(fragments)}")
     return int(fragments)
-
-
-if __name__ == "__main__":
-    import matplotlib.pyplot as plt
-
-    if len(sys.argv) > 1 and sys.argv[1] == "--list-fonts":
-        print("Available Fonts:")
-        fonts = get_fonts_list()
-        for font in fonts:
-            print(f"  {font}")
-        sys.exit(0)
-    if len(sys.argv) > 1 and sys.argv[1] == "--list-fonts-by-family":
-        print("Available Font Families:")
-        fonts = get_available_fonts()
-        for family, styles in sorted(fonts.items()):
-            print(f"{family}: {', '.join(sorted(styles))}")
-        sys.exit(0)
-
-    font_to_use = "Arial"  # Default if no arg
-    font_to_use = "Times New Roman"
-    font_to_use = "Tahoma"
-    if len(sys.argv) > 1 and not sys.argv[1].startswith("--"):
-        font_to_use = sys.argv[1]
-    log.info(f"Using font: '{font_to_use}'")
-
-    print("Generating text...")
-    mixed_text = "Hello! مرحباً שלום"  # Mix English, Arabic, Hebrew
-    print(f"Testing text: {mixed_text}")
-
-    try:
-        # Regular text first
-        log.info("Generating LTR example...")
-        points1, contours1 = text(
-            "Test!", size=25, font=font_to_use, halign="center", valign="center", fn=3
-        )
-
-        # Bidirectional text with LTR base direction
-        log.info("Generating Bidi LTR example...")
-        points2, contours2 = text(
-            mixed_text,
-            size=25,
-            font=font_to_use,
-            halign="center",
-            valign="center",
-            fn=3,
-            base_direction="ltr",
-            script="latin",
-        )  # Script hint might need adjustment
-
-        # Bidirectional text with RTL base direction
-        log.info("Generating Bidi RTL example...")
-        points3, contours3 = text(
-            mixed_text,
-            size=25,
-            font=font_to_use,
-            halign="center",
-            valign="center",
-            fn=3,
-            base_direction="rtl",
-            script="arabic",
-        )  # Script hint might need adjustment
-
-    except Exception as e:
-        log.error(f"Error during text generation: {e}", exc_info=True)
-        print("\nTry running with --list-fonts to see available fonts.")
-        sys.exit(1)
-
-    print(f"Generated {len(contours1)} polygons, {len(points1)} points for 'Test!'")
-    print(f"Generated {len(contours2)} polygons, {len(points2)} points for bidi text (LTR base)")
-    print(f"Generated {len(contours3)} polygons, {len(points3)} points for bidi text (RTL base)")
-
-    # --- Plotting ---
-    fig, axes = plt.subplots(3, 1, figsize=(10, 15), sharex=False)  # Don't share X
-
-    # Function to determine polygon winding order
-    def is_clockwise(points):
-        """Determine if polygon has clockwise winding order using shoelace formula."""
-        # Return True for clockwise (positive area), False for counterclockwise (negative area)
-        if len(points) < 3:
-            return False
-        area = 0
-        for i in range(len(points) - 1):
-            area += (points[i+1][0] - points[i][0]) * (points[i+1][1] + points[i][1])
-        return area > 0
-    
-    def plot_polygons(ax, title, points, contours, color):
-        if points is None or points.shape[0] == 0 or not contours:
-            ax.text(0.5, 0.5, "No polygons generated", ha="center", va="center")
-            ax.set_title(f"{title} (No polygons)")
-            return
-        for contour_indices in contours:
-            # Ensure indices are valid
-            valid_indices = contour_indices[contour_indices < points.shape[0]]
-            if len(valid_indices) > 1:
-                contour_points = points[valid_indices]
-                clockwise = is_clockwise(contour_points)
-                fill_color = 'pink' if not clockwise else color
-                patch = plt.Polygon(
-                    contour_points, closed=True, facecolor=fill_color, edgecolor="black", alpha=0.6
-                )
-                ax.add_patch(patch)
-            else:
-                log.warning(f"Skipping contour with invalid indices: {contour_indices}")
-
-        ax.set_aspect("equal", adjustable="box")
-        min_coord, max_coord = extentsof(points)
-        ax.set_xlim(min_coord[0] - 5, max_coord[0] + 5)
-        ax.set_ylim(min_coord[1] - 5, max_coord[1] + 5)
-        ax.set_title(title)
-        ax.grid(True)
-
-    plot_polygons(axes[0], f"Regular Text: 'Test!'", points1, contours1, "blue")
-    plot_polygons(
-        axes[1], f"Bidirectional Text (LTR base): '{mixed_text}'", points2, contours2, "green"
-    )
-    plot_polygons(
-        axes[2], f"Bidirectional Text (RTL base): '{mixed_text}'", points3, contours3, "red"
-    )
-
-    plt.tight_layout()
-    plt.savefig("text_render_bidi_test_hb.png", dpi=150)
-    print("Figure saved to 'text_render_bidi_test_hb.png'")
-    try:
-        plt.show()
-    except Exception:
-        print("Could not display plot - but image was saved to file")

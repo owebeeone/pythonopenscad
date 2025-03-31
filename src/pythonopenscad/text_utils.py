@@ -203,7 +203,29 @@ class CubicSpline:
             mag = np.linalg.norm(vr)
             return vr / mag if mag > EPSILON else np.array([0.0, 0.0])
         else:
-            return np.array([self.normal2d(t, dims) for t in t_arr])
+            # Vectorized implementation
+            d = self.derivative(t_arr)  # shape (N, dims)
+            
+            # Check if we have enough dimensions
+            if d.shape[1] < 2:
+                return np.zeros((len(t_arr), 2))
+                
+            # Create normals array: swap and negate to get perpendicular vector
+            vr = np.column_stack([d[:, dims[1]], -d[:, dims[0]]])  # shape (N, 2)
+            
+            # Calculate magnitudes
+            mag = np.linalg.norm(vr, axis=1)  # shape (N,)
+            
+            # Create result array
+            result = np.zeros_like(vr)  # shape (N, 2)
+            
+            # Only normalize where magnitude is significant
+            mask = mag > EPSILON
+            if np.any(mask):
+                # Properly reshape mag for broadcasting
+                result[mask] = vr[mask] / mag[mask, np.newaxis]
+            
+            return result
 
     def extremes(self):
         roots = self.curve_maxima_minima_t()
@@ -408,7 +430,29 @@ class QuadraticSpline:
             mag = np.linalg.norm(vr)
             return vr / mag if mag > EPSILON else np.array([0.0, 0.0])
         else:
-            return np.array([self.normal2d(t, dims) for t in t_arr])
+            # Vectorized implementation
+            d = self.derivative(t_arr)  # shape (N, dims)
+            
+            # Check if we have enough dimensions
+            if d.shape[1] < 2:
+                return np.zeros((len(t_arr), 2))
+                
+            # Create normals array: swap and negate to get perpendicular vector
+            vr = np.column_stack([d[:, dims[1]], -d[:, dims[0]]])  # shape (N, 2)
+            
+            # Calculate magnitudes
+            mag = np.linalg.norm(vr, axis=1)  # shape (N,)
+            
+            # Create result array
+            result = np.zeros_like(vr)  # shape (N, 2)
+            
+            # Only normalize where magnitude is significant
+            mask = mag > EPSILON
+            if np.any(mask):
+                # Properly reshape mag for broadcasting
+                result[mask] = vr[mask] / mag[mask, np.newaxis]
+            
+            return result
 
     def extremes(self):
         roots = self.curve_maxima_minima_t()
