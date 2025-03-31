@@ -986,7 +986,21 @@ class M3dRenderer:
         return self.union(ops)
     
     def projection(self, ops: list[RenderContextManifold], cut: bool) -> RenderContextCrossSection:
-        raise NotImplementedError("projection is not implemented")
+        solids = tuple(chain(*(op._apply_and_merge(op.get_solids) for op in ops)))
+        
+        # Drop the shells.
+        result_manif: m3d.Manifold = (
+            (sum(solids[1:], start=solids[0]),)
+            if len(solids) > 1
+            else solids[0]
+        )
+        
+        if cut:
+            cross_section = result_manif.slice(0)
+        else:
+            cross_section = result_manif.project()
+        
+        return RenderContextCrossSection(self, solid_objs=(cross_section,))
     
     def offset(self, 
                ops: list[RenderContextCrossSection], 

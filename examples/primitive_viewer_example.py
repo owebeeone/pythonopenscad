@@ -65,6 +65,7 @@ def create_primitive_models():
     sphere2 = posc.Color("darkolivegreen")(posc.Sphere(r=1, _fn=32))
     cube2 = posc.Color("orchid")(posc.Cube(1.5, center=True))
     difference = posc.Difference()(cube2, sphere2).translate([6.0, 0.0, 0.0])
+    difference = posc.Rotate([0, 0, 45])(posc.Rotate([45, 45, 0])(difference))
     difference_manifold = difference.renderObj(renderer).get_solid_manifold()
 
     intersection = posc.Intersection()(cube2, sphere2).translate([6.0, -2.0, 0.0])
@@ -101,6 +102,19 @@ def create_primitive_models():
         posc.Translate([-6.0, 0.0, 4.5])(posc.Linear_Extrude(height=3.0)(polygon))
     )
     polygon_extrusion_manifold = polygon_extrusion.renderObj(renderer).get_solid_manifold()
+    
+    projection = posc.Projection()(difference)
+    projection_extrusion = posc.Color("darkseagreen")(
+        posc.Translate([16.0, 0.0, 4.5])(posc.Linear_Extrude(height=1.0)(projection))
+    )
+    projection_extrusion_manifold = projection_extrusion.renderObj(renderer).get_solid_manifold()
+    
+    xmin, ymin, zmin, xmax, ymax, zmax = difference_manifold.bounding_box()
+    cut = posc.Projection(cut=True)(posc.Translate([0, 0, -(zmin+zmax)/2])(difference))
+    cut_extrusion = posc.Color("darkseagreen")(
+        posc.Translate([16.0, 5.0, 4.5])(posc.Linear_Extrude(height=1.0)(cut))
+    )
+    cut_extrusion_manifold = cut_extrusion.renderObj(renderer).get_solid_manifold()
 
 
     # Convert to viewer models
@@ -117,6 +131,8 @@ def create_primitive_models():
         Model.from_manifold(linear_extrusion_manifold),
         Model.from_manifold(rotate_extrusion_manifold),
         Model.from_manifold(polygon_extrusion_manifold),
+        Model.from_manifold(projection_extrusion_manifold),
+        Model.from_manifold(cut_extrusion_manifold),
     ]
 
     return models
