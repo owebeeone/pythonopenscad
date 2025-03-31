@@ -5,6 +5,7 @@ import logging
 import sys
 import os
 import io
+from functools import lru_cache
 from pythonopenscad.text_utils import CubicSpline, QuadraticSpline, extentsof
 
 """
@@ -65,76 +66,138 @@ log = logging.getLogger(__name__)
 EPSILON = 1e-6
 
 
-# --- TextContext Class (with HarfBuzz) ---
-@datatree
-class TextContext:
-    text: str = dtfield(default="")
-    size: float = dtfield(default=10.0)
-    font: str = dtfield(default="Liberation Sans")
-    halign: str = dtfield(default="left")
-    valign: str = dtfield(default="baseline")
-    spacing: float = dtfield(default=1.0)
-    direction: str = dtfield(
-        default="ltr"
-    )  # Note: Used for final transform, hb uses base_direction
-    language: str = dtfield(default="en")
-    script: str = dtfield(default="latin")  # Used as hint for HarfBuzz
-    fa: float = dtfield(default=12.0)
-    fs: float = dtfield(default=2.0)
-    fn: int = dtfield(default=0)
-    base_direction: str = dtfield(default="ltr")  # Used for HarfBuzz direction
-    quality: float = dtfield(default=1.0)  # Controls curve tessellation quality/density
-
-    # --- Internal fields ---
-    _font: object = dtfield(init=False, repr=False, default=None)  # fontTools TTFont object
-    _hb_font: object = dtfield(init=False, repr=False, default=None)  # uharfbuzz Font object
-    _glyph_set: object = dtfield(init=False, repr=False, default=None)  # fontTools glyph set
-    _scale_factor: float = dtfield(init=False, repr=False, default=1.0)
-    _pil_font: object = dtfield(
-        init=False, repr=False, default=None
-    )  # Keep PIL for fallback/metrics if needed
-    _y_axis_inverted: bool = dtfield(init=False, repr=False, default=False)
-    _fallback_fonts: dict = dtfield(init=False, repr=False, default_factory=dict)
-
-    def __post_init__(self):
-        # --- Import heavy libraries once ---
-        if fontTools is None:
-            raise ImportError("Missing required libraries (Pillow or fontTools)")
-
-        if hb is None:
-            raise ImportError(
-                "uharfbuzz library is required for text shaping but could not be imported."
-            )
-
-        # --- Keep validations ---
-        if not self.font:
-            self.font = "Liberation Sans"
-        if self.halign not in ("left", "center", "right"):
-            raise ValueError(f"Invalid halign: {self.halign}")
-        if self.valign not in ("top", "center", "baseline", "bottom"):
-            raise ValueError(f"Invalid valign: {self.valign}")
-        if self.direction not in ("ltr", "rtl", "ttb", "btt"):
-            raise ValueError(f"Invalid direction: {self.direction}")
-        if self.base_direction not in ("ltr", "rtl"):
-            raise ValueError(f"Invalid base_direction: {self.base_direction}")
-        # --- End validations ---
-
-        # --- Load Font ---
-        self._load_font()  # Sets self._font (fontTools) and self._pil_font (PIL)
-
-        if self._font is None:
-            raise ValueError(f"Cannot proceed: fontTools failed to load {self.font}")
-
-        # --- Setup HarfBuzz Font, Scale Factor, GlyphSet ---
-        try:
-            # Load the fond into harfbuzz by saving it to an in-memory buffer 
-            # and then creating a harfbuzz font object from the buffer.
+class FontCacheEntry:
+    """
+    Handles loading and caching of font data for both fontTools and HarfBuzz.
+    Acts as a container for the loaded font objects.
+    """
+    def __init__(self, font_name, size=10.0):
+        self.font_name = font_name
+        self.size = size
+        self.pil_font = None  # PIL ImageFont object
+        self.ft_font = None   # fontTools TTFont object
+        self.hb_font = None   # HarfBuzz Font object
+        self.glyph_set = None # fontTools GlyphSet
+        self.y_axis_inverted = False
+        self.scale_factor = 1.0
+        self.fallback_fonts = {}
+        
+        self._load_font()
+        self._setup_harfbuzz()
+        self._detect_font_orientation()
+        self._load_fallback_fonts()
+        
+    def _load_font(self):
+        """Load the font using PIL and fontTools"""
+        if not ImageFont or not fontTools:
+            raise RuntimeError("Font loading dependencies (PIL/fontTools) not available.")
             
+        font_path_found = None
+        font_name, font_style = self.font_name, None
+        
+        if ":" in self.font_name:
+            parts = self.font_name.split(":", 1)
+            font_name = parts[0]
+            if len(parts) > 1 and parts[1].startswith("style="):
+                font_style = parts[1][6:]
+        
+        # Try loading with PIL (using path or name)
+        try:
+            # Attempt direct path/name load with PIL
+            self.pil_font = ImageFont.truetype(self.font_name, size=int(self.size * 3.937))
+            # If successful, try to get path for fontTools
+            if hasattr(self.pil_font, "path"):
+                font_path_found = self.pil_font.path
+        except OSError:
+            # If direct load fails, try finding font file path
+            log.debug(f"Direct PIL load failed for '{self.font_name}', searching system...")
+            font_path_found = self._find_font_file(font_name, font_style)
+            if font_path_found:
+                try:
+                    self.pil_font = ImageFont.truetype(
+                        font_path_found, size=int(self.size * 3.937)
+                    )
+                except OSError as e:
+                    log.warning(f"PIL failed to load found path '{font_path_found}': {e}")
+                    font_path_found = None  # Reset if PIL fails on found path
+            else:
+                log.warning(f"Could not find font file for '{font_name}' with style '{font_style}'.")
+                
+        # If PIL loading failed entirely, try fallbacks
+        if self.pil_font is None:
+            log.warning(f"Could not load primary font '{self.font_name}' with PIL. Trying fallbacks...")
+            fallback_fonts = [
+                "Arial",
+                "Times New Roman",
+                "Verdana",
+                "DejaVu Sans",
+                "Liberation Sans",
+            ]
+            for fallback in fallback_fonts:
+                try:
+                    self.pil_font = ImageFont.truetype(fallback, size=int(self.size * 3.937))
+                    log.debug(f"Using fallback PIL font '{fallback}'.")
+                    # Try to get path for fontTools fallback
+                    if hasattr(self.pil_font, "path"):
+                        font_path_found = self.pil_font.path
+                    else:
+                        font_path_found = self._find_font_file(fallback, None)
+                    break  # Stop on first successful fallback
+                except OSError:
+                    continue  # Try next fallback
+            if self.pil_font is None:
+                raise ValueError(f"Could not load font '{self.font_name}' or any fallback fonts with PIL.")
+        
+        # Now load with fontTools, using found path if available
+        if font_path_found:
+            try:
+                self.ft_font = fontTools.ttLib.TTFont(font_path_found)
+            except fontTools.ttLib.TTLibError as e:
+                log.error(f"fontTools failed to load path '{font_path_found}': {e}")
+                self.ft_font = None  # Ensure None on failure
+        else:
+            # If no path, try loading by name (might work for system fonts sometimes)
+            try:
+                # Use the potentially updated font_name if PIL used a fallback
+                effective_font_name = self.pil_font.getname()[0] if self.pil_font else font_name
+                self.ft_font = fontTools.ttLib.TTFont(effective_font_name)
+            except fontTools.ttLib.TTLibError as e:
+                log.error(f"fontTools failed to load font by name '{effective_font_name}': {e}")
+                self.ft_font = None
+                
+        if self.ft_font is None:
+            raise ValueError(f"fontTools could not load font '{self.font_name}'")
+            
+        # Get units per EM and calculate scale factor
+        try:
+            units_per_em = self.ft_font["head"].unitsPerEm
+            if units_per_em <= 0:
+                units_per_em = 1000  # Fallback default
+        except Exception as e:
+            units_per_em = 1000  # Fallback
+            log.warning(f"Could not read unitsPerEm from font: {e}. Assuming {units_per_em}")
+
+        self.scale_factor = self.size / units_per_em
+        
+        # Get glyph set for drawing outlines
+        try:
+            self.glyph_set = self.ft_font.getGlyphSet()
+        except Exception as e:
+            log.error(f"Failed to get glyphSet from font: {e}", exc_info=True)
+            self.glyph_set = None
+            raise ValueError(f"Failed to get glyphSet from font: {e}") from e
+            
+    def _setup_harfbuzz(self):
+        """Create a HarfBuzz font object from the fontTools font data"""
+        if not hb:
+            raise ImportError("HarfBuzz (uharfbuzz) is required for text shaping")
+            
+        try:
             # Create an in-memory binary buffer
             mem_file = io.BytesIO()
             
             # Save the font to the in-memory buffer
-            self._font.save(mem_file)
+            self.ft_font.save(mem_file)
             
             # Get the font data from the buffer
             mem_file.seek(0)
@@ -142,150 +205,88 @@ class TextContext:
             
             # Create HarfBuzz face and font objects
             hb_face = hb.Face(face_data)
-            self._hb_font = hb.Font(hb_face)
+            self.hb_font = hb.Font(hb_face)
             
             # Set scale based on unitsPerEm
             units_per_em = hb_face.upem
             if units_per_em <= 0:
                 units_per_em = 1000
             
-            self._hb_font.scale = (units_per_em, units_per_em)
+            self.hb_font.scale = (units_per_em, units_per_em)
             
         except Exception as e:
             log.error(f"Failed to create HarfBuzz font object: {e}", exc_info=True)
-            self._hb_font = None  # Ensure it's None on failure
+            self.hb_font = None  # Ensure it's None on failure
             raise ValueError(f"Failed to create HarfBuzz font object: {e}") from e
-
-        # Get units per EM and calculate scale factor
-        try:
-            units_per_em = self._font["head"].unitsPerEm
-            if units_per_em <= 0:
-                units_per_em = 1000  # Fallback default
-        except Exception as e:
-            units_per_em = 1000  # Fallback
-            log.warning(f"Could not read unitsPerEm from font: {e}. Assuming {units_per_em}")
-
-        self._scale_factor = self.size / units_per_em
-
-        # Get glyph set for drawing outlines
-        try:
-            self._glyph_set = self._font.getGlyphSet()
-        except Exception as e:
-            log.error(f"Failed to get glyphSet from font: {e}", exc_info=True)
-            self._glyph_set = None  # Ensure it's None on failure
-            raise ValueError(f"Failed to get glyphSet from font: {e}") from e
-
-        # --- Keep orientation detection and fallback font loading ---
-        self._detect_font_orientation()
-        self._load_fallback_fonts()
-
-    # --- _load_font (ensure it sets self._font and self._pil_font) ---
-    def _load_font(self):
-        """Load the font specified in self.font using PIL and fontTools"""
-        # Reset first
-        self._pil_font = None
-        self._font = None
-        font_path_found = None
-
-        if not ImageFont or not fontTools:
-            raise RuntimeError("Font loading dependencies (PIL/fontTools) not available.")
-
-        try:
-            font_name, font_style = self.font, None
-            if ":" in self.font:
-                parts = self.font.split(":", 1)
-                font_name = parts[0]
-                if len(parts) > 1 and parts[1].startswith("style="):
-                    font_style = parts[1][6:]
-
-            # Try loading with PIL (using path or name)
+            
+    def _detect_font_orientation(self):
+        """Detect if the font has inverted Y axis"""
+        self.y_axis_inverted = False
+        known_inverted_fonts = [
+            "New Gulim",
+            "Gulim",
+            "GulimChe",
+            "Dotum",
+            "DotumChe",
+            "MS Mincho",
+            "MS Gothic",
+            "MS PMincho",
+            "MS PGothic",
+            "SimSun",
+            "NSimSun",
+            "SimHei",
+            "FangSong",
+            "KaiTi",
+        ]
+        
+        if self.ft_font and hasattr(self.ft_font, "sfntVersion") and self.ft_font.sfntVersion == "ttcf":
+            pass
+        elif any(inverted_font in self.font_name for inverted_font in known_inverted_fonts):
+            self.y_axis_inverted = True
+            return
+            
+        if self.ft_font and hasattr(self.ft_font, "getBestCmap"):
             try:
-                # Attempt direct path/name load with PIL
-                self._pil_font = ImageFont.truetype(self.font, size=int(self.size * 3.937))
-                # If successful, try to get path for fontTools
-                if hasattr(self._pil_font, "path"):
-                    font_path_found = self._pil_font.path
-            except OSError:
-                # If direct load fails, try finding font file path
-                log.debug(f"Direct PIL load failed for '{self.font}', searching system...")
-                font_path_found = self._find_font_file(font_name, font_style)
-                if font_path_found:
+                cmap = self.ft_font.getBestCmap()
+                glyph_set = self.ft_font.getGlyphSet()
+                if ord("A") in cmap:
+                    pen = RecordingPen()
+                    glyph_name = cmap.get(ord("A"))
+                    if glyph_name and glyph_name in glyph_set:
+                        glyph_set[glyph_name].draw(pen)
+                        y_values = [
+                            args[0][1]
+                            for cmd, args in pen.value
+                            if cmd in ("moveTo", "lineTo") and args
+                        ]
+                        if y_values:
+                            if sum(1 for y in y_values if y < 0) / len(y_values) > 0.7:
+                                self.y_axis_inverted = True
+                                log.info(f"Detected inverted Y axis for font '{self.font_name}'")
+            except Exception as e:
+                log.warning(f"Warning: Error detecting font orientation: {e}")
+                
+    def _load_fallback_fonts(self):
+        """Load fallback fonts for character support"""
+        self.fallback_fonts = {}
+        if not ImageFont:
+            return  # Skip if PIL failed
+            
+        fallback_font_names = ["Arial", "Times New Roman", "DejaVu Sans", "Liberation Sans"]
+        try:
+            for font_name in fallback_font_names:
+                if font_name != self.font_name:
                     try:
-                        self._pil_font = ImageFont.truetype(
-                            font_path_found, size=int(self.size * 3.937)
-                        )
-                    except OSError as e:
-                        log.warning(f"PIL failed to load found path '{font_path_found}': {e}")
-                        font_path_found = None  # Reset if PIL fails on found path
-                else:
-                    log.warning(
-                        f"Could not find font file for '{font_name}' with style '{font_style}'."
-                    )
-
-            # If PIL loading failed entirely, try fallbacks
-            if self._pil_font is None:
-                log.warning(
-                    f"Could not load primary font '{self.font}' with PIL. Trying fallbacks..."
-                )
-                fallback_fonts = [
-                    "Arial",
-                    "Times New Roman",
-                    "Verdana",
-                    "DejaVu Sans",
-                    "Liberation Sans",
-                ]
-                for fallback in fallback_fonts:
-                    try:
-                        self._pil_font = ImageFont.truetype(fallback, size=int(self.size * 3.937))
-                        log.debug(f"Using fallback PIL font '{fallback}'.")
-                        # Try to get path for fontTools fallback
-                        if hasattr(self._pil_font, "path"):
-                            font_path_found = self._pil_font.path
-                        else:
-                            font_path_found = self._find_font_file(
-                                fallback, None
-                            )  # Search for fallback path
-                        break  # Stop on first successful fallback
+                        # Use a nominal size for loading, actual size doesn't matter for support check
+                        fallback_font = ImageFont.truetype(font_name, size=10)
+                        self.fallback_fonts[font_name] = fallback_font
                     except OSError:
-                        continue  # Try next fallback
-                if self._pil_font is None:
-                    raise ValueError(
-                        f"Could not load font '{self.font}' or any fallback fonts with PIL."
-                    )
-
-            # Now load with fontTools, using found path if available
-            if font_path_found:
-                try:
-                    self._font = fontTools.ttLib.TTFont(font_path_found)
-                except fontTools.ttLib.TTLibError as e:
-                    log.error(f"fontTools failed to load path '{font_path_found}': {e}")
-                    self._font = None  # Ensure None on failure
-            else:
-                # If no path, try loading by name (might work for system fonts sometimes)
-                try:
-                    # Use the potentially updated font_name if PIL used a fallback
-                    effective_font_name = (
-                        self._pil_font.getname()[0] if self._pil_font else font_name
-                    )
-                    self._font = fontTools.ttLib.TTFont(effective_font_name)
-                except fontTools.ttLib.TTLibError as e:
-                    log.error(f"fontTools failed to load font by name '{effective_font_name}': {e}")
-                    self._font = None
-
-            if self._font is None:
-                log.error(
-                    f"fontTools could not load font '{self.font}'. Outlines will be unavailable/rectangular."
-                )
-                # Don't raise error here, allow fallback to rectangles in get_glyph_outlines
-
+                        pass  # Ignore if fallback not found
         except Exception as e:
-            raise ValueError(f"Error loading font {self.font}: {str(e)}") from e
-
-    # --- Helper to find font file path ---
+            log.warning(f"Warning: Error loading fallback fonts: {e}")
+            
     def _find_font_file(self, family, style):
-        """Tries to find a font file path matching family and style."""
-        # This is platform dependent and complex. Using a basic search.
-        # Consider using matplotlib.font_manager for a more robust search.
+        """Find font file path based on family and style name"""
         import platform
 
         font_dirs = []
@@ -370,73 +371,94 @@ class TextContext:
                 f"Found font file '{found_path}' for family '{family}' style '{style}' (match score {best_match_score})"
             )
         return found_path
+        
 
-    # --- Keep _detect_font_orientation ---
-    def _detect_font_orientation(self):
-        # ... (keep as before) ...
-        self._y_axis_inverted = False
-        known_inverted_fonts = [
-            "New Gulim",
-            "Gulim",
-            "GulimChe",
-            "Dotum",
-            "DotumChe",
-            "MS Mincho",
-            "MS Gothic",
-            "MS PMincho",
-            "MS PGothic",
-            "SimSun",
-            "NSimSun",
-            "SimHei",
-            "FangSong",
-            "KaiTi",
-        ]
-        if self._font and hasattr(self._font, "sfntVersion") and self._font.sfntVersion == "ttcf":
-            # For TTC, check the first font inside? More complex needed. Assume not inverted for now.
-            pass
-        elif any(inverted_font in self.font for inverted_font in known_inverted_fonts):
-            self._y_axis_inverted = True
-            return
-        # ... (rest of detection logic using 'A' glyph - keep as before) ...
-        if self._font and hasattr(self._font, "getBestCmap"):
-            try:
-                cmap = self._font.getBestCmap()
-                glyph_set = self._font.getGlyphSet()
-                if ord("A") in cmap:
-                    pen = RecordingPen()
-                    glyph_name = cmap.get(ord("A"))
-                    if glyph_name and glyph_name in glyph_set:
-                        glyph_set[glyph_name].draw(pen)
-                        y_values = [
-                            args[0][1]
-                            for cmd, args in pen.value
-                            if cmd in ("moveTo", "lineTo") and args
-                        ]
-                        if y_values:
-                            if sum(1 for y in y_values if y < 0) / len(y_values) > 0.7:
-                                self._y_axis_inverted = True
-                                log.info(f"Detected inverted Y axis for font '{self.font}'")
-            except Exception as e:
-                log.warning(f"Warning: Error detecting font orientation: {e}")
+@lru_cache(maxsize=10)
+def get_font(font_name, size=10.0) -> FontCacheEntry:
+    """
+    Factory function that creates or returns a cached FontCache object.
+    Uses LRU caching to keep the most recently used fonts in memory.
+    
+    Args:
+        font_name: Name of the font or path to font file
+        size: Font size in units
+        
+    Returns:
+        FontCache object with loaded fonts
+    """
+    return FontCacheEntry(font_name, size)
 
-    # --- Keep _load_fallback_fonts ---
-    def _load_fallback_fonts(self):
-        # ... (keep as before, uses ImageFont) ...
-        self._fallback_fonts = {}
-        if not ImageFont:
-            return  # Skip if PIL failed
-        fallback_font_names = ["Arial", "Times New Roman", "DejaVu Sans", "Liberation Sans"]
+
+@datatree
+class TextContext:
+    text: str = dtfield(default="")
+    size: float = dtfield(default=10.0)
+    font: str = dtfield(default="Liberation Sans")
+    halign: str = dtfield(default="left")
+    valign: str = dtfield(default="baseline")
+    spacing: float = dtfield(default=1.0)
+    direction: str = dtfield(
+        default="ltr"
+    )  # Note: Used for final transform, hb uses base_direction
+    language: str = dtfield(default="en")
+    script: str = dtfield(default="latin")  # Used as hint for HarfBuzz
+    fa: float = dtfield(default=12.0)
+    fs: float = dtfield(default=2.0)
+    fn: int = dtfield(default=0)
+    base_direction: str = dtfield(default="ltr")  # Used for HarfBuzz direction
+    quality: float = dtfield(default=1.0)  # Controls curve tessellation quality/density
+
+    # --- Internal fields ---
+    _font: object = dtfield(init=False, repr=False, default=None)  # fontTools TTFont object
+    _hb_font: object = dtfield(init=False, repr=False, default=None)  # uharfbuzz Font object
+    _glyph_set: object = dtfield(init=False, repr=False, default=None)  # fontTools glyph set
+    _scale_factor: float = dtfield(init=False, repr=False, default=1.0)
+    _pil_font: object = dtfield(
+        init=False, repr=False, default=None
+    )  # Keep PIL for fallback/metrics if needed
+    _y_axis_inverted: bool = dtfield(init=False, repr=False, default=False)
+    _fallback_fonts: dict = dtfield(init=False, repr=False, default_factory=dict)
+    _font_cache: object = dtfield(init=False, repr=False, default=None)  # FontCache object
+
+    def __post_init__(self):
+        # --- Import heavy libraries once ---
+        if fontTools is None:
+            raise ImportError("Missing required libraries (Pillow or fontTools)")
+
+        if hb is None:
+            raise ImportError(
+                "uharfbuzz library is required for text shaping but could not be imported."
+            )
+
+        # --- Keep validations ---
+        if not self.font:
+            self.font = "Liberation Sans"
+        if self.halign not in ("left", "center", "right"):
+            raise ValueError(f"Invalid halign: {self.halign}")
+        if self.valign not in ("top", "center", "baseline", "bottom"):
+            raise ValueError(f"Invalid valign: {self.valign}")
+        if self.direction not in ("ltr", "rtl", "ttb", "btt"):
+            raise ValueError(f"Invalid direction: {self.direction}")
+        if self.base_direction not in ("ltr", "rtl"):
+            raise ValueError(f"Invalid base_direction: {self.base_direction}")
+        # --- End validations ---
+
+        # --- Load Font ---
         try:
-            for font_name in fallback_font_names:
-                if font_name != self.font:
-                    try:
-                        # Use a nominal size for loading, actual size doesn't matter for support check
-                        fallback_font = ImageFont.truetype(font_name, size=10)
-                        self._fallback_fonts[font_name] = fallback_font
-                    except OSError:
-                        pass  # Ignore if fallback not found
+            # Use the cached font loader
+            self._font_cache = get_font(self.font, self.size)
+            
+            # Get references to the loaded font objects
+            self._font = self._font_cache.ft_font
+            self._hb_font = self._font_cache.hb_font  
+            self._glyph_set = self._font_cache.glyph_set
+            self._pil_font = self._font_cache.pil_font
+            self._scale_factor = self._font_cache.scale_factor
+            self._y_axis_inverted = self._font_cache.y_axis_inverted
+            self._fallback_fonts = self._font_cache.fallback_fonts
         except Exception as e:
-            log.warning(f"Warning: Error loading fallback fonts: {e}")
+            log.error(f"Error loading font: {e}", exc_info=True)
+            raise ValueError(f"Failed to load font: {e}") from e
 
     def _get_glyph_outlines_by_name(self, glyph_name):
         """Gets raw outlines in font units for a specific glyph name."""
