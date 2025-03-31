@@ -873,7 +873,7 @@ class M3dRenderer:
         -> RenderContextManifold:
         raise NotImplementedError("surface is not implemented")
     
-    def fill(self, ops: "list[RenderContext]") -> "RenderContext":
+    def fill(self, ops: list[RenderContextCrossSection]) -> RenderContextCrossSection:
         raise NotImplementedError("fill is not implemented")
     
     def text(self, 
@@ -890,7 +890,8 @@ class M3dRenderer:
              fs: float, 
              fn: int) -> RenderContextCrossSection:
         
-        points, contours = render_text(text, size, font, halign, valign, spacing, direction, language, script, fa, fs, fn)
+        points, contours = render_text(
+            text, size, font, halign, valign, spacing, direction, language, script, fa, fs, fn)
 
         return self.polygon(points, contours, 10)
     
@@ -1004,13 +1005,25 @@ class M3dRenderer:
     
     def offset(self, 
                ops: list[RenderContextCrossSection], 
-               r: float, 
                delta: float, 
-               chamfer: bool, 
-               fa: float, 
-               fs: float, 
-               fn: float) -> RenderContextCrossSection:
-        raise NotImplementedError("offset is not implemented")
+               chamfer: bool | None = None, 
+               fn: int | None = None) -> RenderContextCrossSection:
+        solids = tuple(chain(*(op._apply_and_merge(op.get_solids) for op in ops)))
+        
+        cross_section: m3d.CrossSection = (
+            (sum(solids[1:], start=solids[0]),)
+            if len(solids) > 1
+            else solids[0]
+        )
+        
+        if fn > 1:
+            join_type = m3d.JoinType.Round
+        else:
+            join_type = m3d.JoinType.Square if chamfer else m3d.JoinType.Miter 
+
+        result_cross_section = cross_section.offset(delta, join_type=join_type, circular_segments=fn)
+        return RenderContextCrossSection(self, solid_objs=(result_cross_section,))
+    
     
     def color(self, c: str | np.ndarray | None = None, alpha: float | None = None) -> "M3dRenderer":
         """Returns a new renderer with the specified color and alpha.

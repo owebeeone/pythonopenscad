@@ -116,6 +116,12 @@ def create_primitive_models():
     )
     cut_extrusion_manifold = cut_extrusion.renderObj(renderer).get_solid_manifold()
 
+    offset = posc.Offset(r=0.5)(cut)
+    offset_extrusion = posc.Color("brown")(
+        posc.Translate([16.0, 10.0, 4.5])(posc.Linear_Extrude(height=1.0)(offset))
+    )
+    offset_extrusion_manifold = offset_extrusion.renderObj(renderer).get_solid_manifold()
+    
 
     # Convert to viewer models
     models = [
@@ -133,6 +139,7 @@ def create_primitive_models():
         Model.from_manifold(polygon_extrusion_manifold),
         Model.from_manifold(projection_extrusion_manifold),
         Model.from_manifold(cut_extrusion_manifold),
+        Model.from_manifold(offset_extrusion_manifold),
     ]
 
     return models

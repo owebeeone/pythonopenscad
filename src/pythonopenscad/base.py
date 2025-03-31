@@ -1494,14 +1494,18 @@ class Offset(PoscParentBase):
         self.check_required_parameters()
         
     def renderObj(self, renderer: M3dRenderer) -> RenderContext:
-        self.offset(
+        if self.r is None:
+            r_or_delta = self.delta
+            fragnents = 0
+        else:
+            r_or_delta = self.r
+            fragnents = get_fragments_from_fn_fa_fs(r_or_delta, self._fn, self._fa, self._fs)
+        
+        return renderer.offset(
             self.renderObjChildren(renderer), 
-            self.r, 
-            self.delta, 
+            r_or_delta, 
             self.chamfer, 
-            self.fa, 
-            self.fs, 
-            self.fn)
+            fragnents)
 
 
 @apply_posc_transformation_attributes
