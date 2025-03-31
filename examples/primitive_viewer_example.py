@@ -122,7 +122,19 @@ def create_primitive_models():
     )
     offset_extrusion_manifold = offset_extrusion.renderObj(renderer).get_solid_manifold()
     
-
+    filled_text = posc.Fill()(posc.Text(
+        "A",
+        size=3,
+        font="Arial",
+        halign="center",
+        valign="center",
+    ))
+    filled_text_extrusion = posc.Color("royalblue")(
+        posc.Translate([16.0, 15.0, 4.5])(posc.Linear_Extrude(height=1.0)(filled_text))
+    )
+    filled_text_extrusion_manifold = filled_text_extrusion.renderObj(renderer).get_solid_manifold()
+    
+    
     # Convert to viewer models
     models = [
         Model.from_manifold(hull_extrusion_manifold),
@@ -140,6 +152,7 @@ def create_primitive_models():
         Model.from_manifold(projection_extrusion_manifold),
         Model.from_manifold(cut_extrusion_manifold),
         Model.from_manifold(offset_extrusion_manifold),
+        Model.from_manifold(filled_text_extrusion_manifold),
     ]
 
     return models

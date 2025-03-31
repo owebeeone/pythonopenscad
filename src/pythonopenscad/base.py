@@ -1787,16 +1787,25 @@ class Text(PoscBase):
     )
     
     def renderObj(self, renderer: M3dRenderer) -> RenderContext:
+        direction = self.direction if self.direction else "ltr"
+        size = self.size if self.size else 1.0
+        font = self.font if self.font else "Liberation Sans"
+        halign = self.halign if self.halign else "left"
+        valign = self.valign if self.valign else "baseline"
+        spacing = self.spacing if self.spacing else 1.0
+        language = self.language if self.language else "en"
+        script = self.script if self.script else "latin"
+        
         return renderer.text(
             self.text, 
-            self.size, 
-            self.font, 
-            self.halign, 
-            self.valign, 
-            self.spacing, 
-            self.direction,
-            self.language, 
-            self.script, 
+            size, 
+            font, 
+            halign, 
+            valign, 
+            spacing, 
+            direction,
+            language, 
+            script, 
             self._fa, 
             self._fs, 
             self._fn)

@@ -874,7 +874,23 @@ class M3dRenderer:
         raise NotImplementedError("surface is not implemented")
     
     def fill(self, ops: list[RenderContextCrossSection]) -> RenderContextCrossSection:
-        raise NotImplementedError("fill is not implemented")
+        solids = tuple(chain(*(op._apply_and_merge(op.get_solids) for op in ops)))
+        
+        cross_section: m3d.CrossSection = (
+            (sum(solids[1:], start=solids[0]),)
+            if len(solids) > 1
+            else solids[0]
+        )
+        
+        polygons = cross_section.to_polygons()
+        
+        new_polygons = []
+        for polygon in polygons:
+            if get_polygon_signed_area(polygon) > 0:
+                new_polygons.append(polygon)
+        
+        return RenderContextCrossSection(
+            self, solid_objs=(m3d.CrossSection(new_polygons, fillrule=m3d.FillRule.Positive),))
     
     def text(self, 
              text: str, 
@@ -1165,3 +1181,23 @@ def triangulate_3d_face(verts_array: np.ndarray, face: list[list[int]]) -> list[
         tris = [[tri[0], tri[2], tri[1]] for tri in tris]
 
     return tris
+
+def get_polygon_signed_area(poly_verts: np.ndarray) -> float:
+    """
+    Calculates the signed area of a polygon using the Shoelace formula.
+    Assumes poly_verts is an Nx2 NumPy array of vertices [x, y].
+    Returns positive area for CCW winding, negative for CW
+    (in standard Cartesian coordinates where Y increases upwards).
+    """
+    
+    poly_verts = np.asarray(poly_verts)
+    
+    if poly_verts.shape[0] < 3:
+        return 0.0 # Not a polygon
+
+    x = poly_verts[:, 0]
+    y = poly_verts[:, 1]
+
+    # Use np.roll to get coordinates of the 'next' vertex
+    signed_area = 0.5 * np.sum(x * np.roll(y, -1) - np.roll(x, -1) * y)
+    return signed_area
