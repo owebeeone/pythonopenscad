@@ -4,6 +4,7 @@ import anchorscad_lib.linear as l
 import logging
 import sys
 import os
+from pythonopenscad.text_utils import CubicSpline, QuadraticSpline, extentsof
 
 try:
     import uharfbuzz as hb
@@ -33,435 +34,6 @@ log = logging.getLogger(__name__)
 EPSILON = 1e-6
 
 
-def to_gvector(np_array):
-    """Converts a 2D or 3D numpy array to a GVector."""
-    arr = np.asarray(np_array)
-    if arr.shape == (2,):
-        return l.GVector([arr[0], arr[1], 0, 1])
-    elif arr.shape == (3,):
-        return l.GVector([arr[0], arr[1], arr[2], 1])
-    elif arr.shape == (4,):
-        return l.GVector(arr)
-    else:
-        raise ValueError(f"Cannot convert array of shape {arr.shape} to GVector")
-
-
-def extentsof(p: np.ndarray) -> np.ndarray:
-    """Calculates the min and max coordinates (bounding box) of points."""
-    if p.shape[0] == 0:  # Handle empty array
-        # Return a zero-size box at origin
-        return np.array([[0.0, 0.0], [0.0, 0.0]])
-    return np.array((p.min(axis=0), p.max(axis=0)))
-
-
-@datatree(frozen=True)
-class CubicSpline:
-    """Cubic spline evaluator, extents and inflection point finder."""
-
-    p: object = dtfield(doc="The control points for the spline, shape (4, N).")
-    dimensions: int = dtfield(
-        self_default=lambda s: np.asarray(s.p).shape[1],  # Get dim from shape
-        init=True,
-        doc="The number of dimensions in the spline.",
-    )
-
-    COEFFICIENTS = np.array([
-        [-1.0, 3, -3, 1],
-        [3, -6, 3, 0],
-        [-3, 3, 0, 0],
-        [1, 0, 0, 0],
-    ])  # Shape (4, 4)
-
-    # @staticmethod # For some reason this breaks on Raspberry Pi OS.
-    def _dcoeffs_builder(dims):
-        # ... (keep as before) ...
-        zero_order_derivative_coeffs = np.array([[1.0] * dims, [1] * dims, [1] * dims, [1] * dims])
-        derivative_coeffs = np.array([[3.0] * dims, [2] * dims, [1] * dims, [0] * dims])
-        second_derivative = np.array([[6] * dims, [2] * dims, [0] * dims, [0] * dims])
-        return (zero_order_derivative_coeffs, derivative_coeffs, second_derivative)
-
-    DERIVATIVE_COEFFS = tuple((
-        _dcoeffs_builder(1),
-        _dcoeffs_builder(2),
-        _dcoeffs_builder(3),
-    ))
-
-    def _dcoeffs(self, deivative_order):
-        # ... (keep as before) ...
-        if 1 <= self.dimensions <= len(self.DERIVATIVE_COEFFS):
-            return self.DERIVATIVE_COEFFS[self.dimensions - 1][deivative_order]
-        else:
-            log.warning(
-                f"Unsupported dimension {self.dimensions} for derivative coeffs, using dim 2"
-            )
-            return self.DERIVATIVE_COEFFS[1][deivative_order]  # Default to 2D
-
-    def __post_init__(self):
-        # Ensure p is a numpy array (should be (4, dims))
-        p_arr = np.asarray(self.p, dtype=float)
-        if p_arr.shape[0] != 4 or p_arr.ndim != 2:
-            raise ValueError(
-                f"CubicSpline control points 'p' must have shape (4, dims), got {p_arr.shape}"
-            )
-        object.__setattr__(self, "p", p_arr)
-        # Calculate coefficients: (4, 4) @ (4, dims) -> (4, dims)
-        object.__setattr__(self, "coefs", np.matmul(self.COEFFICIENTS, self.p))
-
-    def _make_ta3(self, t):
-        t2 = t * t
-        t3 = t2 * t
-        # Correct usage: Create column vector and tile horizontally
-        t_powers = np.array([[t3], [t2], [t], [1]])  # Shape (4, 1)
-        ta = np.tile(t_powers, (1, self.dimensions))  # Shape (4, dims)
-        return ta
-
-    def _make_ta2(self, t):
-        t2 = t * t
-        # Correct usage: Create column vector and tile horizontally
-        t_powers = np.array([[t2], [t], [1], [0]])  # Shape (4, 1)
-        ta = np.tile(t_powers, (1, self.dimensions))  # Shape (4, dims)
-        return ta
-
-    # --- evaluate (Iterative version as requested by user) ---
-    def evaluate(self, t):
-        """Evaluates the spline at one or more t values."""
-        t_arr = np.asarray(t)
-        if t_arr.ndim == 0:  # Scalar input
-            ta = self._make_ta3(t_arr.item())  # Pass scalar t
-            # coefs=(4,dims), ta=(4,dims) -> multiply=(4,dims) -> sum(axis=0)=(dims,)
-            return np.sum(np.multiply(self.coefs, ta), axis=0)
-        else:  # Array input
-            results = []
-            for t_val in t_arr:
-                results.append(self.evaluate(t_val))  # Recursive call for scalar
-            return np.array(results)  # Shape (N, dims)
-
-    # --- Keep find_roots, curve_maxima_minima_t, curve_inflexion_t ---
-    @classmethod
-    def find_roots(cls, a, b, c, *, t_range: tuple[float, float] = (0.0, 1.0)):
-        # ... (keep as before, using np.isclose maybe) ...
-        if np.isclose(a, 0):
-            if np.isclose(b, 0):
-                return ()
-            t = -c / b
-            return (t,) if t_range[0] - EPSILON <= t <= t_range[1] + EPSILON else ()
-        b2_4ac = b * b - 4 * a * c
-        if b2_4ac < 0 and not np.isclose(b2_4ac, 0):
-            return ()
-        elif b2_4ac < 0:
-            b2_4ac = 0
-        sqrt_b2_4ac = np.sqrt(b2_4ac)
-        two_a = 2 * a
-        if np.isclose(two_a, 0):  # Avoid division by zero if a is extremely small
-            return ()
-        values = ((-b + sqrt_b2_4ac) / two_a, (-b - sqrt_b2_4ac) / two_a)
-        return tuple(t for t in values if t_range[0] - EPSILON <= t <= t_range[1] + EPSILON)
-
-    def curve_maxima_minima_t(self, t_range: tuple[float, float] = (0.0, 1.0)):
-        d_coefs_scaled = self.coefs * self._dcoeffs(1)  # Shape (4, dims)
-        # Derivative coeffs are 3A, 2B, C (rows 0, 1, 2)
-        return dict(
-            (i, self.find_roots(*(d_coefs_scaled[0:3, i]), t_range=t_range))
-            for i in range(self.dimensions)
-        )
-
-    def curve_inflexion_t(self, t_range: tuple[float, float] = (0.0, 1.0)):
-        d2_coefs_scaled = self.coefs * self._dcoeffs(2)  # Shape (4, dims)
-        # Second derivative coeffs are 6A, 2B (rows 0, 1)
-        # Solve 6At + 2B = 0 -> find_roots(6A, 2B)
-        return dict(
-            (
-                i,
-                QuadraticSpline.find_roots(*(d2_coefs_scaled[0:2, i]), t_range=t_range),
-            )  # Use linear root finder
-            for i in range(self.dimensions)
-        )
-
-    # --- derivative (using iterative evaluate) ---
-    def derivative(self, t):
-        """Calculates the derivative of the spline."""
-        # B'(t) = 3(1-t)^2(P1-P0) + 6(1-t)t(P2-P1) + 3t^2(P3-P2)
-        # Using polynomial form: d/dt (At^3 + Bt^2 + Ct + D) = 3At^2 + 2Bt + C
-        t_arr = np.asarray(t)
-        # Coefs are [A, B, C, D] for each dimension (shape (4, dims))
-        A = self.coefs[0]  # Shape (dims,)
-        B = self.coefs[1]  # Shape (dims,)
-        C = self.coefs[2]  # Shape (dims,)
-        # Derivative coefficients: [3A, 2B, C]
-        deriv_poly_coefs = np.vstack([3 * A, 2 * B, C])  # Shape (3, dims)
-
-        if t_arr.ndim == 0:  # Scalar t
-            t_val = t_arr.item()
-            t2 = t_val * t_val
-            # Create t-power array matching deriv_poly_coefs shape
-            ta = np.tile(np.array([[t2], [t_val], [1]]), (1, self.dimensions))  # Shape (3, dims)
-            return np.sum(np.multiply(deriv_poly_coefs, ta), axis=0)  # Shape (dims,)
-        else:  # Array t
-            results = []
-            for t_val in t_arr:
-                results.append(self.derivative(t_val))  # Recursive call
-            return np.array(results)  # Shape (N, dims)
-
-    # --- Keep normal2d, extremes, extents, transform, azimuth_t ---
-    # (Make sure they use the updated derivative/evaluate if needed)
-    def normal2d(self, t, dims=[0, 1]):
-        d = self.derivative(t)
-        if d.shape[0] < 2:
-            return np.array([0.0, 0.0])
-        vr = np.array([d[dims[1]], -d[dims[0]]])
-        mag = np.linalg.norm(vr)
-        return vr / mag if mag > EPSILON else np.array([0.0, 0.0])
-
-    def extremes(self):
-        roots = self.curve_maxima_minima_t()
-        t_values = {0.0, 1.0}
-        for v in roots.values():
-            t_values.update(v)
-        valid_t_values = sorted([t for t in t_values if 0.0 - EPSILON <= t <= 1.0 + EPSILON])
-        clamped_t_values = np.clip(valid_t_values, 0.0, 1.0)
-        if not clamped_t_values.size:
-            return np.empty((0, self.dimensions))
-        # Use iterative evaluate
-        return np.array([self.evaluate(t) for t in clamped_t_values])
-
-    def extents(self):
-        extr = self.extremes()
-        return extentsof(extr)
-
-    def transform(self, m: l.GMatrix) -> "CubicSpline":
-        transformed_p = []
-        for point in self.p:  # self.p is (4, dims)
-            # Need to transpose self.p to iterate points? No, p is already (4, dims)
-            # Let's assume p is (4, 2) or (4, 3)
-            # We need to transform each of the 4 points
-            pass  # This needs rethink if p is (4, dims) not list of points
-        # Assuming self.p was originally list of 4 points (before __post_init__)
-        # Let's revert to original assumption for transform
-        # This requires p to be stored differently or transform adapted
-        # Safest: Revert transform to expect list of points input for p
-        # OR adjust transform to work with (4, dims) array - more complex GMatrix mult
-        # --> KEEPING ORIGINAL TRANSFORM - assumes p was list-like input initially
-        # This might conflict with __post_init__ ensuring p is (4, dims) array
-        # --> TODO: Revisit Spline initialization vs transform compatibility
-        try:
-            new_p_list = []
-            for i in range(self.p.shape[0]):  # Iterate through rows (points)
-                pt = self.p[i, :]  # Get the i-th point (shape (dims,))
-                gv = to_gvector(pt)  # Convert to GVector (adds 0 for z if needed)
-                transformed_gv = m * gv
-                new_p_list.append(transformed_gv.A[0, : self.dimensions])  # Extract relevant dims
-            # Create new spline with list of points, let __post_init__ handle array conversion
-            return CubicSpline(p=new_p_list)
-        except Exception as e:
-            log.error(f"CubicSpline transform failed: {e}. Input p shape: {self.p.shape}")
-            return self  # Return self on error? Or raise?
-
-    def azimuth_t(
-        self,
-        angle: float | l.Angle = 0,
-        t_end: bool = False,
-        t_range: tuple[float, float] = (0.0, 1.0),
-    ) -> tuple[float, ...]:
-        # ... (keep as before, relies on derivative) ...
-        if self.dimensions < 2:
-            return ()
-        angle = l.angle(angle)
-        ref_t = t_range[1] if t_end else t_range[0]
-        d_ref = self.derivative(ref_t)
-        if np.linalg.norm(d_ref) < EPSILON:
-            return ()
-        ref_angle_rad = np.arctan2(d_ref[1], d_ref[0])
-        target_angle_rad = ref_angle_rad + angle.radians
-        cos_target, sin_target = np.cos(target_angle_rad), np.sin(target_angle_rad)
-        # D(t) = 3At^2 + 2Bt + C
-        A, B, C = self.coefs[0], self.coefs[1], self.coefs[2]
-        # Dy(t)*cos - Dx(t)*sin = 0
-        # (3Ay*t^2+2By*t+Cy)*cos - (3Ax*t^2+2Bx*t+Cx)*sin = 0
-        # t^2*(3Ay*cos-3Ax*sin) + t*(2By*cos-2Bx*sin) + (Cy*cos-Cx*sin) = 0
-        a = 3 * A[1] * cos_target - 3 * A[0] * sin_target
-        b = 2 * B[1] * cos_target - 2 * B[0] * sin_target
-        c = C[1] * cos_target - C[0] * sin_target
-        return self.find_roots(a, b, c, t_range=t_range)
-
-
-@datatree(frozen=True)
-class QuadraticSpline:
-    """Quadratic spline evaluator, extents and inflection point finder."""
-
-    p: object = dtfield(doc="The control points for the spline, shape (3, N).")
-    dimensions: int = dtfield(
-        self_default=lambda s: np.asarray(s.p).shape[1],  # Get dim from shape
-        init=True,
-        doc="The number of dimensions in the spline.",
-    )
-
-    COEFFICIENTS = np.array([[1.0, -2, 1], [-2.0, 2, 0], [1.0, 0, 0]])  # Shape (3, 3)
-
-    # @staticmethod # For some reason this breaks on Raspberry Pi OS.
-    def _dcoeffs_builder(dims):
-        # ... (keep as before) ...
-        zero_order_derivative_coeffs = np.array([[1.0] * dims, [1] * dims, [1] * dims])
-        derivative_coeffs = np.array([[2] * dims, [1] * dims, [0] * dims])
-        second_derivative = np.array([[2] * dims, [0] * dims, [0] * dims])
-        return (zero_order_derivative_coeffs, derivative_coeffs, second_derivative)
-
-    DERIVATIVE_COEFFS = tuple((
-        _dcoeffs_builder(1),
-        _dcoeffs_builder(2),
-        _dcoeffs_builder(3),
-    ))
-
-    def _dcoeffs(self, deivative_order):
-        # ... (keep as before) ...
-        if 1 <= self.dimensions <= len(self.DERIVATIVE_COEFFS):
-            return self.DERIVATIVE_COEFFS[self.dimensions - 1][deivative_order]
-        else:
-            log.warning(
-                f"Unsupported dimension {self.dimensions} for derivative coeffs, using dim 2"
-            )
-            return self.DERIVATIVE_COEFFS[1][deivative_order]  # Default to 2D
-
-    def __post_init__(self):
-        # Ensure p is a numpy array (should be (3, dims))
-        p_arr = np.asarray(self.p, dtype=float)
-        if p_arr.shape[0] != 3 or p_arr.ndim != 2:
-            raise ValueError(
-                f"QuadraticSpline control points 'p' must have shape (3, dims), got {p_arr.shape}"
-            )
-        object.__setattr__(self, "p", p_arr)
-        # Calculate coefficients: (3, 3) @ (3, dims) -> (3, dims)
-        object.__setattr__(self, "coefs", np.matmul(self.COEFFICIENTS, self.p))
-
-    def _qmake_ta2(self, t):
-        # Correct usage: Create column vector and tile horizontally
-        t_powers = np.array([[t**2], [t], [1]])  # Shape (3, 1)
-        ta = np.tile(t_powers, (1, self.dimensions))  # Shape (3, dims)
-        return ta
-
-    def _qmake_ta1(self, t):
-        # Correct usage: Create column vector and tile horizontally
-        t_powers = np.array([[t], [1], [0]])  # Shape (3, 1)
-        ta = np.tile(t_powers, (1, self.dimensions))  # Shape (3, dims)
-        return ta
-
-    def evaluate(self, t):
-        """Evaluates the spline at one or more t values."""
-        t_arr = np.asarray(t)
-        if t_arr.ndim == 0:  # Scalar input
-            ta = self._qmake_ta2(t_arr.item())  # Pass scalar t
-            # coefs=(3,dims), ta=(3,dims) -> multiply=(3,dims) -> sum(axis=0)=(dims,)
-            return np.sum(np.multiply(self.coefs, ta), axis=0)
-        else:  # Array input
-            results = []
-            for t_val in t_arr:
-                results.append(self.evaluate(t_val))  # Recursive call for scalar
-            return np.array(results)  # Shape (N, dims)
-
-    @classmethod
-    def find_roots(cls, a, b, *, t_range: tuple[float, float] = (0.0, 1.0)):
-        if np.isclose(a, 0):
-            return ()
-        t = -b / a
-        return (t,) if t_range[0] - EPSILON <= t <= t_range[1] + EPSILON else ()
-
-    def curve_maxima_minima_t(self, t_range: tuple[float, float] = (0.0, 1.0)):
-        d_coefs_scaled = self.coefs * self._dcoeffs(1)  # Shape (3, dims)
-        # Derivative coeffs are 2A, B (rows 0, 1)
-        return dict(
-            (i, self.find_roots(*(d_coefs_scaled[0:2, i]), t_range=t_range))
-            for i in range(self.dimensions)
-        )
-
-    def curve_inflexion_t(self, t_range: tuple[float, float] = (0.0, 1.0)):
-        return dict((i, ()) for i in range(self.dimensions))  # No inflection points
-
-    def derivative(self, t):
-        """Calculates the derivative of the spline."""
-        # B'(t) = 2(1-t)(P1-P0) + 2t(P2-P1)
-        # Using polynomial form: d/dt (At^2 + Bt + C) = 2At + B
-        t_arr = np.asarray(t)
-        # Coefs are [A, B, C] for each dimension (shape (3, dims))
-        A = self.coefs[0]  # Shape (dims,)
-        B = self.coefs[1]  # Shape (dims,)
-        # Derivative coefficients: [2A, B]
-        deriv_poly_coefs = np.vstack([2 * A, B])  # Shape (2, dims)
-
-        if t_arr.ndim == 0:  # Scalar t
-            t_val = t_arr.item()
-            # Create t-power array matching deriv_poly_coefs shape
-            ta = np.tile(np.array([[t_val], [1]]), (1, self.dimensions))  # Shape (2, dims)
-            return np.sum(np.multiply(deriv_poly_coefs, ta), axis=0)  # Shape (dims,)
-        else:  # Array t
-            results = []
-            for t_val in t_arr:
-                results.append(self.derivative(t_val))  # Recursive call
-            return np.array(results)  # Shape (N, dims)
-
-    def normal2d(self, t, dims=[0, 1]):
-        d = self.derivative(t)
-        if d.shape[0] < 2:
-            return np.array([0.0, 0.0])
-        vr = np.array([d[dims[1]], -d[dims[0]]])
-        mag = np.linalg.norm(vr)
-        return vr / mag if mag > EPSILON else np.array([0.0, 0.0])
-
-    def extremes(self):
-        roots = self.curve_maxima_minima_t()
-        t_values = {0.0, 1.0}
-        for v in roots.values():
-            t_values.update(v)
-        valid_t_values = sorted([t for t in t_values if 0.0 - EPSILON <= t <= 1.0 + EPSILON])
-        clamped_t_values = np.clip(valid_t_values, 0.0, 1.0)
-        if not clamped_t_values.size:
-            return np.empty((0, self.dimensions))
-        return np.array([self.evaluate(t) for t in clamped_t_values])
-
-    def extents(self):
-        extr = self.extremes()
-        return extentsof(extr)
-
-    def transform(self, m: l.GMatrix) -> "QuadraticSpline":
-        # See comment in CubicSpline.transform - assuming p was list-like input
-        # TODO: Revisit Spline initialization vs transform compatibility
-        try:
-            new_p_list = []
-            for i in range(self.p.shape[0]):  # Iterate through rows (points)
-                pt = self.p[i, :]  # Get the i-th point (shape (dims,))
-                gv = to_gvector(pt)
-                transformed_gv = m * gv
-                new_p_list.append(transformed_gv.A[0, : self.dimensions])
-            return QuadraticSpline(p=new_p_list)
-        except Exception as e:
-            log.error(f"QuadraticSpline transform failed: {e}. Input p shape: {self.p.shape}")
-            return self
-
-    def azimuth_t(
-        self,
-        angle: float | l.Angle = 0,
-        t_end: bool = False,
-        t_range: tuple[float, float] = (0.0, 1.0),
-    ) -> tuple[float, ...]:
-        # ... (keep as before, relies on derivative) ...
-        if self.dimensions < 2:
-            return ()
-        angle = l.angle(angle)
-        ref_t = t_range[1] if t_end else t_range[0]
-        d_ref = self.derivative(ref_t)
-        if np.linalg.norm(d_ref) < EPSILON:
-            return ()
-        ref_angle_rad = np.arctan2(d_ref[1], d_ref[0])
-        target_angle_rad = ref_angle_rad + angle.radians
-        cos_target, sin_target = np.cos(target_angle_rad), np.sin(target_angle_rad)
-        # D(t) = 2At + B
-        A, B = self.coefs[0], self.coefs[1]
-        # Dy(t)*cos - Dx(t)*sin = 0
-        # (2Ay*t+By)*cos - (2Ax*t+Bx)*sin = 0
-        # t*(2Ay*cos-2Ax*sin) + (By*cos-Bx*sin) = 0
-        a = 2 * A[1] * cos_target - 2 * A[0] * sin_target
-        b = B[1] * cos_target - B[0] * sin_target
-        return self.find_roots(a, b, t_range=t_range)
-
-
 # --- TextContext Class (with HarfBuzz) ---
 @datatree
 class TextContext:
@@ -480,6 +52,7 @@ class TextContext:
     fs: float = dtfield(default=2.0)
     fn: int = dtfield(default=0)
     base_direction: str = dtfield(default="ltr")  # Used for HarfBuzz direction
+    quality: float = dtfield(default=1.0)  # Controls curve tessellation quality/density
 
     # --- Internal fields ---
     _font: object = dtfield(init=False, repr=False, default=None)  # fontTools TTFont object
@@ -601,7 +174,7 @@ class TextContext:
                     font_path_found = self._pil_font.path
             except OSError:
                 # If direct load fails, try finding font file path
-                log.info(f"Direct PIL load failed for '{self.font}', searching system...")
+                log.debug(f"Direct PIL load failed for '{self.font}', searching system...")
                 font_path_found = self._find_font_file(font_name, font_style)
                 if font_path_found:
                     try:
@@ -631,7 +204,7 @@ class TextContext:
                 for fallback in fallback_fonts:
                     try:
                         self._pil_font = ImageFont.truetype(fallback, size=int(self.size * 3.937))
-                        log.info(f"Using fallback PIL font '{fallback}'.")
+                        log.debug(f"Using fallback PIL font '{fallback}'.")
                         # Try to get path for fontTools fallback
                         if hasattr(self._pil_font, "path"):
                             font_path_found = self._pil_font.path
@@ -761,7 +334,7 @@ class TextContext:
                 continue  # Ignore directories we can't access
 
         if found_path:
-            log.info(
+            log.debug(
                 f"Found font file '{found_path}' for family '{family}' style '{style}' (match score {best_match_score})"
             )
         return found_path
@@ -835,6 +408,15 @@ class TextContext:
 
     def _get_glyph_outlines_by_name(self, glyph_name):
         """Gets raw outlines in font units for a specific glyph name."""
+        # Initialize quality_factor and fn_scaled at the beginning of the function
+        quality_factor = 1.0  # Default quality
+        if hasattr(self, 'quality') and self.quality > 0:
+            quality_factor = self.quality
+            
+        fn_scaled = 0
+        if hasattr(self, 'fn') and self.fn > 0:
+            fn_scaled = self.fn * quality_factor
+        
         if not self._glyph_set or glyph_name not in self._glyph_set:
             log.warning(f"Glyph name '{glyph_name}' not found in glyph set.")
             # Return a fallback square shape in font units
@@ -931,15 +513,27 @@ class TextContext:
                             np.linalg.norm(p2_arr - p1_arr),
                             EPSILON,
                         )
-                        num_steps = get_fragments_from_fn_fa_fs(radius, self.fn, self.fa, self.fs)
+                        
+                        # Apply quality parameter for tessellation density
+                        quality_factor = 1.0  # Default quality factor
+                        if hasattr(self, 'quality') and self.quality > 0:
+                            quality_factor = self.quality
+                        
+                        # Determine number of segments
+                        if fn_scaled > 0:
+                            num_steps = max(int(fn_scaled), 6)  # Minimum 6 for quadratic
+                        else:
+                            # Get steps using get_fragments_from_fn_fa_fs with quality factor
+                            num_steps = get_fragments_from_fn_fa_fs(radius, self.fn, self.fa, self.fs, quality_factor)
+                            num_steps = max(num_steps, 6)  # Ensure minimum 6 steps for quadratic curves
+                        
                         spline = QuadraticSpline(bezier_points)
                         t_values = np.linspace(0, 1, num_steps + 1)[1:]
-                        if len(t_values) > 0:
-                            new_points = np.array([spline.evaluate(t) for t in t_values])
-                            if new_points.ndim == 2 and new_points.shape[1] == 2:
-                                current_contour.extend([tuple(pt) for pt in new_points])
-                            elif new_points.shape == (2,):
-                                current_contour.append(tuple(new_points))
+                        new_points = spline.evaluate(t_values)
+                        if new_points.ndim == 2 and new_points.shape[1] == 2:
+                            current_contour.extend([tuple(pt) for pt in new_points])
+                        elif new_points.shape == (2,):
+                            current_contour.append(tuple(new_points))
                         final_pt_tuple = tuple(p2_arr)  # Ensure endpoint tuple is added
                         if not current_contour or not np.allclose(
                             current_contour[-1], final_pt_tuple
@@ -981,15 +575,27 @@ class TextContext:
                         np.linalg.norm(p3_arr - p2_arr),
                         EPSILON,
                     )
-                    num_steps = get_fragments_from_fn_fa_fs(radius, self.fn, self.fa, self.fs)
+                    
+                    # Apply quality parameter for tessellation density
+                    quality_factor = 1.0  # Default quality factor
+                    if hasattr(self, 'quality') and self.quality > 0:
+                        quality_factor = self.quality
+                    
+                    # Calculate segments with quality scaling
+                    if hasattr(self, 'fn') and self.fn > 0:
+                        num_steps = max(int(self.fn * quality_factor), 8)  # Scale by quality, minimum 8 for cubic
+                    else:
+                        # Get steps using get_fragments_from_fn_fa_fs with quality factor
+                        num_steps = get_fragments_from_fn_fa_fs(radius, self.fn, self.fa, self.fs, quality_factor)
+                        num_steps = max(num_steps, 8)  # Ensure minimum 8 steps for cubic curves
+                    
                     spline = CubicSpline(points)
                     t_values = np.linspace(0, 1, num_steps + 1)[1:]
-                    if len(t_values) > 0:
-                        new_points = np.array([spline.evaluate(t) for t in t_values])
-                        if new_points.ndim == 2 and new_points.shape[1] == 2:
-                            current_contour.extend([tuple(pt) for pt in new_points])
-                        elif new_points.shape == (2,):
-                            current_contour.append(tuple(new_points))
+                    new_points = np.array([spline.evaluate(t) for t in t_values])
+                    if new_points.ndim == 2 and new_points.shape[1] == 2:
+                        current_contour.extend([tuple(pt) for pt in new_points])
+                    elif new_points.shape == (2,):
+                        current_contour.append(tuple(new_points))
                     final_pt_tuple = tuple(p3_arr)  # Ensure endpoint tuple is added
                     if not current_contour or not np.allclose(current_contour[-1], final_pt_tuple):
                         current_contour.append(final_pt_tuple)
@@ -1118,7 +724,7 @@ class TextContext:
         buf.language = self.language
         buf.cluster_level = hb.BufferClusterLevel.MONOTONE_CHARACTERS  # Helps map glyphs to chars
 
-        log.info(
+        log.debug(
             f"Shaping text: '{self.text}' | Direction: {buf.direction} | Script: {buf.script} | Lang: {buf.language}"
         )
 
@@ -1237,7 +843,7 @@ class TextContext:
             log.warning("No valid polygons remaining after final conversion.")
             return np.empty((0, 2)), []
 
-        log.info(f"Successfully generated {len(final_contours)} contours.")
+        log.debug(f"Successfully generated {len(final_contours)} contours.")
         return np.vstack(final_all_points), final_contours
 
     def get_polygons_at(self, pos: int) -> tuple[np.ndarray, list[np.ndarray]]:
@@ -1364,6 +970,7 @@ def text(
     fs: float = 2.0,
     fn: int = 0,
     base_direction: str = "ltr",
+    quality: float = 1.0,
 ) -> tuple[np.ndarray, list[np.ndarray]]:
     try:
         context = TextContext(
@@ -1380,6 +987,7 @@ def text(
             fs=fs,
             fn=fn,
             base_direction=base_direction,
+            quality=quality,
         )
         return context.get_polygons()
     except (ImportError, ValueError, RuntimeError, TypeError) as e:  # Catch potential init errors
@@ -1481,7 +1089,7 @@ def get_fonts_list():
 
 
 def get_fragments_from_fn_fa_fs(
-    r: float, fn: int | None, fa: float | None, fs: float | None
+    r: float, fn: int | None, fa: float | None, fs: float | None, quality: float = 1.0
 ) -> int:
     # NOTE: This function is designed for circles/arcs in OpenSCAD.
     # Its direct application to Bezier curves is non-standard.
@@ -1492,6 +1100,7 @@ def get_fragments_from_fn_fa_fs(
     r = float(r)
     fa = float(fa) if fa is not None else 30.0  # Default $fa from OpenSCAD
     fs = float(fs) if fs is not None else 20.0  # Default $fs from OpenSCAD
+    quality = float(quality) if quality is not None else 1.0  # Default quality
 
     if r < GRID_FINE:
         # print("Warning: Radius too small, using 3 fragments.")
@@ -1504,9 +1113,10 @@ def get_fragments_from_fn_fa_fs(
             return 3
         # $fn = 0 means use $fa/$fs
         if fn > 0:
-            # print(f"Using $fn: {int(max(fn, 3.0))}")
-            # OpenSCAD requires minimum 3 fragments
-            return int(max(fn, 3.0))
+            # Apply quality factor to fn
+            result = int(max(fn * quality, 3.0))
+            # print(f"Using $fn with quality: {result}")
+            return result
 
     # Calculate fragments based on $fa (angle) and $fs (size)
     # Ensure fs is not zero to avoid division error
@@ -1518,8 +1128,10 @@ def get_fragments_from_fn_fa_fs(
 
     # Choose the larger number of fragments from angle/size constraints
     # Ensure it's at least 5 (OpenSCAD minimum for arc-based fragmentation)
-    fragments = np.ceil(max(min(num_angle, num_size), 4.0))
-    # print(f"Using $fa/$fs: num_angle={num_angle}, num_size={num_size}, result={int(fragments)}")
+    base_fragments = np.ceil(max(min(num_angle, num_size), 4.0))
+    # Apply quality factor
+    fragments = np.ceil(base_fragments * quality)
+    # print(f"Using $fa/$fs with quality: num_angle={num_angle}, num_size={num_size}, result={int(fragments)}")
     return int(fragments)
 
 
