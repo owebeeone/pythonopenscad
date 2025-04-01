@@ -1061,6 +1061,7 @@ class Viewer:
     Keyboard Controls:
      B - Toggle backface culling
      W - Toggle wireframe mode
+     Z - Toggle Z-buffer occlusion for wireframes
      R - Reset view
      X - Toggle bounding box (off/wireframe/solid)
      S - Save screenshot
@@ -1155,9 +1156,10 @@ class Viewer:
         self.mouse_start_y = 0
         
         # Rendering state
-        self.backface_culling = False
+        self.backface_culling = True
         self.wireframe_mode = False
         self.bounding_box_mode = 0  # 0: off, 1: wireframe, 2: solid
+        self.zbuffer_occlusion = True
         
         # Store callback references to prevent garbage collection
         self.callbacks = {}
@@ -1291,7 +1293,7 @@ class Viewer:
         # Enable depth testing
         gl.glEnable(gl.GL_DEPTH_TEST)
         
-        # Configure backface culling (initially disabled)
+        # Configure backface culling
         gl.glCullFace(gl.GL_BACK)
         if self.backface_culling:
             gl.glEnable(gl.GL_CULL_FACE)
@@ -1898,11 +1900,64 @@ class Viewer:
                 # Set up view
                 self._setup_view()
                 
-                # Draw all models
-                for model in self.models:
-                    model.draw()
-                    rendering_success = True
+                # Check if we should use Z-buffer occlusion
+                if self.zbuffer_occlusion and self.wireframe_mode and self.backface_culling:
+                    # First pass: Fill the Z-buffer but don't show geometry
+                    gl.glColorMask(gl.GL_FALSE, gl.GL_FALSE, gl.GL_FALSE, gl.GL_FALSE)
+                    gl.glPolygonMode(gl.GL_FRONT_AND_BACK, gl.GL_FILL)
                     
+                    # Draw all models to fill the Z-buffer
+                    for model in self.models:
+                        model.draw()
+                    
+                    # Second pass: Draw wireframe using the filled Z-buffer
+                    gl.glColorMask(gl.GL_TRUE, gl.GL_TRUE, gl.GL_TRUE, gl.GL_TRUE)
+                    gl.glPolygonMode(gl.GL_FRONT_AND_BACK, gl.GL_LINE)
+                    
+                    # Important: Adjust the depth test function to make wireframes visible
+                    # This allows fragments with the same depth value as those already in the buffer
+                    gl.glDepthFunc(gl.GL_LEQUAL)
+                    
+                    # Enable polygon offset for lines
+                    gl.glEnable(gl.GL_POLYGON_OFFSET_LINE)
+                    gl.glPolygonOffset(-1.0, -1.0)  # This helps to pull the wireframe slightly forward
+                    
+                    # Apply a tiny Z offset by adjusting the projection matrix
+                    # This is done in projection/view space so it's camera-relative, not model-relative
+                    gl.glMatrixMode(gl.GL_PROJECTION)
+                    gl.glPushMatrix()
+                    
+                    # Create a tiny bias in the projection matrix - this shifts everything slightly toward the camera in view space
+                    # bias_matrix = np.eye(4, dtype=np.float32)
+                    # Apply a small bias to the Z component of the projection matrix
+                    # This is in NDC space, so a very small value has a noticeable effect
+                    #bias_matrix[2, 3] = 0.000001  # Positive bias pushes objects away from camera
+                    
+                    # Apply bias to current projection matrix
+                    # current_proj = np.zeros((4, 4), dtype=np.float32)
+                    # gl.glGetFloatv(gl.GL_PROJECTION_MATRIX, current_proj)
+                    # biased_proj = np.matmul(current_proj, bias_matrix)
+                    # gl.glLoadMatrixf(biased_proj)
+                    
+                    # Draw all models
+                    for model in self.models:
+                        model.draw()
+                        rendering_success = True
+                    
+                    # Restore the original projection matrix
+                    gl.glPopMatrix()
+                    
+                    # Restore original depth function
+                    gl.glDepthFunc(gl.GL_LESS)
+                    
+                    # Disable polygon offset
+                    gl.glDisable(gl.GL_POLYGON_OFFSET_LINE)
+                else:
+                    # Regular rendering: Draw all models
+                    for model in self.models:
+                        model.draw()
+                        rendering_success = True
+                
                 # Draw bounding box if enabled
                 self._draw_bounding_box()
                     
@@ -2175,6 +2230,15 @@ class Viewer:
                 gl.glPolygonMode(gl.GL_FRONT_AND_BACK, gl.GL_FILL)
                 if PYOPENGL_VERBOSE:
                     print("Viewer: Wireframe mode disabled")
+            glut.glutPostRedisplay()
+        elif key == b'z': 
+            # Toggle Z-buffer occlusion for wireframes
+            self.zbuffer_occlusion = not self.zbuffer_occlusion
+            if PYOPENGL_VERBOSE:
+                if self.zbuffer_occlusion:
+                    print("Viewer: Z-buffer occlusion enabled for wireframes")
+                else:
+                    print("Viewer: Z-buffer occlusion disabled for wireframes")
             glut.glutPostRedisplay()
         elif key == b'x':
             # Toggle bounding box mode
