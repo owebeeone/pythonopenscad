@@ -401,10 +401,9 @@ class Model:
             # containing all the vertex data.
             self.has_alpha_lt1 = np.any(self.data[self.color_offset + 3::self.stride] < 1.0)
         
-        # OpenGL objects
+        # OpenGL objects - Initialized later in initialize_gl_resources
         self.vao = None
         self.vbo = None
-        self._init_gl()
         
         # Compute bounding box
         self._compute_bounding_box()
@@ -436,14 +435,16 @@ class Model:
         # Create a model from the vertex data
         return Model(flattened_vertex_data, has_alpha_lt1=has_alpha_lt1)
     
-    def _init_gl(self):
-        """Initialize OpenGL vertex buffer and array objects."""
-        # Skip if OpenGL is not available
-        if not HAS_OPENGL:
+    def initialize_gl_resources(self):
+        """Initialize OpenGL vertex buffer and array objects.
+        
+        This must be called when the correct OpenGL context is active.
+        """
+        # Skip if OpenGL is not available or resources already initialized
+        if not HAS_OPENGL or self.vbo is not None or self.vao is not None:
             return
         
         gl_ctx: GLContext = self.gl_ctx
-        gl_ctx.initialize()
         
         # Skip VBO/VAO initialization if not supported
         if not gl_ctx.has_vbo:
@@ -464,7 +465,7 @@ class Model:
             # Check if VBO creation was successful
             if gl.glGetError() != gl.GL_NO_ERROR:
                 if PYOPENGL_VERBOSE:
-                    print("Model._init_gl: Error creating VBO")
+                    print("Model.initialize_gl_resources: Error creating VBO")
                 self.vbo = None
                 return
             
@@ -479,7 +480,7 @@ class Model:
                     # Check if VAO creation succeeded
                     if gl.glGetError() != gl.GL_NO_ERROR:
                         if PYOPENGL_VERBOSE:
-                            print("Model._init_gl: Failed to create VAO")
+                            print("Model.initialize_gl_resources: Failed to create VAO")
                         self.vao = None
                         return
                     
@@ -489,7 +490,7 @@ class Model:
                     # Check if VAO binding was successful
                     if gl.glGetError() != gl.GL_NO_ERROR:
                         if PYOPENGL_VERBOSE:
-                            print("Model._init_gl: Error binding VAO")
+                            print("Model.initialize_gl_resources: Error binding VAO")
                         # Failed to bind VAO, clean up and fail gracefully
                         try:
                             gl.glDeleteVertexArrays(1, [self.vao])
@@ -519,13 +520,13 @@ class Model:
                     # Check for errors during attribute setup
                     if gl.glGetError() != gl.GL_NO_ERROR:
                         if PYOPENGL_VERBOSE:
-                            print("Model._init_gl: Error setting up vertex attributes")
+                            print("Model.initialize_gl_resources: Error setting up vertex attributes")
                     
                     # Unbind VAO first, then VBO to avoid state leaks
                     gl.glBindVertexArray(0)
                 except Exception as e:
                     if PYOPENGL_VERBOSE:
-                        print(f"Model._init_gl: VAO setup failed: {e}")
+                        print(f"Model.initialize_gl_resources: VAO setup failed: {e}")
                     if self.vao:
                         try:
                             gl.glDeleteVertexArrays(1, [self.vao])
@@ -537,7 +538,7 @@ class Model:
             gl.glBindBuffer(gl.GL_ARRAY_BUFFER, 0)
         except Exception as e:
             if PYOPENGL_VERBOSE:
-                print(f"Model._init_gl: Failed to initialize OpenGL resources: {e}")
+                print(f"Model.initialize_gl_resources: Failed to initialize OpenGL resources: {e}")
             # Clean up any resources
             if self.vao:
                 try:
@@ -625,19 +626,30 @@ class Model:
             except Exception as e:
                 if PYOPENGL_VERBOSE:
                     print(f"Model.draw: Failed to enable blending: {e}")
-            
-        # On Windows with certain drivers, VBO/VAO operations cause issues
-        # Force immediate mode rendering for maximum compatibility
+        
         try:
-            # Make sure colors are visible - this is crucial
+            # First try to render using shaders if available
+            if gl_ctx.has_shader and gl_ctx.has_vbo:
+                # If shader program is available from the viewer, use it
+                current_program = gl.glGetIntegerv(gl.GL_CURRENT_PROGRAM)
+                if current_program and current_program != 0:
+                    if self._draw_with_shader(current_program):
+                        # Shader-based rendering was successful
+                        if self.has_alpha_lt1 and not blend_enabled:
+                            try:
+                                gl.glDisable(gl.GL_BLEND)
+                            except Exception:
+                                pass
+                        return
+            
+            # Make sure colors are visible
             try:
                 gl.glEnable(gl.GL_COLOR_MATERIAL)
                 gl.glColorMaterial(gl.GL_FRONT_AND_BACK, gl.GL_AMBIENT_AND_DIFFUSE)
             except Exception:
                 pass
             
-            # Bypass all advanced rendering methods and go straight to immediate mode
-            # This is slower but much more reliable across different drivers
+            # Fallback to immediate mode if shader rendering failed or isn't available
             if not self._draw_immediate_mode():
                 # If immediate mode fails, try the wireframe fallback
                 self._draw_fallback_wireframe()
@@ -657,6 +669,272 @@ class Model:
                 gl.glDisable(gl.GL_BLEND)
             except Exception:
                 pass
+                
+    def _draw_with_shader(self, shader_program):
+        """Draw the model using the provided shader program.
+        
+        Args:
+            shader_program: OpenGL shader program ID to use
+            
+        Returns:
+            bool: True if rendering was successful, False otherwise
+        """
+        try:
+            # Clear any existing errors
+            gl.glGetError()
+            
+            # SPECIAL FIX: For some systems where shader program ID 3 is valid
+            # but gets rejected by standard checks
+            is_special_case = False
+            if shader_program == 3:
+                # Test if program 3 is actually valid by trying to use it
+                try:
+                    old_program = gl.glGetIntegerv(gl.GL_CURRENT_PROGRAM)
+                    gl.glUseProgram(shader_program)
+                    error = gl.glGetError()
+                    if error == gl.GL_NO_ERROR:
+                        is_special_case = True
+                    gl.glUseProgram(old_program)
+                except Exception:
+                    is_special_case = False
+            
+            # Verify shader program unless special case
+            if not is_special_case and (not isinstance(shader_program, int) or shader_program <= 0):
+                if PYOPENGL_VERBOSE:
+                    print(f"Model._draw_with_shader: Invalid shader program: {shader_program}")
+                return False
+            
+            # Check shader program exists - but skip this check for special case
+            if not is_special_case:
+                try:
+                    # This will raise an error if the program doesn't exist
+                    gl.glIsProgram(shader_program)
+                except Exception as e:
+                    if PYOPENGL_VERBOSE:
+                        print(f"Model._draw_with_shader: Shader program doesn't exist: {e}")
+                    return False
+            
+            # Use the provided shader program
+            gl.glUseProgram(shader_program)
+            error = gl.glGetError()
+            if error != gl.GL_NO_ERROR:
+                if PYOPENGL_VERBOSE:
+                    print(f"Model._draw_with_shader: Error using shader program: {error}")
+                gl.glUseProgram(0)
+                return False
+            
+            rendering_success = False
+            
+            # Modern GPU-based rendering using VAO
+            vao_exists = False
+            if self.vao and self.gl_ctx.has_vao:
+                try:
+                    # First check if the VAO is valid
+                    try:
+                        if isinstance(self.vao, np.ndarray):
+                            vao_id = int(self.vao[0])
+                        else:
+                            vao_id = self.vao
+                            
+                        if PYOPENGL_VERBOSE:
+                            print(f"Model._draw_with_shader: Attempting to use VAO ID: {vao_id}")
+                            
+                        # Check if this is a valid VAO
+                        vao_exists = gl.glIsVertexArray(vao_id)
+                        
+                        if not vao_exists:
+                            if PYOPENGL_VERBOSE:
+                                print(f"Model._draw_with_shader: VAO {vao_id} is not a valid vertex array")
+                            raise Exception(f"VAO {vao_id} is not a valid vertex array")
+                    except Exception as e:
+                        if PYOPENGL_VERBOSE:
+                            print(f"Model._draw_with_shader: VAO validation failed: {e}")
+                        vao_exists = False
+                        # Continue to VBO method
+                        raise Exception("VAO validation failed")
+                        
+                    # Use VAO-based rendering - fast and preferred
+                    if vao_exists:
+                        gl.glBindVertexArray(vao_id)
+                        error = gl.glGetError()
+                        if error != gl.GL_NO_ERROR:
+                            if PYOPENGL_VERBOSE:
+                                print(f"Model._draw_with_shader: Error binding VAO {vao_id}: {error}")
+                            raise Exception(f"VAO binding failed for ID {vao_id}")
+                        
+                        gl.glDrawArrays(gl.GL_TRIANGLES, 0, self.num_points)
+                        error = gl.glGetError()
+                        if error != gl.GL_NO_ERROR:
+                            if PYOPENGL_VERBOSE:
+                                print(f"Model._draw_with_shader: Error during VAO drawing: {error}")
+                            raise Exception("VAO drawing failed")
+                        
+                        gl.glBindVertexArray(0)
+                        rendering_success = True
+                except Exception as e:
+                    if PYOPENGL_VERBOSE:
+                        print(f"Model._draw_with_shader: VAO rendering failed: {e}")
+                    # Don't worry, we'll fall back to VBO
+            
+            # Try VBO rendering if VAO failed or isn't available
+            if not rendering_success and self.vbo:
+                try:
+                    # Verify VBO is valid
+                    if isinstance(self.vbo, np.ndarray):
+                        vbo_id = int(self.vbo[0])
+                    else:
+                        vbo_id = self.vbo
+                        
+                    if PYOPENGL_VERBOSE:
+                        print(f"Model._draw_with_shader: Attempting to use VBO ID: {vbo_id}")
+                    
+                    # Use VBO-based rendering without VAO
+                    gl.glBindBuffer(gl.GL_ARRAY_BUFFER, vbo_id)
+                    error = gl.glGetError()
+                    if error != gl.GL_NO_ERROR:
+                        if PYOPENGL_VERBOSE:
+                            print(f"Model._draw_with_shader: Error binding VBO {vbo_id}: {error}")
+                        raise Exception(f"VBO binding failed for ID {vbo_id}")
+                    
+                    # Set up vertex attributes - we need to know the attribute locations in the shader
+                    # Default attribute locations (can be overridden by shader)
+                    position_loc = gl.glGetAttribLocation(shader_program, "aPos")
+                    color_loc = gl.glGetAttribLocation(shader_program, "aColor")
+                    normal_loc = gl.glGetAttribLocation(shader_program, "aNormal")
+                    
+                    # Print attribute locations for debugging
+                    if PYOPENGL_VERBOSE:
+                        print(f"Model._draw_with_shader: Attribute locations - position:{position_loc}, color:{color_loc}, normal:{normal_loc}")
+                    
+                    # Fallback to common attribute names if not found
+                    if position_loc == -1:
+                        position_loc = gl.glGetAttribLocation(shader_program, "position")
+                    if position_loc == -1:
+                        position_loc = 0  # Default position attribute location
+                        
+                    if color_loc == -1:
+                        color_loc = gl.glGetAttribLocation(shader_program, "color")
+                    if color_loc == -1:
+                        color_loc = 1  # Default color attribute location
+                        
+                    if normal_loc == -1:
+                        normal_loc = gl.glGetAttribLocation(shader_program, "normal")
+                    if normal_loc == -1:
+                        normal_loc = 2  # Default normal attribute location
+                    
+                    # Enable and set up vertex attributes
+                    attribute_enabled = []
+                    
+                    if position_loc != -1:
+                        try:
+                            gl.glEnableVertexAttribArray(position_loc)
+                            attribute_enabled.append(position_loc)
+                            
+                            gl.glVertexAttribPointer(
+                                position_loc, 3, gl.GL_FLOAT, gl.GL_FALSE, 
+                                self.stride * 4, ctypes.c_void_p(self.position_offset * 4)
+                            )
+                            
+                            error = gl.glGetError()
+                            if error != gl.GL_NO_ERROR:
+                                if PYOPENGL_VERBOSE:
+                                    print(f"Model._draw_with_shader: Error setting up position attribute: {error}")
+                        except Exception as e:
+                            if PYOPENGL_VERBOSE:
+                                print(f"Model._draw_with_shader: Error enabling position attribute: {e}")
+                    
+                    if color_loc != -1:
+                        try:
+                            gl.glEnableVertexAttribArray(color_loc)
+                            attribute_enabled.append(color_loc)
+                            
+                            gl.glVertexAttribPointer(
+                                color_loc, 4, gl.GL_FLOAT, gl.GL_FALSE, 
+                                self.stride * 4, ctypes.c_void_p(self.color_offset * 4)
+                            )
+                            
+                            error = gl.glGetError()
+                            if error != gl.GL_NO_ERROR:
+                                if PYOPENGL_VERBOSE:
+                                    print(f"Model._draw_with_shader: Error setting up color attribute: {error}")
+                        except Exception as e:
+                            if PYOPENGL_VERBOSE:
+                                print(f"Model._draw_with_shader: Error enabling color attribute: {e}")
+                    
+                    if normal_loc != -1:
+                        try:
+                            gl.glEnableVertexAttribArray(normal_loc)
+                            attribute_enabled.append(normal_loc)
+                            
+                            gl.glVertexAttribPointer(
+                                normal_loc, 3, gl.GL_FLOAT, gl.GL_FALSE, 
+                                self.stride * 4, ctypes.c_void_p(self.normal_offset * 4)
+                            )
+                            
+                            error = gl.glGetError()
+                            if error != gl.GL_NO_ERROR:
+                                if PYOPENGL_VERBOSE:
+                                    print(f"Model._draw_with_shader: Error setting up normal attribute: {error}")
+                        except Exception as e:
+                            if PYOPENGL_VERBOSE:
+                                print(f"Model._draw_with_shader: Error enabling normal attribute: {e}")
+                    
+                    # Draw the triangles
+                    try:
+                        gl.glDrawArrays(gl.GL_TRIANGLES, 0, self.num_points)
+                        error = gl.glGetError()
+                        if error != gl.GL_NO_ERROR:
+                            if PYOPENGL_VERBOSE:
+                                print(f"Model._draw_with_shader: Error during VBO drawing: {error}")
+                            raise Exception("VBO drawing failed")
+                        
+                        rendering_success = True
+                    except Exception as e:
+                        if PYOPENGL_VERBOSE:
+                            print(f"Model._draw_with_shader: Drawing with VBO failed: {e}")
+                    
+                    # Disable vertex attributes
+                    for attr_loc in attribute_enabled:
+                        try:
+                            gl.glDisableVertexAttribArray(attr_loc)
+                        except Exception:
+                            pass
+                    
+                    # Unbind VBO
+                    gl.glBindBuffer(gl.GL_ARRAY_BUFFER, 0)
+                except Exception as e:
+                    if PYOPENGL_VERBOSE:
+                        print(f"Model._draw_with_shader: VBO rendering failed: {e}")
+            
+            # Neither VAO nor VBO available or both failed
+            if not rendering_success:
+                gl.glUseProgram(0)
+                return False
+            
+            # Rendering was successful
+            return True
+            
+        except Exception as e:
+            if PYOPENGL_VERBOSE:
+                print(f"Model._draw_with_shader: Shader rendering failed: {e}")
+            
+            # Clean up
+            try:
+                gl.glBindVertexArray(0)
+            except Exception:
+                pass
+                
+            try:
+                gl.glBindBuffer(gl.GL_ARRAY_BUFFER, 0)
+            except Exception:
+                pass
+                
+            try:
+                gl.glUseProgram(0)
+            except Exception:
+                pass
+                
+            return False
     
     def _draw_bounding_box(self):
         """Draw a simple bounding box for the model as a last resort."""
@@ -1236,6 +1514,9 @@ class Viewer:
      W - Toggle wireframe mode
      Z - Toggle Z-buffer occlusion for wireframes
      C - Toggle coalesced model mode (improves transparency rendering)
+     H - Toggle shader-based rendering (modern vs. legacy mode)
+     D - Print diagnostic information about OpenGL capabilities
+     P - Print detailed shader program diagnostics
      R - Reset view
      X - Toggle bounding box (off/wireframe/solid)
      S - Save screenshot
@@ -1311,7 +1592,7 @@ class Viewer:
         
         # Create coalesced models if requested
         self.use_coalesced_models = use_coalesced_models
-        if self.use_coalesced_models and models:
+        if models:
             # Create coalesced models (one opaque, one transparent)
             opaque_model, transparent_model = Model.create_coalesced_models(models)
             
@@ -1376,6 +1657,21 @@ class Viewer:
         # Create the window and set up OpenGL
         self._create_window()
         self._setup_gl()
+        
+        # Initialize GL resources for each model now that the main context is active
+        # Ensure the correct window context is current first
+        if self.window_id and self.window_id == glut.glutGetWindow():
+            if PYOPENGL_VERBOSE:
+                print(f"Viewer: Initializing GL resources for {len(self.models)} models in window {self.window_id}")
+            for model in self.models:
+                try:
+                    model.initialize_gl_resources()
+                except Exception as e:
+                    if PYOPENGL_VERBOSE:
+                        print(f"Viewer: Error initializing GL resources for a model: {e}")
+        elif PYOPENGL_VERBOSE:
+            print(f"Viewer: Warning - Cannot initialize model GL resources. Window ID mismatch or invalid window.")
+            print(f"  Expected Window ID: {self.window_id}, Current Window ID: {glut.glutGetWindow()}")
     
     def _compute_scene_bounds(self):
         """Compute the overall scene bounding box."""
@@ -1553,18 +1849,150 @@ class Viewer:
                 if PYOPENGL_VERBOSE:
                     print(f"Viewer: Failed to set up basic lighting: {e}")
         
-        # Try compiling shaders - but not necessary for basic rendering
+        # Flag to control shader usage
+        self.use_shaders = True
+        
+        # Try compiling shaders - prioritize this for modern rendering
         if self.gl_ctx.has_shader:
             try:
-                # Attempt to compile shaders, but don't worry if it fails
-                shader_success = self._compile_shaders()
-                if shader_success and self.shader_program:
+                # First try the more advanced shader
+                self.shader_program = self._compile_shaders()
+                
+                if not self.shader_program:
+                    # If the main shader fails, try the basic shader
                     if PYOPENGL_VERBOSE:
-                        print(f"Viewer: Successfully compiled shader program: {self.shader_program}")
+                        print("Viewer: Main shader failed, trying basic shader")
+                    self.shader_program = self._compile_basic_shader()
+                
+                if self.shader_program:
+                    # Verify the shader program is valid
+                    if isinstance(self.shader_program, int) and self.shader_program > 0:
+                        # Test the shader program by trying to use it
+                        try:
+                            gl.glUseProgram(self.shader_program)
+                            # If no error, it's a valid program
+                            gl.glUseProgram(0)
+                            if PYOPENGL_VERBOSE:
+                                print(f"Viewer: Successfully verified shader program: {self.shader_program}")
+                        except Exception as e:
+                            if PYOPENGL_VERBOSE:
+                                print(f"Viewer: Shader program {self.shader_program} failed validation test: {e}")
+                            # Delete the invalid program and set to None
+                            try:
+                                gl.glDeleteProgram(self.shader_program)
+                            except Exception:
+                                pass
+                            self.shader_program = None
+                    else:
+                        if PYOPENGL_VERBOSE:
+                            print(f"Viewer: Invalid shader program value: {self.shader_program}")
+                        self.shader_program = None
+                        
+                if self.shader_program:
+                    if PYOPENGL_VERBOSE:
+                        print(f"Viewer: Successfully compiled and verified shader program: {self.shader_program}")
+                else:
+                    if PYOPENGL_VERBOSE:
+                        print("Viewer: All shader compilation attempts failed")
             except Exception as e:
                 if PYOPENGL_VERBOSE:
-                    print(f"Viewer: Shader compilation failed (not critical): {e}")
+                    print(f"Viewer: Shader compilation failed: {e}")
                 self.shader_program = None
+    
+    def _check_shader_program(self, program_id=None):
+        """Check the status and validity of a shader program.
+        
+        Args:
+            program_id: Optional program ID to check, defaults to self.shader_program
+            
+        Returns:
+            bool: True if the program is valid, False otherwise
+        """
+        if program_id is None:
+            program_id = self.shader_program
+            
+        if not program_id or not isinstance(program_id, int) or program_id <= 0:
+            if PYOPENGL_VERBOSE:
+                print(f"Viewer: Invalid shader program ID: {program_id}")
+            return False
+            
+        try:
+            # Clear any existing errors
+            gl.glGetError()
+            
+            # Check if program exists
+            is_program = gl.glIsProgram(program_id)
+            if not is_program:
+                if PYOPENGL_VERBOSE:
+                    print(f"Viewer: ID {program_id} is not a valid shader program")
+                return False
+                
+            # Get program info
+            link_status = gl.glGetProgramiv(program_id, gl.GL_LINK_STATUS)
+            if not link_status:
+                info_log = gl.glGetProgramInfoLog(program_id)
+                if PYOPENGL_VERBOSE:
+                    print(f"Viewer: Shader program {program_id} is not linked: {info_log}")
+                return False
+                
+            # Validate the program
+            gl.glValidateProgram(program_id)
+            validate_status = gl.glGetProgramiv(program_id, gl.GL_VALIDATE_STATUS)
+            info_log = gl.glGetProgramInfoLog(program_id)
+            
+            if not validate_status:
+                if PYOPENGL_VERBOSE:
+                    print(f"Viewer: Shader program {program_id} validation failed: {info_log}")
+                return False
+                
+            # Test program usage
+            try:
+                gl.glUseProgram(program_id)
+                error = gl.glGetError()
+                gl.glUseProgram(0)
+                
+                if error != gl.GL_NO_ERROR:
+                    if PYOPENGL_VERBOSE:
+                        print(f"Viewer: Error using shader program {program_id}: {error}")
+                    return False
+            except Exception as e:
+                if PYOPENGL_VERBOSE:
+                    print(f"Viewer: Exception using shader program {program_id}: {e}")
+                return False
+                
+            # If we got here, the program is valid
+            if PYOPENGL_VERBOSE:
+                print(f"Viewer: Shader program {program_id} is valid and usable")
+                if info_log:
+                    print(f"Viewer: Validation info: {info_log}")
+            return True
+            
+        except Exception as e:
+            if PYOPENGL_VERBOSE:
+                print(f"Viewer: Error checking shader program {program_id}: {e}")
+            return False
+            
+    def _toggle_and_diagnose_shader(self):
+        """Toggle the shader on/off and diagnose any issues."""
+        # Toggle shader state
+        self.use_shaders = not self.use_shaders
+        
+        if PYOPENGL_VERBOSE:
+            if self.use_shaders:
+                print("Viewer: Shader-based rendering enabled")
+            else:
+                print("Viewer: Shader-based rendering disabled")
+        
+        # Diagnose shader status if enabled
+        if self.use_shaders and self.shader_program:
+            if not self._check_shader_program(self.shader_program):
+                if PYOPENGL_VERBOSE:
+                    print("Viewer: Using immediate mode rendering due to shader issues")
+                self.use_shaders = False
+        
+        # Request redisplay
+        if self.window_id:
+            glut.glutPostRedisplay()
     
     def _compile_shaders(self):
         """Compile and link the shader program.
@@ -1573,79 +2001,111 @@ class Viewer:
             bool: True if shader compilation and linking was successful, False otherwise.
         """
         if not self.gl_ctx.has_shader:
-            return False
+            return None
             
         try:
+            # Clear any previous shader-related errors
+            gl.glGetError()
+            
             # Create vertex shader
             vertex_shader = gl.glCreateShader(gl.GL_VERTEX_SHADER)
+            if vertex_shader == 0:
+                if PYOPENGL_VERBOSE:
+                    print("Viewer: Failed to create vertex shader object")
+                return None
+                
             gl.glShaderSource(vertex_shader, self.VERTEX_SHADER)
             gl.glCompileShader(vertex_shader)
             
             # Check for vertex shader compilation errors
-            if not gl.glGetShaderiv(vertex_shader, gl.GL_COMPILE_STATUS):
-                error = gl.glGetShaderInfoLog(vertex_shader).decode('utf-8')
+            compile_status = gl.glGetShaderiv(vertex_shader, gl.GL_COMPILE_STATUS)
+            if not compile_status:
+                error = gl.glGetShaderInfoLog(vertex_shader)
                 gl.glDeleteShader(vertex_shader)
                 if PYOPENGL_VERBOSE:
                     print(f"Viewer: Vertex shader compilation failed: {error}")
-                return False
+                return None
             
             # Create fragment shader
             fragment_shader = gl.glCreateShader(gl.GL_FRAGMENT_SHADER)
+            if fragment_shader == 0:
+                gl.glDeleteShader(vertex_shader)
+                if PYOPENGL_VERBOSE:
+                    print("Viewer: Failed to create fragment shader object")
+                return None
+                
             gl.glShaderSource(fragment_shader, self.FRAGMENT_SHADER)
             gl.glCompileShader(fragment_shader)
             
             # Check for fragment shader compilation errors
-            if not gl.glGetShaderiv(fragment_shader, gl.GL_COMPILE_STATUS):
-                error = gl.glGetShaderInfoLog(fragment_shader).decode('utf-8')
+            compile_status = gl.glGetShaderiv(fragment_shader, gl.GL_COMPILE_STATUS)
+            if not compile_status:
+                error = gl.glGetShaderInfoLog(fragment_shader)
                 gl.glDeleteShader(vertex_shader)
                 gl.glDeleteShader(fragment_shader)
                 if PYOPENGL_VERBOSE:
                     print(f"Viewer: Fragment shader compilation failed: {error}")
-                return False
+                return None
             
             # Create and link shader program
-            self.shader_program = gl.glCreateProgram()
-            gl.glAttachShader(self.shader_program, vertex_shader)
-            gl.glAttachShader(self.shader_program, fragment_shader)
-            
-            # Bind attribute locations for GLSL 1.20 (before linking)
-            gl.glBindAttribLocation(self.shader_program, 0, "aPos")
-            gl.glBindAttribLocation(self.shader_program, 1, "aColor")
-            gl.glBindAttribLocation(self.shader_program, 2, "aNormal")
-            
-            gl.glLinkProgram(self.shader_program)
-            
-            # Check for linking errors
-            if not gl.glGetProgramiv(self.shader_program, gl.GL_LINK_STATUS):
-                error = gl.glGetProgramInfoLog(self.shader_program).decode('utf-8')
+            program = gl.glCreateProgram()
+            if program == 0:
                 gl.glDeleteShader(vertex_shader)
                 gl.glDeleteShader(fragment_shader)
-                gl.glDeleteProgram(self.shader_program)
-                self.shader_program = None
+                if PYOPENGL_VERBOSE:
+                    print("Viewer: Failed to create shader program object")
+                return None
+                
+            gl.glAttachShader(program, vertex_shader)
+            gl.glAttachShader(program, fragment_shader)
+            
+            # Bind attribute locations for GLSL 1.20 (before linking)
+            gl.glBindAttribLocation(program, 0, "aPos")
+            gl.glBindAttribLocation(program, 1, "aColor")
+            gl.glBindAttribLocation(program, 2, "aNormal")
+            
+            gl.glLinkProgram(program)
+            
+            # Check for linking errors
+            link_status = gl.glGetProgramiv(program, gl.GL_LINK_STATUS)
+            if not link_status:
+                error = gl.glGetProgramInfoLog(program)
+                gl.glDeleteShader(vertex_shader)
+                gl.glDeleteShader(fragment_shader)
+                gl.glDeleteProgram(program)
                 if PYOPENGL_VERBOSE:
                     print(f"Viewer: Shader program linking failed: {error}")
-                return False
+                return None
             
             # Delete shaders (they're not needed after linking)
             gl.glDeleteShader(vertex_shader)
             gl.glDeleteShader(fragment_shader)
             
+            # Validate the program
+            gl.glValidateProgram(program)
+            validate_status = gl.glGetProgramiv(program, gl.GL_VALIDATE_STATUS)
+            if not validate_status:
+                error = gl.glGetProgramInfoLog(program)
+                if PYOPENGL_VERBOSE:
+                    print(f"Viewer: Shader program validation failed: {error}")
+                gl.glDeleteProgram(program)
+                return None
+                
             if PYOPENGL_VERBOSE:
-                print(f"Viewer: Successfully compiled and linked shader program: {self.shader_program}")
-            return True
+                print(f"Viewer: Successfully compiled and linked shader program: {program}")
+            return program
             
         except Exception as e:
             # Handle any unexpected errors
             if PYOPENGL_VERBOSE:
                 print(f"Viewer: Error during shader compilation: {str(e)}")
             # Make sure we clean up any resources
-            if hasattr(self, 'shader_program') and self.shader_program:
+            if 'program' in locals() and program:
                 try:
-                    gl.glDeleteProgram(self.shader_program)
+                    gl.glDeleteProgram(program)
                 except Exception:
                     pass
-            self.shader_program = None
-            return False
+            return None
     
     def _compile_basic_shader(self):
         """Compile a very minimal shader program for maximum compatibility.
@@ -1657,14 +2117,23 @@ class Viewer:
             return None
             
         try:
+            # Clear any previous shader-related errors
+            gl.glGetError()
+            
             # Create vertex shader
             vertex_shader = gl.glCreateShader(gl.GL_VERTEX_SHADER)
+            if vertex_shader == 0:
+                if PYOPENGL_VERBOSE:
+                    print("Viewer: Failed to create basic vertex shader object")
+                return None
+                
             gl.glShaderSource(vertex_shader, self.BASIC_VERTEX_SHADER)
             gl.glCompileShader(vertex_shader)
             
             # Check for vertex shader compilation errors
-            if not gl.glGetShaderiv(vertex_shader, gl.GL_COMPILE_STATUS):
-                error = gl.glGetShaderInfoLog(vertex_shader).decode('utf-8')
+            compile_status = gl.glGetShaderiv(vertex_shader, gl.GL_COMPILE_STATUS)
+            if not compile_status:
+                error = gl.glGetShaderInfoLog(vertex_shader)
                 gl.glDeleteShader(vertex_shader)
                 if PYOPENGL_VERBOSE:
                     print(f"Viewer: Basic vertex shader compilation failed: {error}")
@@ -1672,12 +2141,19 @@ class Viewer:
             
             # Create fragment shader
             fragment_shader = gl.glCreateShader(gl.GL_FRAGMENT_SHADER)
+            if fragment_shader == 0:
+                gl.glDeleteShader(vertex_shader)
+                if PYOPENGL_VERBOSE:
+                    print("Viewer: Failed to create basic fragment shader object")
+                return None
+                
             gl.glShaderSource(fragment_shader, self.BASIC_FRAGMENT_SHADER)
             gl.glCompileShader(fragment_shader)
             
             # Check for fragment shader compilation errors
-            if not gl.glGetShaderiv(fragment_shader, gl.GL_COMPILE_STATUS):
-                error = gl.glGetShaderInfoLog(fragment_shader).decode('utf-8')
+            compile_status = gl.glGetShaderiv(fragment_shader, gl.GL_COMPILE_STATUS)
+            if not compile_status:
+                error = gl.glGetShaderInfoLog(fragment_shader)
                 gl.glDeleteShader(vertex_shader)
                 gl.glDeleteShader(fragment_shader)
                 if PYOPENGL_VERBOSE:
@@ -1685,22 +2161,30 @@ class Viewer:
                 return None
             
             # Create and link shader program
-            basic_program = gl.glCreateProgram()
-            gl.glAttachShader(basic_program, vertex_shader)
-            gl.glAttachShader(basic_program, fragment_shader)
-            
-            # Bind attribute locations for position and color
-            gl.glBindAttribLocation(basic_program, 0, "position")
-            gl.glBindAttribLocation(basic_program, 1, "color")
-            
-            gl.glLinkProgram(basic_program)
-            
-            # Check for linking errors
-            if not gl.glGetProgramiv(basic_program, gl.GL_LINK_STATUS):
-                error = gl.glGetProgramInfoLog(basic_program).decode('utf-8')
+            program = gl.glCreateProgram()
+            if program == 0:
                 gl.glDeleteShader(vertex_shader)
                 gl.glDeleteShader(fragment_shader)
-                gl.glDeleteProgram(basic_program)
+                if PYOPENGL_VERBOSE:
+                    print("Viewer: Failed to create basic shader program object")
+                return None
+                
+            gl.glAttachShader(program, vertex_shader)
+            gl.glAttachShader(program, fragment_shader)
+            
+            # Bind attribute locations for position and color
+            gl.glBindAttribLocation(program, 0, "position")
+            gl.glBindAttribLocation(program, 1, "color")
+            
+            gl.glLinkProgram(program)
+            
+            # Check for linking errors
+            link_status = gl.glGetProgramiv(program, gl.GL_LINK_STATUS)
+            if not link_status:
+                error = gl.glGetProgramInfoLog(program)
+                gl.glDeleteShader(vertex_shader)
+                gl.glDeleteShader(fragment_shader)
+                gl.glDeleteProgram(program)
                 if PYOPENGL_VERBOSE:
                     print(f"Viewer: Basic shader program linking failed: {error}")
                 return None
@@ -1709,14 +2193,30 @@ class Viewer:
             gl.glDeleteShader(vertex_shader)
             gl.glDeleteShader(fragment_shader)
             
+            # Validate the program
+            gl.glValidateProgram(program)
+            validate_status = gl.glGetProgramiv(program, gl.GL_VALIDATE_STATUS)
+            if not validate_status:
+                error = gl.glGetProgramInfoLog(program)
+                if PYOPENGL_VERBOSE:
+                    print(f"Viewer: Basic shader program validation failed: {error}")
+                gl.glDeleteProgram(program)
+                return None
+            
             if PYOPENGL_VERBOSE:
-                print(f"Viewer: Successfully compiled and linked basic shader program: {basic_program}")
-            return basic_program
+                print(f"Viewer: Successfully compiled and linked basic shader program: {program}")
+            return program
             
         except Exception as e:
             # Handle any unexpected errors
             if PYOPENGL_VERBOSE:
                 print(f"Viewer: Error during basic shader compilation: {str(e)}")
+            # Clean up any resources
+            if 'program' in locals() and program:
+                try:
+                    gl.glDeleteProgram(program)
+                except Exception:
+                    pass
             return None
     
     def run(self):
@@ -1780,7 +2280,7 @@ class Viewer:
             normal = normals[face_idx]
             face_color = face_colors[face_idx]
             
-            # Create two triangles for each face
+            # Create two triangles per face
             tri1 = [face[0], face[1], face[2]]
             tri2 = [face[0], face[2], face[3]]
             
@@ -2115,11 +2615,40 @@ class Viewer:
                         if len(self.models) > 1:
                             transparent_models = [self.models[1]]
                 
+                # Check if we can use shader-based rendering
+                using_shader = False
+                if self.use_shaders and self.gl_ctx.has_shader and self.shader_program:
+                    # Verify shader program is valid
+                    if isinstance(self.shader_program, int) and self.shader_program > 0:
+                        using_shader = True
+                    else:
+                        if PYOPENGL_VERBOSE:
+                            print(f"Viewer: Invalid shader program value: {self.shader_program}")
+                        self.shader_program = None
+                
                 # Check if we should use Z-buffer occlusion
                 if self.zbuffer_occlusion and self.wireframe_mode and self.backface_culling:
                     # First pass: Fill the Z-buffer but don't show geometry
                     gl.glColorMask(gl.GL_FALSE, gl.GL_FALSE, gl.GL_FALSE, gl.GL_FALSE)
                     gl.glPolygonMode(gl.GL_FRONT_AND_BACK, gl.GL_FILL)
+                    
+                    # Use shader for first pass if available
+                    if using_shader:
+                        try:
+                            # Clear any previous errors
+                            gl.glGetError()
+                            gl.glUseProgram(self.shader_program)
+                            # Check for errors
+                            error = gl.glGetError()
+                            if error != gl.GL_NO_ERROR:
+                                if PYOPENGL_VERBOSE:
+                                    print(f"Viewer: Error using shader program: {error}")
+                                using_shader = False
+                                gl.glUseProgram(0)
+                        except Exception as e:
+                            if PYOPENGL_VERBOSE:
+                                print(f"Viewer: Failed to use shader program: {e}")
+                            using_shader = False
                     
                     # Draw all models to fill the Z-buffer
                     for model in self.models:
@@ -2155,8 +2684,50 @@ class Viewer:
                     
                     # Disable polygon offset
                     gl.glDisable(gl.GL_POLYGON_OFFSET_LINE)
+                    
+                    # Clear shader program if we were using it
+                    if using_shader:
+                        try:
+                            gl.glUseProgram(0)
+                        except Exception as e:
+                            if PYOPENGL_VERBOSE:
+                                print(f"Viewer: Error disabling shader program: {e}")
                 else:
                     # Regular rendering: Draw opaque models first
+                    # Use shader if available
+                    if using_shader:
+                        try:
+                            # Clear any previous errors
+                            gl.glGetError()
+                            gl.glUseProgram(self.shader_program)
+                            # Check for errors
+                            error = gl.glGetError()
+                            if error != gl.GL_NO_ERROR:
+                                if PYOPENGL_VERBOSE:
+                                    print(f"Viewer: Error using shader program: {error}")
+                                using_shader = False
+                                gl.glUseProgram(0)
+                            else:
+                                # Add extra lighting info to shader
+                                try:
+                                    light_pos_loc = gl.glGetUniformLocation(self.shader_program, "lightPos")
+                                    if light_pos_loc != -1:
+                                        # Position light relative to camera
+                                        gl.glUniform3f(
+                                            light_pos_loc, 
+                                            self.camera_pos.x + 5.0, 
+                                            self.camera_pos.y + 5.0, 
+                                            self.camera_pos.z + 10.0
+                                        )
+                                except Exception as e:
+                                    if PYOPENGL_VERBOSE:
+                                        print(f"Viewer: Error setting shader uniforms: {e}")
+                        except Exception as e:
+                            if PYOPENGL_VERBOSE:
+                                print(f"Viewer: Failed to use shader program: {e}")
+                            using_shader = False
+                    
+                    # Draw all opaque models
                     for model in opaque_models:
                         model.draw()
                         rendering_success = True
@@ -2181,8 +2752,16 @@ class Viewer:
                             for model in transparent_models:
                                 model.draw()
                                 rendering_success = True
+                    
+                    # Turn off shader program after use
+                    if using_shader:
+                        try:
+                            gl.glUseProgram(0)
+                        except Exception as e:
+                            if PYOPENGL_VERBOSE:
+                                print(f"Viewer: Error disabling shader program: {e}")
                 
-                # Draw bounding box if enabled
+                # Draw bounding box if enabled (always use immediate mode)
                 self._draw_bounding_box()
                     
             except Exception as e:
@@ -2474,6 +3053,31 @@ class Viewer:
             # Toggle coalesced model mode
             self.toggle_coalesced_mode()
             # Already calls glutPostRedisplay()
+        elif key == b'h':
+            # Toggle shader-based rendering
+            self._toggle_and_diagnose_shader()
+            # Already calls glutPostRedisplay()
+        elif key == b'd':
+            # Print diagnostic information
+            self._print_diagnostics()
+            # No need to redisplay
+        elif key == b'p':
+            # Print detailed shader program debug information
+            try:
+                # Get current program
+                current_program = gl.glGetIntegerv(gl.GL_CURRENT_PROGRAM)
+                print(f"Current program: {current_program}")
+                
+                # Debug our shader program
+                if self.shader_program:
+                    self._print_shader_debug(self.shader_program)
+                
+                # Debug the special program '3'
+                self._print_shader_debug(3)
+                
+            except Exception as e:
+                print(f"Error during shader debugging: {e}")
+            # No need to redisplay
         elif key == b's':
             # Save screenshot - only on key down
             try:
@@ -2485,6 +3089,191 @@ class Viewer:
                 if PYOPENGL_VERBOSE:
                     print(f"Viewer: Failed to save screenshot: {str(e)}")
             # Don't redisplay after saving screenshot
+            
+    def _print_shader_debug(self, program_id):
+        """Print detailed debugging information about a shader program.
+        
+        Args:
+            program_id: The shader program ID to debug
+        """
+        print(f"\n===== SHADER PROGRAM {program_id} DEBUG =====")
+        
+        # First check if it's a valid program object
+        try:
+            is_program = gl.glIsProgram(program_id)
+            print(f"Is a program object: {is_program}")
+            
+            if not is_program:
+                print(f"OpenGL doesn't recognize {program_id} as a valid program object")
+                return
+                
+            # Get program parameters
+            try:
+                delete_status = gl.glGetProgramiv(program_id, gl.GL_DELETE_STATUS)
+                link_status = gl.glGetProgramiv(program_id, gl.GL_LINK_STATUS)
+                validate_status = gl.glGetProgramiv(program_id, gl.GL_VALIDATE_STATUS)
+                info_log = gl.glGetProgramInfoLog(program_id)
+                
+                print(f"  Delete Status: {delete_status}")
+                print(f"  Link Status: {link_status}")
+                print(f"  Validate Status: {validate_status}")
+                print(f"  Info Log: {info_log}")
+                
+                # Count and list active attributes
+                num_attribs = gl.glGetProgramiv(program_id, gl.GL_ACTIVE_ATTRIBUTES)
+                print(f"  Active Attributes: {num_attribs}")
+                for i in range(num_attribs):
+                    try:
+                        attrib_info = gl.glGetActiveAttrib(program_id, i)
+                        name = attrib_info[0].decode()
+                        size = attrib_info[1]
+                        type_enum = attrib_info[2]
+                        location = gl.glGetAttribLocation(program_id, name.encode())
+                        print(f"    {name}: location={location}, size={size}, type={type_enum}")
+                    except Exception as e:
+                        print(f"    Error getting attribute {i}: {e}")
+                
+                # Count and list active uniforms
+                num_uniforms = gl.glGetProgramiv(program_id, gl.GL_ACTIVE_UNIFORMS)
+                print(f"  Active Uniforms: {num_uniforms}")
+                for i in range(num_uniforms):
+                    try:
+                        uniform_info = gl.glGetActiveUniform(program_id, i)
+                        name = uniform_info[0].decode()
+                        size = uniform_info[1]
+                        type_enum = uniform_info[2]
+                        location = gl.glGetUniformLocation(program_id, name.encode())
+                        print(f"    {name}: location={location}, size={size}, type={type_enum}")
+                    except Exception as e:
+                        print(f"    Error getting uniform {i}: {e}")
+                
+            except Exception as e:
+                print(f"  Error getting program parameters: {e}")
+            
+            # Try to test program usage
+            try:
+                # Save current program
+                previous_program = gl.glGetIntegerv(gl.GL_CURRENT_PROGRAM)
+                
+                # Try to use this program
+                gl.glUseProgram(program_id)
+                error = gl.glGetError()
+                
+                if error == gl.GL_NO_ERROR:
+                    print("  Successfully activated program")
+                else:
+                    print(f"  Error activating program: {error}")
+                
+                # Restore previous program
+                gl.glUseProgram(previous_program)
+                
+            except Exception as e:
+                print(f"  Error testing program usage: {e}")
+                try:
+                    gl.glUseProgram(0)  # Reset to default program
+                except Exception:
+                    pass
+            
+        except Exception as e:
+            print(f"Error debugging shader program: {e}")
+        
+        print("=====================================\n")
+
+    def _print_diagnostics(self):
+        """Print detailed diagnostic information about OpenGL and shader state."""
+        print("\n===== OPENGL DIAGNOSTICS =====")
+        
+        # Show OpenGL version info
+        print(f"OpenGL Version: {self.gl_ctx.opengl_version}")
+        print(f"GLSL Version: {self.gl_ctx.glsl_version}")
+        
+        # Show OpenGL capabilities
+        print("\nOpenGL Capabilities:")
+        print(f"  VBO Support: {self.gl_ctx.has_vbo}")
+        print(f"  Shader Support: {self.gl_ctx.has_shader}")
+        print(f"  VAO Support: {self.gl_ctx.has_vao}")
+        print(f"  Legacy Lighting: {self.gl_ctx.has_legacy_lighting}")
+        print(f"  Legacy Vertex Arrays: {self.gl_ctx.has_legacy_vertex_arrays}")
+        
+        # Show current state
+        print("\nCurrent Viewer State:")
+        print(f"  Shader Program: {self.shader_program}")
+        print(f"  Current Program: {gl.glGetIntegerv(gl.GL_CURRENT_PROGRAM)}")
+        print(f"  Using Shaders: {self.use_shaders}")
+        print(f"  Wireframe Mode: {self.wireframe_mode}")
+        print(f"  Backface Culling: {self.backface_culling}")
+        print(f"  Bounding Box Mode: {self.bounding_box_mode}")
+        print(f"  Z-Buffer Occlusion: {self.zbuffer_occlusion}")
+        print(f"  Coalesced Models: {self.use_coalesced_models}")
+        
+        # Additional details about the shader program if available
+        if self.shader_program:
+            print("\nShader Program Details:")
+            try:
+                # Test shader validation
+                is_valid = self._check_shader_program(self.shader_program)
+                print(f"  Shader Program Valid: {is_valid}")
+                
+                # Get active uniforms
+                try:
+                    num_uniforms = gl.glGetProgramiv(self.shader_program, gl.GL_ACTIVE_UNIFORMS)
+                    print(f"  Active Uniforms: {num_uniforms}")
+                    
+                    for i in range(num_uniforms):
+                        try:
+                            uniform_info = gl.glGetActiveUniform(self.shader_program, i)
+                            name = uniform_info[0].decode()
+                            size = uniform_info[1]
+                            type_enum = uniform_info[2]
+                            print(f"    {name} (size={size}, type={type_enum})")
+                        except Exception as e:
+                            print(f"    Error getting uniform {i}: {e}")
+                except Exception as e:
+                    print(f"  Error getting uniforms: {e}")
+                
+                # Get active attributes
+                try:
+                    num_attribs = gl.glGetProgramiv(self.shader_program, gl.GL_ACTIVE_ATTRIBUTES)
+                    print(f"  Active Attributes: {num_attribs}")
+                    
+                    for i in range(num_attribs):
+                        try:
+                            attrib_info = gl.glGetActiveAttrib(self.shader_program, i)
+                            name = attrib_info[0].decode()
+                            size = attrib_info[1]
+                            type_enum = attrib_info[2]
+                            print(f"    {name} (size={size}, type={type_enum})")
+                        except Exception as e:
+                            print(f"    Error getting attribute {i}: {e}")
+                except Exception as e:
+                    print(f"  Error getting attributes: {e}")
+                
+            except Exception as e:
+                print(f"  Error getting shader details: {e}")
+        
+        # Current model information
+        print("\nModel Information:")
+        print(f"  Total Models: {len(self.models)}")
+        for i, model in enumerate(self.models):
+            print(f"  Model {i}:")
+            print(f"    Points: {model.num_points}")
+            print(f"    Transparent: {model.has_alpha_lt1}")
+            print(f"    Has VAO: {model.vao is not None}")
+            print(f"    Has VBO: {model.vbo is not None}")
+        
+        # Check current shader programs
+        try:
+            print("\nChecking shader programs 1-10:")
+            for i in range(1, 11):
+                try:
+                    is_prog = gl.glIsProgram(i)
+                    print(f"  Program {i}: {is_prog}")
+                except Exception as e:
+                    print(f"  Program {i}: Error: {e}")
+        except Exception as e:
+            print(f"Error checking programs: {e}")
+            
+        print("==============================\n")
 
     def save_screenshot(self, filename: str):
         """Save the current window contents as a PNG image.
@@ -2712,7 +3501,7 @@ class Viewer:
             normal = normals[face_idx]
             color = colors[face_idx]
             
-            # Two triangles per face
+            # Create two triangles per face
             tri1 = [face[0], face[1], face[2]]
             tri2 = [face[0], face[2], face[3]]
             
@@ -2726,40 +3515,6 @@ class Viewer:
                     vertex_data.extend(normal)
         
         return Model(np.array(vertex_data, dtype=np.float32), num_points=36)
-
-    def update_models(self, models: List[Model]):
-        """Update the models being displayed.
-        
-        Args:
-            models: New list of models to display
-        """
-        # Store original models
-        self.original_models = models
-        
-        # Create coalesced models if enabled
-        if self.use_coalesced_models and models:
-            # Create coalesced models (one opaque, one transparent)
-            opaque_model, transparent_model = Model.create_coalesced_models(models)
-            
-            # Set models for rendering
-            self.models = []
-            # Add opaque model if it has data
-            if opaque_model.num_points > 0:
-                self.models.append(opaque_model)
-            # Add transparent model if it has data
-            if transparent_model.num_points > 0:
-                self.models.append(transparent_model)
-        else:
-            # Use original models
-            self.models = models
-        
-        # Recompute scene bounds and camera position
-        self._compute_scene_bounds()
-        self._setup_camera()
-        
-        # Request redisplay
-        if self.window_id:
-            glut.glutPostRedisplay()
     
     def toggle_coalesced_mode(self):
         """Toggle between using coalesced models and original models."""
@@ -2774,6 +3529,46 @@ class Viewer:
             else:
                 print("Viewer: Using original models (coalesced mode disabled)")
         
+        # Request redisplay
+        if self.window_id:
+            glut.glutPostRedisplay()
+
+    def update_models(self, models: List[Model]):
+        """Update the models displayed by the viewer and re-initialize GL resources."""
+        # Clean up old model resources first
+        for old_model in self.models:
+            old_model.delete()
+            
+        self.original_models = models
+        
+        # Create new set of models (coalesced or original)
+        if self.use_coalesced_models and models:
+            opaque_model, transparent_model = Model.create_coalesced_models(models)
+            self.models = []
+            if opaque_model.num_points > 0:
+                self.models.append(opaque_model)
+            if transparent_model.num_points > 0:
+                self.models.append(transparent_model)
+        else:
+            self.models = models
+            
+        # Recompute scene bounds and reset camera
+        self._compute_scene_bounds()
+        self._reset_view()
+        
+        # Initialize GL resources for the new models
+        if self.window_id and self.window_id == glut.glutGetWindow():
+            if PYOPENGL_VERBOSE:
+                print(f"Viewer: Initializing GL resources for updated models in window {self.window_id}")
+            for model in self.models:
+                try:
+                    model.initialize_gl_resources()
+                except Exception as e:
+                    if PYOPENGL_VERBOSE:
+                        print(f"Viewer: Error initializing GL resources for an updated model: {e}")
+        elif PYOPENGL_VERBOSE:
+            print(f"Viewer: Warning - Cannot initialize updated model GL resources. Window ID mismatch or invalid window.")
+            
         # Request redisplay
         if self.window_id:
             glut.glutPostRedisplay()
@@ -2864,6 +3659,7 @@ if __name__ == "__main__":
     
     try:
         # Start the main loop
+        print(Viewer.VIEWER_HELP_TEXT)
         viewer.run()
     except KeyboardInterrupt:
         # Handle Ctrl+C

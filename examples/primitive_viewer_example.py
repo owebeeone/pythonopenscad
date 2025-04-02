@@ -198,6 +198,8 @@ def main():
 
     # Create and run the viewer
     viewer = Viewer(models)
+    
+    print(Viewer.VIEWER_HELP_TEXT)
     viewer.run()
 
 
