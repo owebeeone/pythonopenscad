@@ -363,16 +363,19 @@ class BoundingBox:
         return np.all(point >= self.min_point) and np.all(point <= self.max_point)
 
 
+@dataclass
 class Model:
     """3D model with vertex data including positions, colors, and normals."""
-    
-    def __init__(self, 
-                 data: np.ndarray,
-                 num_points: Optional[int] = None,
-                 position_offset: int = 0,
-                 color_offset: int = 3,
-                 normal_offset: int = 7,
-                 stride: int = 10):
+    data: np.ndarray
+    has_alpha_lt0: bool = False
+    num_points: int | None = None
+    position_offset: int = 0
+    color_offset: int = 3
+    normal_offset: int = 7
+    stride: int = 10
+                     
+    def __post_init__(self):
+
         """
         Initialize a 3D model from vertex data.
         
@@ -387,12 +390,10 @@ class Model:
         if not HAS_OPENGL:
             raise ImportError("OpenGL libraries (PyOpenGL and PyGLM) are required for the viewer")
         
-        self.data = data.astype(np.float32)
-        self.num_points = num_points if num_points is not None else len(data) // stride
-        self.position_offset = position_offset
-        self.color_offset = color_offset
-        self.normal_offset = normal_offset
-        self.stride = stride
+        self.data = self.data.astype(np.float32)
+        if self.num_points is None:
+            self.num_points = len(self.data) // self.stride
+
         self.gl_ctx = GLContext.get_instance()
         
         # OpenGL objects
@@ -404,7 +405,7 @@ class Model:
         self._compute_bounding_box()
         
     @staticmethod
-    def from_manifold(manifold: m3d.Manifold) -> "Model":
+    def from_manifold(manifold: m3d.Manifold, has_alpha_lt0: bool = False) -> "Model":
         """Convert a manifold3d Manifold to a viewer Model."""
 
         # Get the mesh from the manifold
@@ -428,7 +429,7 @@ class Model:
         flattened_vertex_data = vertex_data.reshape(-1)
         
         # Create a model from the vertex data
-        return Model(flattened_vertex_data)
+        return Model(flattened_vertex_data, has_alpha_lt0=has_alpha_lt0)
     
     def _init_gl(self):
         """Initialize OpenGL vertex buffer and array objects."""

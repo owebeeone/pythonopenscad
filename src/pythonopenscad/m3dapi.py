@@ -398,7 +398,10 @@ class RenderContext(Generic[TM3d]):
         return self.solid_objs
 
     def get_shells(self) -> tuple[TM3d, ...]:
-        return self.shell_objs
+        if self.shell_objs:
+            return self.shell_objs
+        else:
+            return ()
 
     def _to_object_transform(self) -> np.ndarray:
         raise NotImplementedError("Subclasses must implement this")
@@ -583,7 +586,7 @@ class RenderContextManifold(RenderContext[m3d.Manifold]):
         solids = self._apply_and_merge(self.get_solids)
         return solids[0] if solids else m3d.Manifold()
 
-    def get_shell_manifolds(self) -> tuple[m3d.Manifold, ...]:
+    def get_shell_manifold(self) -> tuple[m3d.Manifold, ...]:
         shells = self._apply_and_merge(self.get_shells)
         return shells[0] if shells else m3d.Manifold()
 
@@ -598,7 +601,7 @@ class RenderContextManifold(RenderContext[m3d.Manifold]):
         self, filename: str, mode: Mode = Mode.AUTOMATIC, update_normals: bool = True
     ):
         """Write the shell manifolds to an STL file."""
-        manifold = self.get_shell_manifolds()
+        manifold = self.get_shell_manifold()
         manifold_to_stl(manifold, filename, mode=mode, update_normals=update_normals)
 
 
@@ -725,7 +728,8 @@ class RendererState:
 class M3dRenderer(RendererBase):
     NORMALS_PROP_INDEX = 4
     COLOR_PROP_INDEX = 0
-
+    ALPHA_PROP_INDEX = 3
+    
     state: RendererState = field(default_factory=RendererState)
     color_prop: np.ndarray = field(default_factory=lambda: np.array([0.976, 0.843, 0.173, 1.0]))
 
@@ -760,7 +764,9 @@ class M3dRenderer(RendererBase):
         return ctxt
 
     def apply_transparent(self, ctxt: Ctxt) -> Ctxt:
-        return ctxt
+        new_shells = tuple(self._apply_alpha(0.5, solid) for solid in ctxt.solid_objs)
+        cls = type(ctxt)
+        return cls(self, shell_objs=new_shells + ctxt.shell_objs)
 
     def with_color(self, color: np.ndarray | list[float]) -> Self:
         """Returns a new renderer with the specified color and alpha."""
@@ -769,6 +775,9 @@ class M3dRenderer(RendererBase):
         if color.shape != (4,):
             raise ValueError("Color must be a 4-element array")
         return replace(self, color_prop=color)
+    
+    def _apply_alpha(self, alpha: float, manifold: m3d.Manifold) -> m3d.Manifold:
+        return set_property(manifold, [alpha], self.ALPHA_PROP_INDEX)
 
     def _apply_properties(self, manifold: m3d.Manifold) -> m3d.Manifold:
         manifold = manifold.calculate_normals(self.NORMALS_PROP_INDEX)
