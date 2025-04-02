@@ -44,9 +44,11 @@ class PrimitiveCreator(PrimitiveCreatorBase):
 
     def create_primitive_models(self):
         """Create example 3D models using various OpenSCAD primitives and operations."""
+        
+        spherefn = 32
 
-        sphere6 = posc.Translate([6, 0, 0])(posc.Color("sienna")(posc.Sphere(r=6)))
-        sphere3 = posc.Translate([-2, 0, 0])(posc.Color("orchid")(posc.Sphere(r=3)))
+        sphere6 = posc.Translate([6, 0, 0])(posc.Color("sienna")(posc.Sphere(r=6, _fn=spherefn )))
+        sphere3 = posc.Translate([-2, 0, 0])(posc.Color("orchid")(posc.Sphere(r=3, _fn=spherefn)))
         hull3d = posc.Translate([0, -14, 0])(
             posc.Color("sienna")(posc.Union()(posc.Hull()(sphere6, sphere3)))
         )
@@ -79,7 +81,7 @@ class PrimitiveCreator(PrimitiveCreatorBase):
 
         # Create a sphere
         sphere = posc.Translate([-2.0, -2.0, 0.0])(
-            posc.Color("darkolivegreen")(posc.Sphere(r=2.8, _fn=32))
+            posc.Color("darkolivegreen")(posc.Sphere(r=2.8, _fn=spherefn))
         )
         self.render(sphere)
 
@@ -93,7 +95,7 @@ class PrimitiveCreator(PrimitiveCreatorBase):
         )
         self.render(cylinder)
 
-        sphere2 = posc.Color("darkolivegreen")(posc.Sphere(r=1, _fn=32))
+        sphere2 = posc.Color("darkolivegreen")(posc.Sphere(r=1, _fn=spherefn))
         cube2 = posc.Color("orchid")(posc.Cube(1.5, center=True))
         difference = posc.Difference()(cube2, sphere2).translate([6.0, 0.0, 0.0])
         difference = posc.Rotate([0, 0, 45])(posc.Rotate([45, 45, 0])(difference))
