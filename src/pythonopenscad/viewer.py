@@ -2,7 +2,7 @@
 
 import numpy as np
 import ctypes
-from typing import Iterable, List, Optional, Tuple, Union, Dict, Callable, ClassVar
+from typing import Any, Iterable, List, Optional, Tuple, Union, Dict, Callable, ClassVar
 from dataclasses import dataclass, field
 import warnings
 import sys
@@ -1402,8 +1402,23 @@ class Model:
         return opaque_model, transparent_model
 
 
+@dataclass
 class Viewer:
     """OpenGL viewer for 3D models."""
+    
+    models: List[Model]
+    width: int = 800
+    height: int = 600
+    title: str = "3D Viewer"
+    use_coalesced_models: bool = True
+    
+    # Rendering state
+    backface_culling: bool = True
+    wireframe_mode: bool = False
+    bounding_box_mode: int = 0  # 0: off, 1: wireframe, 2: solid
+    zbuffer_occlusion: bool = True
+    
+    background_color: Tuple[float, float, float, float] = (0.98, 0.98, 0.85, 1.0)
 
     # Shader source code - using GLSL 1.20 for broader compatibility
     VERTEX_SHADER = """
@@ -1524,53 +1539,15 @@ class Viewer:
     """
 
     # Static window registry to handle GLUT callbacks
-    _instances: Dict[int, 'Viewer'] = {}
-    _initialized = False
-    _next_id = 0
+    _instances: ClassVar[Dict[int, 'Viewer']] = {}
+    _initialized: ClassVar[bool] = False
+    _next_id: ClassVar[int] = 0
     
-    def close(self):
-        """Close the viewer."""
-        glut.glutDestroyWindow(self.window_id)
-        self.window_id = None
+            # OpenGL state
+    window_id: int | None = field(default=0, init=False)
+    shader_program: Any | None = field(default=None, init=False)
 
-    @classmethod
-    def _init_glut(cls):
-        """Initialize GLUT if not already initialized."""
-        if not cls._initialized:
-            if PYOPENGL_VERBOSE:
-                print("Viewer: Initializing GLUT")
-            # Initialize GLUT
-            glut.glutInit()
-            
-            # Try to set a default display mode that should work everywhere
-            display_mode = glut.GLUT_DOUBLE | glut.GLUT_RGBA | glut.GLUT_DEPTH
-            try:
-                glut.glutInitDisplayMode(display_mode)
-            except Exception as e:
-                if PYOPENGL_VERBOSE:
-                    print(f"Viewer: Error setting display mode: {e}")
-            
-            # Initialize OpenGL context and detect capabilities
-            if PYOPENGL_VERBOSE:
-                print("Viewer: Getting GLContext instance")
-            gl_ctx = GLContext.get_instance()
-            gl_ctx.initialize()
-            
-            # Always prefer compatibility profile to ensure immediate mode works
-            try:
-                if PYOPENGL_VERBOSE:
-                    print("Viewer: Requesting compatibility profile to ensure immediate mode functions work")
-                # Request compatibility profile for legacy OpenGL
-                gl_ctx.request_context_version(2, 1, core_profile=False)
-            except Exception as e:
-                if PYOPENGL_VERBOSE:
-                    print(f"Viewer: Error requesting OpenGL context version: {e}")
-                # Continue with default OpenGL version
-            
-            cls._initialized = True
-
-    def __init__(self, models: List[Model], width: int = 800, height: int = 600, title: str = "3D Viewer", 
-                 use_coalesced_models: bool = True):
+    def __post_init__(self):
         """
         Initialize the viewer with a list of models.
         
@@ -1588,13 +1565,12 @@ class Viewer:
         self.gl_ctx = GLContext.get_instance()
         
         # Store original models
-        self.original_models = models
+        self.original_models = self.models
         
-        # Create coalesced models if requested
-        self.use_coalesced_models = use_coalesced_models
-        if models:
+        # Create coalesced models
+        if self.models:
             # Create coalesced models (one opaque, one transparent)
-            opaque_model, transparent_model = Model.create_coalesced_models(models)
+            opaque_model, transparent_model = Model.create_coalesced_models(self.models)
             
             # Set models for rendering
             self.models = []
@@ -1604,13 +1580,7 @@ class Viewer:
             # Add transparent model if it has data
             if transparent_model.num_points > 0:
                 self.models.append(transparent_model)
-        else:
-            # Use original models
-            self.models = models
-        
-        self.width = width
-        self.height = height
-        self.title = title
+ 
         
         # Camera parameters
         self.camera_pos = glm.vec3(0.0, 0.0, 5.0)
@@ -1624,30 +1594,17 @@ class Viewer:
         self.model_matrix = np.eye(4, dtype=np.float32)
         
         # Mouse state
-        self.last_mouse_x = width // 2
-        self.last_mouse_y = height // 2
+        self.last_mouse_x = self.width // 2
+        self.last_mouse_y = self.height // 2
         self.first_mouse = True
         self.left_button_pressed = False
         self.right_button_pressed = False
         self.mouse_start_x = 0
         self.mouse_start_y = 0
         
-        # Rendering state
-        self.backface_culling = True
-        self.wireframe_mode = False
-        self.bounding_box_mode = 0  # 0: off, 1: wireframe, 2: solid
-        self.zbuffer_occlusion = True
-        
-        # Store callback references to prevent garbage collection
-        self.callbacks = {}
-        
         # Compute bounding box and set up camera
         self._compute_scene_bounds()
         self._setup_camera()
-        
-        # OpenGL state
-        self.window_id = None
-        self.shader_program = None
         
         # Register this instance
         self.instance_id = Viewer._next_id
@@ -1703,6 +1660,53 @@ class Viewer:
         # Union with all other valid models
         for model in valid_models[1:]:
             self.bounding_box = self.bounding_box.union(model.bounding_box)
+            
+    def close(self):
+        """Close the viewer."""
+        # Avoid calling glut functions if the window doesn't exist or GLUT isn't initialized
+        if self.window_id is not None and Viewer._initialized:
+            try:
+                glut.glutDestroyWindow(self.window_id)
+            except Exception as e:
+                if PYOPENGL_VERBOSE:
+                    print(f"Viewer: Error destroying window {self.window_id}: {e}")
+        self.window_id = None
+
+    @classmethod
+    def _init_glut(cls):
+        """Initialize GLUT if not already initialized."""
+        if not cls._initialized:
+            if PYOPENGL_VERBOSE:
+                print("Viewer: Initializing GLUT")
+            # Initialize GLUT
+            glut.glutInit()
+            
+            # Try to set a default display mode that should work everywhere
+            display_mode = glut.GLUT_DOUBLE | glut.GLUT_RGBA | glut.GLUT_DEPTH
+            try:
+                glut.glutInitDisplayMode(display_mode)
+            except Exception as e:
+                if PYOPENGL_VERBOSE:
+                    print(f"Viewer: Error setting display mode: {e}")
+            
+            # Initialize OpenGL context and detect capabilities
+            if PYOPENGL_VERBOSE:
+                print("Viewer: Getting GLContext instance")
+            gl_ctx = GLContext.get_instance()
+            gl_ctx.initialize()
+            
+            # Always prefer compatibility profile to ensure immediate mode works
+            try:
+                if PYOPENGL_VERBOSE:
+                    print("Viewer: Requesting compatibility profile to ensure immediate mode functions work")
+                # Request compatibility profile for legacy OpenGL
+                gl_ctx.request_context_version(2, 1, core_profile=False)
+            except Exception as e:
+                if PYOPENGL_VERBOSE:
+                    print(f"Viewer: Error requesting OpenGL context version: {e}")
+                # Continue with default OpenGL version
+            
+            cls._initialized = True
     
     def _setup_camera(self):
         """Set up the camera based on the scene bounds."""
@@ -1743,33 +1747,25 @@ class Viewer:
         # Make sure we're operating on the correct window
         glut.glutSetWindow(self.window_id)
         
-        # Store callback references to prevent garbage collection
-        self.callbacks["display"] = lambda: self._display_callback()
-        self.callbacks["reshape"] = lambda w, h: self._reshape_callback(w, h)
-        self.callbacks["mouse"] = lambda button, state, x, y: self._mouse_callback(button, state, x, y)
-        self.callbacks["motion"] = lambda x, y: self._motion_callback(x, y)
-        self.callbacks["wheel"] = lambda wheel, direction, x, y: self._wheel_callback(wheel, direction, x, y)
-        self.callbacks["keyboard"] = lambda key, x, y: self._keyboard_callback(key, x, y)
-        
         # Register callbacks
-        glut.glutDisplayFunc(self.callbacks["display"])
+        glut.glutDisplayFunc(self._display_callback)
         if PYOPENGL_VERBOSE:
             print(f"Viewer: Registered display callback for window ID: {self.window_id}")
         
         # Register other callbacks with logging
         if PYOPENGL_VERBOSE:
             print(f"Viewer: Registering reshape callback for window ID: {self.window_id}")
-        glut.glutReshapeFunc(self.callbacks["reshape"])
+        glut.glutReshapeFunc(self._reshape_callback)
         
         if PYOPENGL_VERBOSE:
             print(f"Viewer: Registering mouse callbacks for window ID: {self.window_id}")
-        glut.glutMouseFunc(self.callbacks["mouse"])
-        glut.glutMotionFunc(self.callbacks["motion"])
-        glut.glutMouseWheelFunc(self.callbacks["wheel"])
+        glut.glutMouseFunc(self._mouse_callback)
+        glut.glutMotionFunc(self._motion_callback)
+        glut.glutMouseWheelFunc(self._wheel_callback)
         
         if PYOPENGL_VERBOSE:
             print(f"Viewer: Registering keyboard callback for window ID: {self.window_id}")
-        glut.glutKeyboardFunc(self.callbacks["keyboard"])
+        glut.glutKeyboardFunc(self._keyboard_callback)
         
         # Immediate redisplay to ensure display callback is triggered
         if PYOPENGL_VERBOSE:
@@ -2581,7 +2577,7 @@ class Viewer:
                 print(f"Viewer: Display callback executed for window ID: {self.window_id}")
             
             # Clear the color and depth buffers
-            gl.glClearColor(0.2, 0.2, 0.2, 1.0)
+            gl.glClearColor(*self.background_color) # Use the background color stored in the instance
             gl.glClear(gl.GL_COLOR_BUFFER_BIT | gl.GL_DEPTH_BUFFER_BIT)
             
             # Check if we're in a core profile
