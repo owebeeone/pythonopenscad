@@ -3,10 +3,9 @@
 import numpy as np
 import ctypes
 from typing import Any, Iterable, List, Optional, Tuple, Union, Dict, Callable, ClassVar
-from dataclasses import dataclass, field
+from datatrees import datatree, dtfield, Node
 import warnings
 import sys
-import time
 import signal
 from datetime import datetime
 import manifold3d as m3d
@@ -32,7 +31,7 @@ except ImportError:
 PYOPENGL_VERBOSE = True
 
 
-@dataclass
+@datatree
 class GLContext:
     """Singleton class to manage OpenGL context and capabilities."""
     
@@ -317,11 +316,11 @@ class GLContext:
 
 
 
-@dataclass
+@datatree
 class BoundingBox:
     """3D bounding box with min and max points."""
-    min_point: np.ndarray = field(default_factory=lambda: np.array([float('inf'), float('inf'), float('inf')]))
-    max_point: np.ndarray = field(default_factory=lambda: np.array([float('-inf'), float('-inf'), float('-inf')]))
+    min_point: np.ndarray = dtfield(default_factory=lambda: np.array([float('inf'), float('inf'), float('inf')]))
+    max_point: np.ndarray = dtfield(default_factory=lambda: np.array([float('-inf'), float('-inf'), float('-inf')]))
 
     @property
     def size(self) -> np.ndarray:
@@ -363,7 +362,7 @@ class BoundingBox:
         return np.all(point >= self.min_point) and np.all(point <= self.max_point)
 
 
-@dataclass
+@datatree
 class Model:
     """3D model with vertex data including positions, colors, and normals."""
     data: np.ndarray
@@ -735,9 +734,6 @@ class Model:
                             vao_id = int(self.vao[0])
                         else:
                             vao_id = self.vao
-                            
-                        if PYOPENGL_VERBOSE:
-                            print(f"Model._draw_with_shader: Attempting to use VAO ID: {vao_id}")
                             
                         # Check if this is a valid VAO
                         vao_exists = gl.glIsVertexArray(vao_id)
@@ -1402,7 +1398,85 @@ class Model:
         return opaque_model, transparent_model
 
 
-@dataclass
+@datatree
+class AxesRenderer:
+    """Renders X, Y, Z axes using immediate mode."""
+    factor: float = 5 # Length of axes relative to scene diagonal
+    color: Tuple[float, float, float] = (0.0, 0.0, 0.0) # Color for the axes lines
+    line_width_px: float = 1.0 # Line width for the axes
+    dash_ratio: float = 0.6 # Ratio of dash length to total dash+space (for negative axes)
+    stipple_factor: int = 4    # Scaling factor for the dash pattern
+    negative_stipple_pattern: int = 0xAAAA
+    
+    
+    AXES: ClassVar[List[np.ndarray]] = [
+        np.array([1., 0., 0.]),
+        np.array([0., 1., 0.]),
+        np.array([0., 0., 1.])
+    ]
+    
+    def draw(self, viewer: "Viewer"):
+        """Draw the axes lines."""
+        if not HAS_OPENGL:
+            return
+        
+        self.draw_axes(viewer)
+        
+    def draw_axes(self, viewer: "Viewer"):  
+        try:
+            win_xy = np.asarray(viewer.get_current_window_dims())
+            
+            scene_diagonal = np.sqrt(np.dot(win_xy, win_xy))
+            
+            # Calculate axis length
+            length = scene_diagonal * self.factor
+            if length <= 0:
+                length = 1.0 # Default length if diagonal is zero or negative
+            
+            # Store current OpenGL state
+            lighting_enabled = gl.glIsEnabled(gl.GL_LIGHTING)
+            current_line_width = gl.glGetFloatv(gl.GL_LINE_WIDTH)
+            
+            
+            # Setup state for axes drawing
+            if lighting_enabled:
+                gl.glDisable(gl.GL_LIGHTING)
+            gl.glLineWidth(self.line_width_px)
+
+            # Set the color for all axes
+            gl.glColor3f(*self.color)
+
+            # --- Draw Positive Axes (Solid) ---
+            self.draw_half_axes(length)
+            # --- Draw Negative Axes (Dashed) ---
+            try:
+                gl.glEnable(gl.GL_LINE_STIPPLE)
+                gl.glLineStipple(self.stipple_factor, self.negative_stipple_pattern)
+                self.draw_half_axes(-length)
+            finally:
+                 # Ensure stipple is disabled even if errors occur
+                 gl.glDisable(gl.GL_LINE_STIPPLE)
+
+            # Restore previous OpenGL state
+            gl.glLineWidth(current_line_width)
+            # Restore depth test if it was disabled (it wasn't)
+            if lighting_enabled:
+                gl.glEnable(gl.GL_LIGHTING)
+        except Exception as e:
+            if PYOPENGL_VERBOSE:
+                print(f"AxesRenderer: Error drawing axes: {e}")
+                
+    def draw_half_axes(self, length: float):
+        gl.glBegin(gl.GL_LINES) # Start new block for dashed lines
+        try:
+            for axis in self.AXES:
+                gl.glVertex3f(0.0, 0.0, 0.0)
+                gl.glVertex3f(*(length * axis))
+        finally:
+            gl.glEnd() # End dashed lines block
+        
+
+@datatree
 class Viewer:
     """OpenGL viewer for 3D models."""
     
@@ -1419,6 +1493,9 @@ class Viewer:
     zbuffer_occlusion: bool = True
     
     background_color: Tuple[float, float, float, float] = (0.98, 0.98, 0.85, 1.0)
+    
+    axes_renderer_node: Node[AxesRenderer] = Node(AxesRenderer, prefix="axes_")
+    axes_renderer: AxesRenderer = dtfield(self_default=lambda self: self.axes_renderer_node())
 
     # Shader source code - using GLSL 1.20 for broader compatibility
     VERTEX_SHADER = """
@@ -1544,8 +1621,8 @@ class Viewer:
     _next_id: ClassVar[int] = 0
     
             # OpenGL state
-    window_id: int | None = field(default=0, init=False)
-    shader_program: Any | None = field(default=None, init=False)
+    window_id: int | None = dtfield(default=0, init=False)
+    shader_program: Any | None = dtfield(default=None, init=False)
 
     def __post_init__(self):
         """
@@ -1605,6 +1682,7 @@ class Viewer:
         # Compute bounding box and set up camera
         self._compute_scene_bounds()
         self._setup_camera()
+
         
         # Register this instance
         self.instance_id = Viewer._next_id
@@ -2777,6 +2855,9 @@ class Viewer:
                     # Use the regular fallback
                     self._render_absolute_fallback()
             
+            # Draw axes on top before swapping
+            self.axes_renderer.draw(self)
+            
             # Swap buffers
             glut.glutSwapBuffers()
             
@@ -3568,6 +3649,56 @@ class Viewer:
         # Request redisplay
         if self.window_id:
             glut.glutPostRedisplay()
+
+    def get_view_to_world_matrix(self) -> np.ndarray:
+        """Calculate and return the view-to-world transformation matrix."""
+        if not HAS_OPENGL:
+            return np.eye(4, dtype=np.float32) # Return identity if no OpenGL
+        
+        try:
+            # Calculate the view matrix (world-to-view)
+            view_matrix = glm.lookAt(
+                self.camera_pos, 
+                self.camera_pos + self.camera_front, 
+                self.camera_up
+            )
+            
+            # Invert the view matrix to get view-to-world
+            view_to_world_matrix = glm.inverse(view_matrix)
+            
+            # Convert GLM matrix to NumPy array
+            # GLM stores matrices column-major, so we need to transpose after reshaping
+            np_matrix = np.array(view_to_world_matrix, dtype=np.float32).reshape(4, 4).T
+            return np_matrix
+            
+        except Exception as e:
+            if PYOPENGL_VERBOSE:
+                print(f"Viewer: Error calculating view-to-world matrix: {e}")
+            return np.eye(4, dtype=np.float32) # Return identity on error
+
+    def get_current_window_dims(self) -> Tuple[int, int]:
+        """Get the current dimensions (width, height) of the viewer window."""
+        if not HAS_OPENGL or not Viewer._initialized or self.window_id is None:
+            return (self.width, self.height) # Return stored dimensions if GLUT not ready
+            
+        try:
+            # Ensure we query the correct window if multiple exist (though unlikely with current structure)
+            current_win = glut.glutGetWindow()
+            if current_win != self.window_id:
+                glut.glutSetWindow(self.window_id)
+                
+            width = glut.glutGet(glut.GLUT_WINDOW_WIDTH)
+            height = glut.glutGet(glut.GLUT_WINDOW_HEIGHT)
+            
+            # Restore previous window context if changed
+            if current_win != self.window_id and current_win != 0:
+                 glut.glutSetWindow(current_win)
+                 
+            return (width, height)
+        except Exception as e:
+            if PYOPENGL_VERBOSE:
+                print(f"Viewer: Error getting window dimensions: {e}")
+            return (self.width, self.height) # Fallback to stored dimensions
 
 
 # Helper function to create a viewer with models
