@@ -35,7 +35,7 @@ class PrimitiveCreatorBase:
         return [Model.from_manifold(mfd) for mfd in self.get_solid_manifolds()]
     
     def get_shell_model(self) -> list[Model]:
-        return [Model.from_manifold(mfd, has_alpha_lt0=True) for mfd in self.get_shell_manifolds()]
+        return [Model.from_manifold(mfd, has_alpha_lt1=True) for mfd in self.get_shell_manifolds()]
     
     
 

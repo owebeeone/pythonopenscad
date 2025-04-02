@@ -367,7 +367,7 @@ class BoundingBox:
 class Model:
     """3D model with vertex data including positions, colors, and normals."""
     data: np.ndarray
-    has_alpha_lt0: bool = False
+    has_alpha_lt1: bool = False
     num_points: int | None = None
     position_offset: int = 0
     color_offset: int = 3
@@ -405,7 +405,7 @@ class Model:
         self._compute_bounding_box()
         
     @staticmethod
-    def from_manifold(manifold: m3d.Manifold, has_alpha_lt0: bool = False) -> "Model":
+    def from_manifold(manifold: m3d.Manifold, has_alpha_lt1: bool = False) -> "Model":
         """Convert a manifold3d Manifold to a viewer Model."""
 
         # Get the mesh from the manifold
@@ -429,7 +429,7 @@ class Model:
         flattened_vertex_data = vertex_data.reshape(-1)
         
         # Create a model from the vertex data
-        return Model(flattened_vertex_data, has_alpha_lt0=has_alpha_lt0)
+        return Model(flattened_vertex_data, has_alpha_lt1=has_alpha_lt1)
     
     def _init_gl(self):
         """Initialize OpenGL vertex buffer and array objects."""
@@ -608,6 +608,18 @@ class Model:
             if PYOPENGL_VERBOSE:
                 print("Model.draw: No valid window context")
             return
+        
+        # Setup blending for transparent models
+        blend_enabled = False
+        if self.has_alpha_lt1:
+            try:
+                # Enable blending for transparent models
+                blend_enabled = gl.glIsEnabled(gl.GL_BLEND)
+                gl.glEnable(gl.GL_BLEND)
+                gl.glBlendFunc(gl.GL_SRC_ALPHA, gl.GL_ONE_MINUS_SRC_ALPHA)
+            except Exception as e:
+                if PYOPENGL_VERBOSE:
+                    print(f"Model.draw: Failed to enable blending: {e}")
             
         # On Windows with certain drivers, VBO/VAO operations cause issues
         # Force immediate mode rendering for maximum compatibility
@@ -633,7 +645,14 @@ class Model:
                 self._draw_bounding_box()
             except Exception:
                 pass
-                
+        
+        # Restore blending state if we changed it
+        if self.has_alpha_lt1 and not blend_enabled:
+            try:
+                gl.glDisable(gl.GL_BLEND)
+            except Exception:
+                pass
+    
     def _draw_bounding_box(self):
         """Draw a simple bounding box for the model as a last resort."""
         try:
@@ -730,7 +749,8 @@ class Model:
                     pass
                 
                 # Set color - CRUCIAL for visibility
-                gl.glColor3f(r, g, b)
+                # Use alpha component for transparent rendering
+                gl.glColor4f(r, g, b, a)
                 
                 # Set vertex
                 gl.glVertex3f(px, py, pz)
@@ -1016,6 +1036,7 @@ class Viewer:
         // Add a minimum brightness to ensure visibility
         result = max(result, VertexColor.rgb * 0.4);
         
+        // Preserve alpha from vertex color for transparent objects
         gl_FragColor = vec4(result, VertexColor.a);
     }
     """
@@ -1902,6 +1923,10 @@ class Viewer:
                 # Set up view
                 self._setup_view()
                 
+                # Sort models - opaque first, then transparent
+                opaque_models = [model for model in self.models if not model.has_alpha_lt1]
+                transparent_models = [model for model in self.models if model.has_alpha_lt1]
+                
                 # Check if we should use Z-buffer occlusion
                 if self.zbuffer_occlusion and self.wireframe_mode and self.backface_culling:
                     # First pass: Fill the Z-buffer but don't show geometry
@@ -1929,18 +1954,6 @@ class Viewer:
                     gl.glMatrixMode(gl.GL_PROJECTION)
                     gl.glPushMatrix()
                     
-                    # Create a tiny bias in the projection matrix - this shifts everything slightly toward the camera in view space
-                    # bias_matrix = np.eye(4, dtype=np.float32)
-                    # Apply a small bias to the Z component of the projection matrix
-                    # This is in NDC space, so a very small value has a noticeable effect
-                    #bias_matrix[2, 3] = 0.000001  # Positive bias pushes objects away from camera
-                    
-                    # Apply bias to current projection matrix
-                    # current_proj = np.zeros((4, 4), dtype=np.float32)
-                    # gl.glGetFloatv(gl.GL_PROJECTION_MATRIX, current_proj)
-                    # biased_proj = np.matmul(current_proj, bias_matrix)
-                    # gl.glLoadMatrixf(biased_proj)
-                    
                     # Draw all models
                     for model in self.models:
                         model.draw()
@@ -1955,10 +1968,31 @@ class Viewer:
                     # Disable polygon offset
                     gl.glDisable(gl.GL_POLYGON_OFFSET_LINE)
                 else:
-                    # Regular rendering: Draw all models
-                    for model in self.models:
+                    # Regular rendering: Draw opaque models first
+                    for model in opaque_models:
                         model.draw()
                         rendering_success = True
+                    
+                    # For transparent models, we need proper depth testing but shouldn't update the z-buffer
+                    if transparent_models:
+                        try:
+                            # Enable depth testing but don't write to depth buffer
+                            gl.glDepthMask(gl.GL_FALSE)
+                            
+                            # Draw transparent models after opaque ones
+                            for model in transparent_models:
+                                model.draw()
+                                rendering_success = True
+                                
+                            # Restore depth mask
+                            gl.glDepthMask(gl.GL_TRUE)
+                        except Exception as e:
+                            if PYOPENGL_VERBOSE:
+                                print(f"Viewer: Error during transparent rendering: {e}")
+                            # Fallback - just render transparent models normally
+                            for model in transparent_models:
+                                model.draw()
+                                rendering_success = True
                 
                 # Draw bounding box if enabled
                 self._draw_bounding_box()
@@ -2324,13 +2358,22 @@ class Viewer:
         max_x, max_y, max_z = self.bounding_box.max_point
         
         # Set up transparency for solid mode
+        was_blend_enabled = False
         if self.bounding_box_mode == 2:
             try:
+                # Save current blend state
+                was_blend_enabled = gl.glIsEnabled(gl.GL_BLEND)
+                
+                # Enable blending
                 gl.glEnable(gl.GL_BLEND)
                 gl.glBlendFunc(gl.GL_SRC_ALPHA, gl.GL_ONE_MINUS_SRC_ALPHA)
-                gl.glColor4f(0.0, 1.0, 0.0, 0.2)  # Semi-transparent green
-            except Exception:
-                # If blending fails, fall back to wireframe
+                
+                # Semi-transparent green
+                gl.glColor4f(0.0, 1.0, 0.0, 0.2)  
+            except Exception as e:
+                if PYOPENGL_VERBOSE:
+                    print(f"Viewer: Blending setup failed: {e}")
+                # Fall back to wireframe
                 self.bounding_box_mode = 1
                 if PYOPENGL_VERBOSE:
                     print("Viewer: Blending not supported, falling back to wireframe mode")
@@ -2420,7 +2463,7 @@ class Viewer:
             gl.glEnd()
         
         # Clean up blending state
-        if self.bounding_box_mode == 2:
+        if self.bounding_box_mode == 2 and not was_blend_enabled:
             try:
                 gl.glDisable(gl.GL_BLEND)
             except Exception:
@@ -2438,8 +2481,8 @@ class Viewer:
         
         # Define cube vertices
         vertices = [
-            [-s, -s, -s], [s, -s, -s], [s, s, -s], [-s, s, -s],  # 0-3 back face
-            [-s, -s, s], [s, -s, s], [s, s, s], [-s, s, s]       # 4-7 front face
+            [s, -s, -s], [-s, -s, -s], [-s, s, -s], [s, s, -s],  # 0-3 back face
+            [s, -s, s], [-s, -s, s], [-s, s, s], [s, s, s]       # 4-7 front face
         ]
         
         # Define face normals
@@ -2538,7 +2581,6 @@ def get_opengl_capabilities(gl_ctx: GLContext):
 
 # If this module is run directly, show a simple demo
 if __name__ == "__main__":
-    import time
     import signal
     import sys
     
@@ -2562,7 +2604,7 @@ if __name__ == "__main__":
     color_cube = Viewer.create_colored_test_cube(2.0)  # Use our special test cube with bright colors
     
     # Create a viewer with both models - using just the color cube for testing colors
-    viewer = create_viewer_with_models([color_cube], title="PyOpenSCAD Viewer Color Test")
+    viewer = create_viewer_with_models([color_cube, triangle], title="PyOpenSCAD Viewer Color Test")
     
     # Define a handler for Ctrl+C to properly terminate
     def signal_handler(sig, frame):
