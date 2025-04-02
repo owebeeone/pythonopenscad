@@ -3,6 +3,8 @@ from pythonopenscad import M3dRenderer
 import pythonopenscad as posc
 import sys
 
+from pythonopenscad.modifier import DISABLE, SHOW_ONLY
+
 try:
     from pythonopenscad.m3dapi import M3dRenderer
     from pythonopenscad.viewer import Model, Viewer, is_opengl_available
@@ -15,20 +17,21 @@ except ImportError as e:
 
 def create_primitive_models():
     """Create example 3D models using various OpenSCAD primitives and operations."""
-    renderer = M3dRenderer()    
-    
+    renderer = M3dRenderer()
+
     sphere6 = posc.Translate([6, 0, 0])(posc.Color("sienna")(posc.Sphere(r=6)))
     sphere3 = posc.Translate([-2, 0, 0])(posc.Color("orchid")(posc.Sphere(r=3)))
-    hull3d = posc.Translate([0, -14, 0])(posc.Color("sienna")(posc.Union()(posc.Hull()(sphere6, sphere3))))
+    hull3d = posc.Translate([0, -14, 0])(
+        posc.Color("sienna")(posc.Union()(posc.Hull()(sphere6, sphere3)))
+    )
     hull3d_manifold = hull3d.renderObj(renderer).get_solid_manifold()
-    
+
     circle6 = posc.Translate([6, 0, 0])(posc.Circle(r=6))
     circle3 = posc.Translate([-2, 0, 0])(posc.Circle(r=3))
     hull2d = posc.Hull()(circle6, circle3)
     hull_extrusion = posc.Translate([0, 10, 0])(posc.Linear_Extrude(height=3.0)(hull2d))
     hull_extrusion_manifold = hull_extrusion.renderObj(renderer).get_solid_manifold()
 
-    
     text = posc.Text(
         "Hello, World!",
         size=3,
@@ -38,11 +41,13 @@ def create_primitive_models():
         spacing=1.0,
         direction="ltr",
         language="en",
-        script="latin"
+        script="latin",
     )
 
     text_extrusion = posc.Color("darkseagreen")(
-        posc.Translate([-8.0, 0.0, 4.5])(posc.Rotate([0, 0, 90])(posc.Linear_Extrude(height=3.0)(text)))
+        posc.Translate([-8.0, 0.0, 4.5])(
+            posc.Rotate([0, 0, 90])(posc.Linear_Extrude(height=3.0)(text))
+        )
     )
     text_extrusion_manifold = text_extrusion.renderObj(renderer).get_solid_manifold()
 
@@ -102,15 +107,15 @@ def create_primitive_models():
         posc.Translate([-6.0, 0.0, 4.5])(posc.Linear_Extrude(height=3.0)(polygon))
     )
     polygon_extrusion_manifold = polygon_extrusion.renderObj(renderer).get_solid_manifold()
-    
+
     projection = posc.Projection()(difference)
     projection_extrusion = posc.Color("darkseagreen")(
         posc.Translate([16.0, 0.0, 4.5])(posc.Linear_Extrude(height=1.0)(projection))
     )
     projection_extrusion_manifold = projection_extrusion.renderObj(renderer).get_solid_manifold()
-    
+
     xmin, ymin, zmin, xmax, ymax, zmax = difference_manifold.bounding_box()
-    cut = posc.Projection(cut=True)(posc.Translate([0, 0, -(zmin+zmax)/2])(difference))
+    cut = posc.Projection(cut=True)(posc.Translate([0, 0, -(zmin + zmax) / 2])(difference))
     cut_extrusion = posc.Color("darkseagreen")(
         posc.Translate([16.0, 5.0, 4.5])(posc.Linear_Extrude(height=1.0)(cut))
     )
@@ -121,20 +126,41 @@ def create_primitive_models():
         posc.Translate([16.0, 10.0, 4.5])(posc.Linear_Extrude(height=1.0)(offset))
     )
     offset_extrusion_manifold = offset_extrusion.renderObj(renderer).get_solid_manifold()
-    
-    filled_text = posc.Fill()(posc.Text(
-        "A",
-        size=3,
-        font="Arial",
-        halign="center",
-        valign="center",
-    ))
+
+    filled_text = posc.Fill()(
+        posc.Text(
+            "A",
+            size=3,
+            font="Arial",
+            halign="center",
+            valign="center",
+        )
+    )
     filled_text_extrusion = posc.Color("royalblue")(
         posc.Translate([16.0, 15.0, 4.5])(posc.Linear_Extrude(height=1.0)(filled_text))
     )
     filled_text_extrusion_manifold = filled_text_extrusion.renderObj(renderer).get_solid_manifold()
-    
-    
+
+    union_of_solids = posc.Translate([0, -40, 0])(
+        hull_extrusion,
+        hull3d.add_modifier(DISABLE),
+        text_extrusion.transparent(),
+        sphere,
+        cube,
+        cylinder,
+        difference,
+        intersection,
+        union,
+        linear_extrusion,
+        rotate_extrusion,
+        polygon_extrusion,
+        projection_extrusion,
+        cut_extrusion,
+        offset_extrusion,
+        filled_text_extrusion,
+    )
+
+    union_of_solids_manifold = union_of_solids.renderObj(renderer).get_solid_manifold()
     # Convert to viewer models
     models = [
         Model.from_manifold(hull_extrusion_manifold),
@@ -153,6 +179,7 @@ def create_primitive_models():
         Model.from_manifold(cut_extrusion_manifold),
         Model.from_manifold(offset_extrusion_manifold),
         Model.from_manifold(filled_text_extrusion_manifold),
+        Model.from_manifold(union_of_solids_manifold),
     ]
 
     return models

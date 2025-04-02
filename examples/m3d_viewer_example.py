@@ -47,26 +47,26 @@ def create_m3d_example_models():
     renderer = M3dRenderer()
     
     # Create a cube
-    cube = renderer.cube(size=(1.0, 1.0, 1.0), center=True)
+    cube = renderer._cube(size=(1.0, 1.0, 1.0), center=True)
     cube_manifold = cube.get_solid_manifold().translate([-2.0, -2.0, 0.0])
     
     # Create a sphere
-    sphere = renderer.color("green").sphere(radius=0.8, fn=32)
+    sphere = renderer._color_renderer("green")._sphere(radius=0.8, fn=32)
     sphere_manifold = sphere.get_solid_manifold().translate([2.0, -2.0, 0.0])
     
     # Create a cylinder
-    cylinder = renderer.color("deepskyblue").cylinder(h=1.5, r_base=0.5, r_top=0.5, fn=32, center=True)
+    cylinder = renderer._color_renderer("deepskyblue")._cylinder(h=1.5, r_base=0.5, r_top=0.5, fn=32, center=True)
     cylinder_manifold = cylinder.get_solid_manifold().translate([-2.0, 2.0, 0.0])
     
     # Create a complex model using CSG operations
     # Create a union of cube and sphere
-    cube3 = renderer.color("darkkhaki").cube(size=1.2, center=True)
-    cube_sphere = renderer.union([cube3, sphere]).get_solid_manifold().translate([2.0, 2.0, 0.0])
+    cube3 = renderer._color_renderer("darkkhaki")._cube(size=1.2, center=True)
+    cube_sphere = renderer._union([cube3, sphere]).get_solid_manifold().translate([2.0, 2.0, 0.0])
     
     # Create a difference of cylinder from a cube
-    cube2 = renderer.color("darkviolet").cube(size=(1.5, 1.5, 1.5), center=True)
-    cylinder2 = renderer.color("peru").cylinder(h=3.0, r_base=0.4, r_top=0.4, fn=32, center=True)
-    cube_with_hole = renderer.difference([cube2, cylinder2]).get_solid_manifold().translate([0.0, 0.0, 0.0])
+    cube2 = renderer._color_renderer("darkviolet")._cube(size=(1.5, 1.5, 1.5), center=True)
+    cylinder2 = renderer._color_renderer("peru")._cylinder(h=3.0, r_base=0.4, r_top=0.4, fn=32, center=True)
+    cube_with_hole = renderer._difference([cube2, cylinder2]).get_solid_manifold().translate([0.0, 0.0, 0.0])
     
     # Convert to viewer models with different colors
     models = [

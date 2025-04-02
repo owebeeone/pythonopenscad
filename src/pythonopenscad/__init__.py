@@ -16,7 +16,6 @@ from .base import (
     InitializerNotAllowed,
     Intersection,
     InvalidIndentLevel,
-    InvalidModifier,
     InvalidValue,
     InvalidValueForBool,
     InvalidValueForStr,
@@ -37,7 +36,6 @@ from .base import (
     Polyhedron,
     PoscBase,
     PoscBaseException,
-    PoscModifiers,
     PoscParentBase,
     Projection,
     RequiredParameterNotProvided,
@@ -104,7 +102,10 @@ from pythonopenscad.modifier import (
     DEBUG,
     TRANSPARENT,
     BASE_MODIFIERS_SET,
-    BASE_MODIFIERS
+    BASE_MODIFIERS,
+    InvalidModifier,
+    PoscModifiers,
+    PoscRendererBase,
 )
 
 from pythonopenscad.m3dapi import (
@@ -174,6 +175,7 @@ __all__ = [
     "PoscBaseException",
     "PoscModifiers",
     "PoscParentBase",
+    "PoscRendererBase",
     "Projection",
     "RequiredParameterNotProvided",
     "Render",

@@ -4,8 +4,18 @@ from typing import Any, Callable, Generic, Iterable, Self, TypeVar
 import manifold3d as m3d
 import numpy as np
 import mapbox_earcut
+from pythonopenscad.modifier import (
+    DEBUG,
+    DISABLE,
+    SHOW_ONLY,
+    TRANSPARENT,
+    PoscRendererBase,
+    RendererBase,
+    get_fragments_from_fn_fa_fs,
+)
 from pythonopenscad.text_render import render_text
 from stl import mesh, Mode
+from pathlib import Path
 
 
 TM3d = TypeVar("T")
@@ -13,155 +23,155 @@ TM3d = TypeVar("T")
 # Colour map derived from:
 # https://github.com/openscad/openscad/blob/master/src/core/ColorNode.cc#L51
 COLOUR_MAP = {
-    "aliceblue": (240/255, 248/255, 255/255),
-    'antiquewhite': (250/255, 235/255, 215/255),
-    'aqua': (0/255, 255/255, 255/255),
-    'aquamarine': (127/255, 255/255, 212/255),
-    'azure': (240/255, 255/255, 255/255),
-    'beige': (245/255, 245/255, 220/255),
-    'bisque': (255/255, 228/255, 196/255),
-    'black': (0/255, 0/255, 0/255),
-    'blanchedalmond': (255/255, 235/255, 205/255),
-    'blue': (0/255, 0/255, 255/255),
-    'blueviolet': (138/255, 43/255, 226/255),
-    'brown': (165/255, 42/255, 42/255),
-    'burlywood': (222/255, 184/255, 135/255),
-    'cadetblue': (95/255, 158/255, 160/255),
-    'chartreuse': (127/255, 255/255, 0/255),
-    'chocolate': (210/255, 105/255, 30/255),
-    'coral': (255/255, 127/255, 80/255),
-    'cornflowerblue': (100/255, 149/255, 237/255),
-    'cornsilk': (255/255, 248/255, 220/255),
-    'crimson': (220/255, 20/255, 60/255),
-    'cyan': (0/255, 255/255, 255/255),
-    'darkblue': (0/255, 0/255, 139/255),
-    'darkcyan': (0/255, 139/255, 139/255),
-    'darkgoldenrod': (184/255, 134/255, 11/255),
-    'darkgray': (169/255, 169/255, 169/255),
-    'darkgreen': (0/255, 100/255, 0/255),
-    'darkgrey': (169/255, 169/255, 169/255),
-    'darkkhaki': (189/255, 183/255, 107/255),
-    'darkmagenta': (139/255, 0/255, 139/255),
-    'darkolivegreen': (85/255, 107/255, 47/255),
-    'darkorange': (255/255, 140/255, 0/255),
-    'darkorchid': (153/255, 50/255, 204/255),
-    'darkred': (139/255, 0/255, 0/255),
-    'darksalmon': (233/255, 150/255, 122/255),
-    'darkseagreen': (143/255, 188/255, 143/255),
-    'darkslateblue': (72/255, 61/255, 139/255),
-    'darkslategray': (47/255, 79/255, 79/255),
-    'darkslategrey': (47/255, 79/255, 79/255),
-    'darkturquoise': (0/255, 206/255, 209/255),
-    'darkviolet': (148/255, 0/255, 211/255),
-    'deeppink': (255/255, 20/255, 147/255),
-    'deepskyblue': (0/255, 191/255, 255/255),
-    'dimgray': (105/255, 105/255, 105/255),
-    'dimgrey': (105/255, 105/255, 105/255),
-    'dodgerblue': (30/255, 144/255, 255/255),
-    'firebrick': (178/255, 34/255, 34/255),
-    'floralwhite': (255/255, 250/255, 240/255),
-    'forestgreen': (34/255, 139/255, 34/255),
-    'fuchsia': (255/255, 0/255, 255/255),
-    'gainsboro': (220/255, 220/255, 220/255),
-    'ghostwhite': (248/255, 248/255, 255/255),
-    'gold': (255/255, 215/255, 0/255),
-    'goldenrod': (218/255, 165/255, 32/255),
-    'gray': (128/255, 128/255, 128/255),
-    'green': (0/255, 128/255, 0/255),
-    'greenyellow': (173/255, 255/255, 47/255),
-    'grey': (128/255, 128/255, 128/255),
-    'honeydew': (240/255, 255/255, 240/255),
-    'hotpink': (255/255, 105/255, 180/255),
-    'indianred': (205/255, 92/255, 92/255),
-    'indigo': (75/255, 0/255, 130/255),
-    'ivory': (255/255, 255/255, 240/255),
-    'khaki': (240/255, 230/255, 140/255),
-    'lavender': (230/255, 230/255, 250/255),
-    'lavenderblush': (255/255, 240/255, 245/255),
-    'lawngreen': (124/255, 252/255, 0/255),
-    'lemonchiffon': (255/255, 250/255, 205/255),
-    'lightblue': (173/255, 216/255, 230/255),
-    'lightcoral': (240/255, 128/255, 128/255),
-    'lightcyan': (224/255, 255/255, 255/255),
-    'lightgoldenrodyellow': (250/255, 250/255, 210/255),
-    'lightgray': (211/255, 211/255, 211/255),
-    'lightgreen': (144/255, 238/255, 144/255),
-    'lightgrey': (211/255, 211/255, 211/255),
-    'lightpink': (255/255, 182/255, 193/255),
-    'lightsalmon': (255/255, 160/255, 122/255),
-    'lightseagreen': (32/255, 178/255, 170/255),
-    'lightskyblue': (135/255, 206/255, 250/255),
-    'lightslategray': (119/255, 136/255, 153/255),
-    'lightslategrey': (119/255, 136/255, 153/255),
-    'lightsteelblue': (176/255, 196/255, 222/255),
-    'lightyellow': (255/255, 255/255, 224/255),
-    'lime': (0/255, 255/255, 0/255),
-    'limegreen': (50/255, 205/255, 50/255),
-    'linen': (250/255, 240/255, 230/255),
-    'magenta': (255/255, 0/255, 255/255),
-    'maroon': (128/255, 0/255, 0/255),
-    'mediumaquamarine': (102/255, 205/255, 170/255),
-    'mediumblue': (0/255, 0/255, 205/255),
-    'mediumorchid': (186/255, 85/255, 211/255),
-    'mediumpurple': (147/255, 112/255, 219/255),
-    'mediumseagreen': (60/255, 179/255, 113/255),
-    'mediumslateblue': (123/255, 104/255, 238/255),
-    'mediumspringgreen': (0/255, 250/255, 154/255),
-    'mediumturquoise': (72/255, 209/255, 204/255),
-    'mediumvioletred': (199/255, 21/255, 133/255),
-    'midnightblue': (25/255, 25/255, 112/255),
-    'mintcream': (245/255, 255/255, 250/255),
-    'mistyrose': (255/255, 228/255, 225/255),
-    'moccasin': (255/255, 228/255, 181/255),
-    'navajowhite': (255/255, 222/255, 173/255),
-    'navy': (0/255, 0/255, 128/255),
-    'oldlace': (253/255, 245/255, 230/255),
-    'olive': (128/255, 128/255, 0/255),
-    'olivedrab': (107/255, 142/255, 35/255),
-    'orange': (255/255, 165/255, 0/255),
-    'orangered': (255/255, 69/255, 0/255),
-    'orchid': (218/255, 112/255, 214/255),
-    'palegoldenrod': (238/255, 232/255, 170/255),
-    'palegreen': (152/255, 251/255, 152/255),
-    'paleturquoise': (175/255, 238/255, 238/255),
-    'palevioletred': (219/255, 112/255, 147/255),
-    'papayawhip': (255/255, 239/255, 213/255),
-    'peachpuff': (255/255, 218/255, 185/255),
-    'peru': (205/255, 133/255, 63/255),
-    'pink': (255/255, 192/255, 203/255),
-    'plum': (221/255, 160/255, 221/255),
-    'powderblue': (176/255, 224/255, 230/255),
-    'purple': (128/255, 0/255, 128/255),
-    'rebeccapurple': (102/255, 51/255, 153/255),
-    'red': (255/255, 0/255, 0/255),
-    'rosybrown': (188/255, 143/255, 143/255),
-    'royalblue': (65/255, 105/255, 225/255),
-    'saddlebrown': (139/255, 69/255, 19/255),
-    'salmon': (250/255, 128/255, 114/255),
-    'sandybrown': (244/255, 164/255, 96/255),
-    'seagreen': (46/255, 139/255, 87/255),
-    'seashell': (255/255, 245/255, 238/255),
-    'sienna': (160/255, 82/255, 45/255),
-    'silver': (192/255, 192/255, 192/255),
-    'skyblue': (135/255, 206/255, 235/255),
-    'slateblue': (106/255, 90/255, 205/255),
-    'slategray': (112/255, 128/255, 144/255),
-    'slategrey': (112/255, 128/255, 144/255),
-    'snow': (255/255, 250/255, 250/255),
-    'springgreen': (0/255, 255/255, 127/255),
-    'steelblue': (70/255, 130/255, 180/255),
-    'tan': (210/255, 180/255, 140/255),
-    'teal': (0/255, 128/255, 128/255),
-    'thistle': (216/255, 191/255, 216/255),
-    'tomato': (255/255, 99/255, 71/255),
-    'turquoise': (64/255, 224/255, 208/255),
-    'violet': (238/255, 130/255, 238/255),
-    'wheat': (245/255, 222/255, 179/255),
-    'white': (255/255, 255/255, 255/255),
-    'whitesmoke': (245/255, 245/255, 245/255),
-    'yellow': (255/255, 255/255, 0/255),
-    'yellowgreen': (154/255, 205/255, 50/255),
-    'transparent': (0/255, 0/255, 0/255, 0/255),
+    "aliceblue": (240 / 255, 248 / 255, 255 / 255),
+    "antiquewhite": (250 / 255, 235 / 255, 215 / 255),
+    "aqua": (0 / 255, 255 / 255, 255 / 255),
+    "aquamarine": (127 / 255, 255 / 255, 212 / 255),
+    "azure": (240 / 255, 255 / 255, 255 / 255),
+    "beige": (245 / 255, 245 / 255, 220 / 255),
+    "bisque": (255 / 255, 228 / 255, 196 / 255),
+    "black": (0 / 255, 0 / 255, 0 / 255),
+    "blanchedalmond": (255 / 255, 235 / 255, 205 / 255),
+    "blue": (0 / 255, 0 / 255, 255 / 255),
+    "blueviolet": (138 / 255, 43 / 255, 226 / 255),
+    "brown": (165 / 255, 42 / 255, 42 / 255),
+    "burlywood": (222 / 255, 184 / 255, 135 / 255),
+    "cadetblue": (95 / 255, 158 / 255, 160 / 255),
+    "chartreuse": (127 / 255, 255 / 255, 0 / 255),
+    "chocolate": (210 / 255, 105 / 255, 30 / 255),
+    "coral": (255 / 255, 127 / 255, 80 / 255),
+    "cornflowerblue": (100 / 255, 149 / 255, 237 / 255),
+    "cornsilk": (255 / 255, 248 / 255, 220 / 255),
+    "crimson": (220 / 255, 20 / 255, 60 / 255),
+    "cyan": (0 / 255, 255 / 255, 255 / 255),
+    "darkblue": (0 / 255, 0 / 255, 139 / 255),
+    "darkcyan": (0 / 255, 139 / 255, 139 / 255),
+    "darkgoldenrod": (184 / 255, 134 / 255, 11 / 255),
+    "darkgray": (169 / 255, 169 / 255, 169 / 255),
+    "darkgreen": (0 / 255, 100 / 255, 0 / 255),
+    "darkgrey": (169 / 255, 169 / 255, 169 / 255),
+    "darkkhaki": (189 / 255, 183 / 255, 107 / 255),
+    "darkmagenta": (139 / 255, 0 / 255, 139 / 255),
+    "darkolivegreen": (85 / 255, 107 / 255, 47 / 255),
+    "darkorange": (255 / 255, 140 / 255, 0 / 255),
+    "darkorchid": (153 / 255, 50 / 255, 204 / 255),
+    "darkred": (139 / 255, 0 / 255, 0 / 255),
+    "darksalmon": (233 / 255, 150 / 255, 122 / 255),
+    "darkseagreen": (143 / 255, 188 / 255, 143 / 255),
+    "darkslateblue": (72 / 255, 61 / 255, 139 / 255),
+    "darkslategray": (47 / 255, 79 / 255, 79 / 255),
+    "darkslategrey": (47 / 255, 79 / 255, 79 / 255),
+    "darkturquoise": (0 / 255, 206 / 255, 209 / 255),
+    "darkviolet": (148 / 255, 0 / 255, 211 / 255),
+    "deeppink": (255 / 255, 20 / 255, 147 / 255),
+    "deepskyblue": (0 / 255, 191 / 255, 255 / 255),
+    "dimgray": (105 / 255, 105 / 255, 105 / 255),
+    "dimgrey": (105 / 255, 105 / 255, 105 / 255),
+    "dodgerblue": (30 / 255, 144 / 255, 255 / 255),
+    "firebrick": (178 / 255, 34 / 255, 34 / 255),
+    "floralwhite": (255 / 255, 250 / 255, 240 / 255),
+    "forestgreen": (34 / 255, 139 / 255, 34 / 255),
+    "fuchsia": (255 / 255, 0 / 255, 255 / 255),
+    "gainsboro": (220 / 255, 220 / 255, 220 / 255),
+    "ghostwhite": (248 / 255, 248 / 255, 255 / 255),
+    "gold": (255 / 255, 215 / 255, 0 / 255),
+    "goldenrod": (218 / 255, 165 / 255, 32 / 255),
+    "gray": (128 / 255, 128 / 255, 128 / 255),
+    "green": (0 / 255, 128 / 255, 0 / 255),
+    "greenyellow": (173 / 255, 255 / 255, 47 / 255),
+    "grey": (128 / 255, 128 / 255, 128 / 255),
+    "honeydew": (240 / 255, 255 / 255, 240 / 255),
+    "hotpink": (255 / 255, 105 / 255, 180 / 255),
+    "indianred": (205 / 255, 92 / 255, 92 / 255),
+    "indigo": (75 / 255, 0 / 255, 130 / 255),
+    "ivory": (255 / 255, 255 / 255, 240 / 255),
+    "khaki": (240 / 255, 230 / 255, 140 / 255),
+    "lavender": (230 / 255, 230 / 255, 250 / 255),
+    "lavenderblush": (255 / 255, 240 / 255, 245 / 255),
+    "lawngreen": (124 / 255, 252 / 255, 0 / 255),
+    "lemonchiffon": (255 / 255, 250 / 255, 205 / 255),
+    "lightblue": (173 / 255, 216 / 255, 230 / 255),
+    "lightcoral": (240 / 255, 128 / 255, 128 / 255),
+    "lightcyan": (224 / 255, 255 / 255, 255 / 255),
+    "lightgoldenrodyellow": (250 / 255, 250 / 255, 210 / 255),
+    "lightgray": (211 / 255, 211 / 255, 211 / 255),
+    "lightgreen": (144 / 255, 238 / 255, 144 / 255),
+    "lightgrey": (211 / 255, 211 / 255, 211 / 255),
+    "lightpink": (255 / 255, 182 / 255, 193 / 255),
+    "lightsalmon": (255 / 255, 160 / 255, 122 / 255),
+    "lightseagreen": (32 / 255, 178 / 255, 170 / 255),
+    "lightskyblue": (135 / 255, 206 / 255, 250 / 255),
+    "lightslategray": (119 / 255, 136 / 255, 153 / 255),
+    "lightslategrey": (119 / 255, 136 / 255, 153 / 255),
+    "lightsteelblue": (176 / 255, 196 / 255, 222 / 255),
+    "lightyellow": (255 / 255, 255 / 255, 224 / 255),
+    "lime": (0 / 255, 255 / 255, 0 / 255),
+    "limegreen": (50 / 255, 205 / 255, 50 / 255),
+    "linen": (250 / 255, 240 / 255, 230 / 255),
+    "magenta": (255 / 255, 0 / 255, 255 / 255),
+    "maroon": (128 / 255, 0 / 255, 0 / 255),
+    "mediumaquamarine": (102 / 255, 205 / 255, 170 / 255),
+    "mediumblue": (0 / 255, 0 / 255, 205 / 255),
+    "mediumorchid": (186 / 255, 85 / 255, 211 / 255),
+    "mediumpurple": (147 / 255, 112 / 255, 219 / 255),
+    "mediumseagreen": (60 / 255, 179 / 255, 113 / 255),
+    "mediumslateblue": (123 / 255, 104 / 255, 238 / 255),
+    "mediumspringgreen": (0 / 255, 250 / 255, 154 / 255),
+    "mediumturquoise": (72 / 255, 209 / 255, 204 / 255),
+    "mediumvioletred": (199 / 255, 21 / 255, 133 / 255),
+    "midnightblue": (25 / 255, 25 / 255, 112 / 255),
+    "mintcream": (245 / 255, 255 / 255, 250 / 255),
+    "mistyrose": (255 / 255, 228 / 255, 225 / 255),
+    "moccasin": (255 / 255, 228 / 255, 181 / 255),
+    "navajowhite": (255 / 255, 222 / 255, 173 / 255),
+    "navy": (0 / 255, 0 / 255, 128 / 255),
+    "oldlace": (253 / 255, 245 / 255, 230 / 255),
+    "olive": (128 / 255, 128 / 255, 0 / 255),
+    "olivedrab": (107 / 255, 142 / 255, 35 / 255),
+    "orange": (255 / 255, 165 / 255, 0 / 255),
+    "orangered": (255 / 255, 69 / 255, 0 / 255),
+    "orchid": (218 / 255, 112 / 255, 214 / 255),
+    "palegoldenrod": (238 / 255, 232 / 255, 170 / 255),
+    "palegreen": (152 / 255, 251 / 255, 152 / 255),
+    "paleturquoise": (175 / 255, 238 / 255, 238 / 255),
+    "palevioletred": (219 / 255, 112 / 255, 147 / 255),
+    "papayawhip": (255 / 255, 239 / 255, 213 / 255),
+    "peachpuff": (255 / 255, 218 / 255, 185 / 255),
+    "peru": (205 / 255, 133 / 255, 63 / 255),
+    "pink": (255 / 255, 192 / 255, 203 / 255),
+    "plum": (221 / 255, 160 / 255, 221 / 255),
+    "powderblue": (176 / 255, 224 / 255, 230 / 255),
+    "purple": (128 / 255, 0 / 255, 128 / 255),
+    "rebeccapurple": (102 / 255, 51 / 255, 153 / 255),
+    "red": (255 / 255, 0 / 255, 0 / 255),
+    "rosybrown": (188 / 255, 143 / 255, 143 / 255),
+    "royalblue": (65 / 255, 105 / 255, 225 / 255),
+    "saddlebrown": (139 / 255, 69 / 255, 19 / 255),
+    "salmon": (250 / 255, 128 / 255, 114 / 255),
+    "sandybrown": (244 / 255, 164 / 255, 96 / 255),
+    "seagreen": (46 / 255, 139 / 255, 87 / 255),
+    "seashell": (255 / 255, 245 / 255, 238 / 255),
+    "sienna": (160 / 255, 82 / 255, 45 / 255),
+    "silver": (192 / 255, 192 / 255, 192 / 255),
+    "skyblue": (135 / 255, 206 / 255, 235 / 255),
+    "slateblue": (106 / 255, 90 / 255, 205 / 255),
+    "slategray": (112 / 255, 128 / 255, 144 / 255),
+    "slategrey": (112 / 255, 128 / 255, 144 / 255),
+    "snow": (255 / 255, 250 / 255, 250 / 255),
+    "springgreen": (0 / 255, 255 / 255, 127 / 255),
+    "steelblue": (70 / 255, 130 / 255, 180 / 255),
+    "tan": (210 / 255, 180 / 255, 140 / 255),
+    "teal": (0 / 255, 128 / 255, 128 / 255),
+    "thistle": (216 / 255, 191 / 255, 216 / 255),
+    "tomato": (255 / 255, 99 / 255, 71 / 255),
+    "turquoise": (64 / 255, 224 / 255, 208 / 255),
+    "violet": (238 / 255, 130 / 255, 238 / 255),
+    "wheat": (245 / 255, 222 / 255, 179 / 255),
+    "white": (255 / 255, 255 / 255, 255 / 255),
+    "whitesmoke": (245 / 255, 245 / 255, 245 / 255),
+    "yellow": (255 / 255, 255 / 255, 0 / 255),
+    "yellowgreen": (154 / 255, 205 / 255, 50 / 255),
+    "transparent": (0 / 255, 0 / 255, 0 / 255, 0 / 255),
 }
 
 
@@ -210,7 +220,9 @@ def is_iterable(v):
     return isinstance(v, Iterable) and not isinstance(v, (str, bytes))
 
 
-def _make_array(v: NpArray[np.float32 | np.float64] | None, t: type[np.float32 | np.float64]) -> NpArray[np.float32 | np.float64] | None:
+def _make_array(
+    v: NpArray[np.float32 | np.float64] | None, t: type[np.float32 | np.float64]
+) -> NpArray[np.float32 | np.float64] | None:
     """Condition array to be C-style contiguous and writeable."""
     if v is None:
         return None
@@ -323,6 +335,7 @@ def _mirror(axis: np.ndarray) -> np.ndarray:
 
 TM3d = TypeVar("TM3d", bound=m3d.Manifold | m3d.CrossSection)
 
+
 @dataclass(init=False)
 class RenderContext(Generic[TM3d]):
     """Each level of the rendering phase produces a RenderContext.
@@ -386,29 +399,21 @@ class RenderContext(Generic[TM3d]):
 
     def get_shells(self) -> tuple[TM3d, ...]:
         return self.shell_objs
-    
+
     def _to_object_transform(self) -> np.ndarray:
         raise NotImplementedError("Subclasses must implement this")
 
-    def _apply_transforms(
-        self, get_type_func: Callable[[], tuple[TM3d, ...]]
-    ) -> tuple[TM3d, ...]:
+    def _apply_transforms(self, get_type_func: Callable[[], tuple[TM3d, ...]]) -> tuple[TM3d, ...]:
         if self.transform_mat is IDENTITY_TRANSFORM:
             return get_type_func()
-        
+
         obj_transform = self._to_object_transform()
         manifs: tuple[TM3d, ...] = tuple(m.transform(obj_transform) for m in get_type_func())
         return manifs
 
-    def _apply_and_merge(
-        self, get_type_func: Callable[[], tuple[TM3d, ...]]
-    ) -> tuple[TM3d, ...]:
+    def _apply_and_merge(self, get_type_func: Callable[[], tuple[TM3d, ...]]) -> tuple[TM3d, ...]:
         manifs = self._apply_transforms(get_type_func)
-        result_manifs = (
-            (sum(manifs[1:], start=manifs[0]),)
-            if len(manifs) > 1
-            else manifs
-        )
+        result_manifs = (sum(manifs[1:], start=manifs[0]),) if len(manifs) > 1 else manifs
         return result_manifs
 
     def _apply_and_merge_helper(
@@ -425,9 +430,7 @@ class RenderContext(Generic[TM3d]):
         solids, shells, other_solids, other_shells = self._apply_and_merge_helper(other)
 
         cls = type(self)
-        return cls(
-            self.api, IDENTITY_TRANSFORM, solids + other_solids, shells + other_shells
-        )
+        return cls(self.api, IDENTITY_TRANSFORM, solids + other_solids, shells + other_shells)
 
     def intersect(self, other: Self) -> Self:
         solids, shells, other_solids, other_shells = self._apply_and_merge_helper(other)
@@ -463,7 +466,7 @@ class RenderContext(Generic[TM3d]):
         # We union the shells since the significance of the shell is to show it's
         # encolsing volume for development purposes.
         result_shells = shells + other_shells
-        
+
         cls = type(self)
         return cls(self.api, IDENTITY_TRANSFORM, result_solids, result_shells)
 
@@ -546,9 +549,8 @@ class RenderContext(Generic[TM3d]):
 
 @dataclass
 class RenderContextManifold(RenderContext[m3d.Manifold]):
-    
     MANIFOLD_CLASS = m3d.Manifold
-    
+
     def __post_init__(self):
         for solid in self.solid_objs:
             if not isinstance(solid, m3d.Manifold):
@@ -558,14 +560,16 @@ class RenderContextManifold(RenderContext[m3d.Manifold]):
         for shell in self.shell_objs:
             if not isinstance(shell, m3d.Manifold):
                 raise ValueError("All shell objects must be manifolds")
-            
+
     def _to_object_transform(self) -> np.ndarray:
         transform_43 = self.transform_mat[:3, :]
         return transform_43
-    
+
     @staticmethod
     def with_manifold(api: "M3dRenderer", manifold: m3d.Manifold) -> "RenderContextManifold":
-        return RenderContextManifold(api=api, transform_mat=IDENTITY_TRANSFORM, solid_objs=(manifold,))
+        return RenderContextManifold(
+            api=api, transform_mat=IDENTITY_TRANSFORM, solid_objs=(manifold,)
+        )
 
     def with_solid(self, manifold: m3d.Manifold) -> Self:
         solids, shells = self._apply_transforms()
@@ -574,7 +578,7 @@ class RenderContextManifold(RenderContext[m3d.Manifold]):
     def with_shell(self, manifold: m3d.Manifold) -> Self:
         solids, shells = self._apply_transforms()
         return RenderContextManifold(self.api, self.transform_mat, solids, shells + (manifold,))
-    
+
     def get_solid_manifold(self) -> m3d.Manifold:
         solids = self._apply_and_merge(self.get_solids)
         return solids[0] if solids else m3d.Manifold()
@@ -597,11 +601,11 @@ class RenderContextManifold(RenderContext[m3d.Manifold]):
         manifold = self.get_shell_manifolds()
         manifold_to_stl(manifold, filename, mode=mode, update_normals=update_normals)
 
+
 @dataclass
 class RenderContextCrossSection(RenderContext[m3d.CrossSection]):
-    
     MANIFOLD_CLASS = m3d.CrossSection
-    
+
     def __post_init__(self):
         for solid in self.solid_objs:
             if not isinstance(solid, m3d.CrossSection):
@@ -611,21 +615,21 @@ class RenderContextCrossSection(RenderContext[m3d.CrossSection]):
                 raise ValueError("All shell objects must be manifolds")
 
     def _to_object_transform(self) -> np.ndarray:
-        transform_23 = self.transform_mat[:2, [0,1,3]]
+        transform_23 = self.transform_mat[:2, [0, 1, 3]]
         return transform_23
-            
+
     def get_bbox(self) -> tuple[float, float, float, float]:
         solids = self.get_solids()
         if len(solids) != 1:
             solids = self._apply_and_merge(self.get_solids)
         return solids[0].bounds()
-            
+
 
 def set_property(manifold: m3d.Manifold, prop: np.ndarray, prop_index: int) -> m3d.Manifold:
     """
     Set a constant property on a manifold on all vertices.
     """
-    
+
     min_num_props = prop_index + len(prop)
     curr_num_props = manifold.num_prop()
     if curr_num_props < min_num_props:
@@ -634,9 +638,9 @@ def set_property(manifold: m3d.Manifold, prop: np.ndarray, prop_index: int) -> m
         num_props = curr_num_props
 
     prop_len = len(prop)
-    
+
     apply_func: Callable[[np.ndarray, np.ndarray], np.ndarray] | None = None
-    # Select the appropriate apply function based on the property index and current 
+    # Select the appropriate apply function based on the property index and current
     # number of properties.
     if prop_index == 0:
         if curr_num_props > len(prop):
@@ -647,66 +651,220 @@ def set_property(manifold: m3d.Manifold, prop: np.ndarray, prop_index: int) -> m
         apply_func = lambda pos, curr_props: np.concatenate((curr_props[:prop_index], prop))
     elif curr_num_props < prop_index:
         padding = np.zeros(prop_index - curr_num_props)
-        apply_func = lambda pos, curr_props: np.concatenate((curr_props[:prop_index], padding, prop))
+        apply_func = lambda pos, curr_props: np.concatenate((
+            curr_props[:prop_index],
+            padding,
+            prop,
+        ))
     else:
-        apply_func = lambda pos, curr_props: np.concatenate(
-                (curr_props[:prop_index], 
-                 prop, 
-                 curr_props[prop_index + prop_len:]))
+        apply_func = lambda pos, curr_props: np.concatenate((
+            curr_props[:prop_index],
+            prop,
+            curr_props[prop_index + prop_len :],
+        ))
 
     manifold = manifold.set_properties(num_props, apply_func)
-    
+
     return manifold
 
 
+Ctxt = TypeVar("Ctxt", bound=RenderContextManifold | RenderContextCrossSection)
+
+
+class RenderStateCheck(Generic[Ctxt]):
+    THIS_CLASS: type[Ctxt]
+
+    @classmethod
+    def check(
+        cls,
+        renderer: "M3dRenderer",
+        posc_obj: PoscRendererBase,
+        func: Callable[[], Ctxt]
+        | Callable[[list[RenderContextManifold | RenderContextCrossSection]], Ctxt],
+    ) -> Ctxt:
+        if renderer.is_skip_rest() or posc_obj.has_modifier(DISABLE):
+            return cls.THIS_CLASS(renderer)  #  we return a null instance of the render context.
+
+        try:
+            args = ()
+            if posc_obj.can_have_children():
+                args = (renderer.renderChildren(posc_obj),)
+
+            result = func(*args)
+            if posc_obj.has_modifier(DEBUG):
+                result = renderer.apply_debug(result)
+            if posc_obj.has_modifier(TRANSPARENT):
+                result = renderer.apply_transparent(result)
+            return result
+        finally:
+            if posc_obj.has_modifier(SHOW_ONLY):
+                renderer.mark_skip_rest()
+
+
+class RenderStateCheckManifold(RenderStateCheck[RenderContextManifold]):
+    THIS_CLASS = RenderContextManifold
+
+
+class RenderStateCheckCrossSection(RenderStateCheck[RenderContextCrossSection]):
+    THIS_CLASS = RenderContextCrossSection
+
+
+@dataclass
+class RendererState:
+    skip_rest: bool = False
+
+    def is_skip_rest(self) -> bool:
+        return self.skip_rest
+
+    def mark_skip_rest(self) -> Self:
+        self.skip_rest = True
+        return self
+
+
 @dataclass(frozen=True)
-class M3dRenderer:
-    
+class M3dRenderer(RendererBase):
     NORMALS_PROP_INDEX = 4
     COLOR_PROP_INDEX = 0
 
+    state: RendererState = field(default_factory=RendererState)
     color_prop: np.ndarray = field(default_factory=lambda: np.array([0.976, 0.843, 0.173, 1.0]))
-    
+
+    def renderChildren(
+        self, posc_obj: PoscRendererBase
+    ) -> list[RenderContextManifold | RenderContextCrossSection]:
+        if self.is_skip_rest():
+            return []
+
+        # Check for SHOW_ONLY modifier and skip rest if found.
+        for child in posc_obj.children():
+            if child.has_modifier(SHOW_ONLY):
+                result = [child.renderObj(self)]
+                self.mark_skip_rest()
+                return result
+        child_contexts = []
+        for child in posc_obj.children():
+            child_ctxt = child.renderObj(self)
+            if self.is_skip_rest():
+                return [child_ctxt]
+            child_contexts.append(child_ctxt)
+        return child_contexts
+
+    def mark_skip_rest(self) -> Self:
+        self.state.mark_skip_rest()
+        return self
+
+    def is_skip_rest(self) -> bool:
+        return self.state.is_skip_rest()
+
+    def apply_debug(self, ctxt: Ctxt) -> Ctxt:
+        return ctxt
+
+    def apply_transparent(self, ctxt: Ctxt) -> Ctxt:
+        return ctxt
+
     def with_color(self, color: np.ndarray | list[float]) -> Self:
-        """Returns a new renderer with the specified color and alpha.
-        """
+        """Returns a new renderer with the specified color and alpha."""
         if not isinstance(color, np.ndarray):
             color = np.array(color)
         if color.shape != (4,):
             raise ValueError("Color must be a 4-element array")
         return replace(self, color_prop=color)
-    
+
     def _apply_properties(self, manifold: m3d.Manifold) -> m3d.Manifold:
         manifold = manifold.calculate_normals(self.NORMALS_PROP_INDEX)
         manifold = set_property(manifold, self.color_prop, self.COLOR_PROP_INDEX)
         return manifold
-    
-    def cube(self, size: tuple[float, float, float] | float, center: bool = False) -> RenderContextManifold:
+
+    def cube(
+        self,
+        posc_obj: PoscRendererBase,
+        size: tuple[float, float, float] | float,
+        center: bool = False,
+    ) -> RenderContextManifold:
+        return RenderStateCheckManifold.check(self, posc_obj, lambda: self._cube(size, center))
+
+    def _cube(
+        self, size: tuple[float, float, float] | float, center: bool = False
+    ) -> RenderContextManifold:
         if is_iterable(size):
             size = np.array(size)
         else:
             size = np.array([size, size, size])
-        return RenderContextManifold.with_manifold(self, self._apply_properties(m3d.Manifold.cube(size, center)))
-
-    def sphere(self, radius: float, fn: int = 16) -> RenderContext:
         return RenderContextManifold.with_manifold(
-            self, self._apply_properties(m3d.Manifold.sphere(radius=radius, circular_segments=fn)))
+            self, self._apply_properties(m3d.Manifold.cube(size, center))
+        )
+
+    def sphere(
+        self, posc_obj: PoscRendererBase, radius: float, fn: int = 16
+    ) -> RenderContextManifold:
+        return RenderStateCheckManifold.check(self, posc_obj, lambda: self._sphere(radius, fn))
+
+    def _sphere(self, radius: float, fn: int = 16) -> RenderContextManifold:
+        return RenderContextManifold.with_manifold(
+            self, self._apply_properties(m3d.Manifold.sphere(radius=radius, circular_segments=fn))
+        )
 
     def cylinder(
+        self,
+        posc_obj: PoscRendererBase,
+        h: float,
+        r_base: float,
+        r_top: float = -1.0,
+        fn: int = 0,
+        center: bool = False,
+    ) -> RenderContextManifold:
+        return RenderStateCheckManifold.check(
+            self, posc_obj, lambda: self._cylinder(h, r_base, r_top, fn, center)
+        )
+
+    def _cylinder(
         self, h: float, r_base: float, r_top: float = -1.0, fn: int = 0, center: bool = False
-    ) -> RenderContext:
+    ) -> RenderContextManifold:
         return RenderContextManifold.with_manifold(
             self,
-            self._apply_properties(m3d.Manifold.cylinder(
-                height=h,
-                radius_low=r_base,
-                radius_high=r_top,
-                circular_segments=fn,
-                center=center,
-            ))
+            self._apply_properties(
+                m3d.Manifold.cylinder(
+                    height=h,
+                    radius_low=r_base,
+                    radius_high=r_top,
+                    circular_segments=fn,
+                    center=center,
+                )
+            ),
         )
 
     def mesh(
+        self,
+        posc_obj: PoscRendererBase,
+        vert_properties: NpArray[np.float32],
+        tri_verts: NpArray[np.uint32],
+        merge_from_vert: NpArray[np.uint32] | None = None,
+        merge_to_vert: NpArray[np.uint32] | None = None,
+        run_index: NpArray[np.uint32] | None = None,
+        run_original_id: NpArray[np.uint32] | None = None,
+        run_transform: NpArray[np.float32] | None = None,
+        face_id: NpArray[np.uint32] | None = None,
+        halfedge_tangent: NpArray[np.float32] | None = None,
+        tolerance: float = 0,
+    ) -> RenderContextManifold:
+        return RenderStateCheckManifold.check(
+            self,
+            posc_obj,
+            lambda: self._mesh(
+                vert_properties,
+                tri_verts,
+                merge_from_vert,
+                merge_to_vert,
+                run_index,
+                run_original_id,
+                run_transform,
+                face_id,
+                halfedge_tangent,
+                tolerance,
+            ),
+        )
+
+    def _mesh(
         self,
         vert_properties: NpArray[np.float32],
         tri_verts: NpArray[np.uint32],
@@ -755,12 +913,12 @@ class M3dRenderer:
         /// Tolerance may be enlarged when floating point error accumulates.
         Precision tolerance = 0;
         """
-        
+
         vert_properties = _make_array(vert_properties, np.float32)
-        
+
         if vert_properties is None:
             raise ValueError("vert_properties must be a numpy array")
-        
+
         if vert_properties.shape[1] == 3:
             # Create array with right shape and fill with color values
             color_array = np.tile(self.color_prop, (vert_properties.shape[0], 1))
@@ -778,13 +936,24 @@ class M3dRenderer:
             halfedge_tangent=_make_array(halfedge_tangent, np.float32),
             tolerance=tolerance,
         )
-        
+
         manifold = m3d.Manifold(mesh)
         manifold = manifold.calculate_normals(self.NORMALS_PROP_INDEX)
 
         return RenderContextManifold.with_manifold(self, manifold)
 
     def polyhedron(
+        self,
+        posc_obj: PoscRendererBase,
+        verts: NpArray[np.float32] | list[list[float]],
+        faces: NpArray[np.uint32] | list[list[int]] | None = None,
+        triangles: NpArray[np.uint32] | list[list[int]] | None = None,
+    ) -> RenderContextManifold:
+        return RenderStateCheckManifold.check(
+            self, posc_obj, lambda: self._polyhedron(verts, faces, triangles)
+        )
+
+    def _polyhedron(
         self,
         verts: NpArray[np.float32] | list[list[float]],
         faces: NpArray[np.uint32] | list[list[int]] | None = None,
@@ -810,48 +979,66 @@ class M3dRenderer:
         else:
             raise ValueError("Must specify either faces or triangles but not both.")
 
-    def difference(self, ops: list[RenderContextManifold | RenderContextCrossSection]) \
-        -> RenderContextManifold | RenderContextCrossSection:
-        
+    def difference(
+        self,
+        posc_obj: PoscRendererBase,
+    ) -> RenderContextManifold | RenderContextCrossSection:
+        return RenderStateCheckManifold.check(self, posc_obj, lambda ops: self._difference(ops))
+
+    def _difference(
+        self, ops: list[RenderContextManifold | RenderContextCrossSection]
+    ) -> RenderContextManifold | RenderContextCrossSection:
         if len(ops) == 0:
             raise ValueError("Must specify at least one other render context")
-        
+
         if len(ops) == 1:
             return ops[0]
-        
+
         cls = type(ops[0])
-        
+
         cls = type(ops[0])
         solids = tuple(chain(*(op._apply_and_merge(op.get_solids) for op in ops[1:])))
         shells = tuple(chain(*(op._apply_and_merge(op.get_shells) for op in ops[1:])))
-        
+
         rhs = cls(self, transform_mat=IDENTITY_TRANSFORM, solid_objs=solids, shell_objs=shells)
-        
+
         return ops[0].difference(rhs)
-    
-    def union(self, ops: list[RenderContextManifold | RenderContextCrossSection]) \
-        -> RenderContextManifold | RenderContextCrossSection:
+
+    def union(
+        self, posc_obj: PoscRendererBase
+    ) -> RenderContextManifold | RenderContextCrossSection:
+        return RenderStateCheckManifold.check(self, posc_obj, lambda ops: self._union(ops))
+
+    def _union(
+        self, ops: list[RenderContextManifold | RenderContextCrossSection]
+    ) -> RenderContextManifold | RenderContextCrossSection:
         if len(ops) == 0:
             raise ValueError("Must specify at least one other render context")
-        
-        if len(ops) == 1:
-            return ops[0]   
-        
-        cls = type(ops[0])
-        
-        solids = tuple(chain(*(op._apply_and_merge(op.get_solids) for op in ops)))
-        shells = tuple(chain(*(op._apply_and_merge(op.get_shells) for op in ops)))
-        
-        return cls(self, transform_mat=IDENTITY_TRANSFORM, solid_objs=solids, shell_objs=shells)
-    
-    def intersection(self, ops: list[RenderContextManifold | RenderContextCrossSection]) \
-        -> RenderContextManifold | RenderContextCrossSection:
-        if len(ops) == 0:
-            raise ValueError("Must specify at least one other render context")
-        
+
         if len(ops) == 1:
             return ops[0]
-        
+
+        cls = type(ops[0])
+
+        solids = tuple(chain(*(op._apply_and_merge(op.get_solids) for op in ops)))
+        shells = tuple(chain(*(op._apply_and_merge(op.get_shells) for op in ops)))
+
+        return cls(self, transform_mat=IDENTITY_TRANSFORM, solid_objs=solids, shell_objs=shells)
+
+    def intersection(
+        self, posc_obj: PoscRendererBase
+    ) -> RenderContextManifold | RenderContextCrossSection:
+        return RenderStateCheckManifold.check(self, posc_obj, lambda ops: self._intersection(ops))
+
+    def _intersection(
+        self, ops: list[RenderContextManifold | RenderContextCrossSection]
+    ) -> RenderContextManifold | RenderContextCrossSection:
+        if len(ops) == 0:
+            raise ValueError("Must specify at least one other render context")
+
+        if len(ops) == 1:
+            return ops[0]
+
         cls = type(ops[0])
         solids = tuple(chain(*(op._apply_transforms(op.get_solids) for op in ops)))
         shells = tuple(chain(*(op._apply_and_merge(op.get_shells) for op in ops)))
@@ -859,109 +1046,246 @@ class M3dRenderer:
         intersected = solids[0]
         for solid in solids[1:]:
             intersected = intersected ^ solid
-        
-        rhs = cls(self, transform_mat=IDENTITY_TRANSFORM, solid_objs=(intersected,), shell_objs=shells)
-        
+
+        rhs = cls(
+            self, transform_mat=IDENTITY_TRANSFORM, solid_objs=(intersected,), shell_objs=shells
+        )
+
         return ops[0].intersect(rhs)
 
-    
-    def import_file(self, file: str, layer: str, convexity: int) \
-        -> RenderContextManifold | RenderContextCrossSection:
+    EXTENSION_MAP = {
+        "stl": RenderContextManifold,
+        "off": RenderContextManifold,
+        "obj": RenderContextManifold,
+        "3mf": RenderContextManifold,
+        "dxf": RenderContextCrossSection,
+        "svg": RenderContextCrossSection,
+    }
+
+    def import_file(
+        self, posc_obj: PoscRendererBase, file: str, layer: str, convexity: int
+    ) -> RenderContextManifold | RenderContextCrossSection:
+        suffix = Path(file).suffix.lower()
+        cls = self.EXTENSION_MAP.get(suffix)
+
+        func = lambda: self._import_file(file, layer, convexity)
+        if cls is RenderContextManifold:
+            return RenderStateCheckManifold.check(self, posc_obj, func)
+        elif cls is RenderContextCrossSection:
+            return RenderStateCheckCrossSection.check(self, posc_obj, func)
+
+    def _import_file(
+        self, file: str, layer: str, convexity: int
+    ) -> RenderContextManifold | RenderContextCrossSection:
         raise NotImplementedError("import_file is not implemented")
-    
-    def surface(self, file: str, center: bool, invert: bool, convexity: int) \
-        -> RenderContextManifold:
-        raise NotImplementedError("surface is not implemented")
-    
-    def fill(self, ops: list[RenderContextCrossSection]) -> RenderContextCrossSection:
-        solids = tuple(chain(*(op._apply_and_merge(op.get_solids) for op in ops)))
-        
-        cross_section: m3d.CrossSection = (
-            (sum(solids[1:], start=solids[0]),)
-            if len(solids) > 1
-            else solids[0]
+
+    def surface(
+        self, posc_obj: PoscRendererBase, file: str, center: bool, invert: bool, convexity: int
+    ) -> RenderContextManifold:
+        return RenderStateCheckManifold.check(
+            self,
+            posc_obj,
+            lambda: self._surface(file, center, invert, convexity),
         )
-        
+
+    def _surface(
+        self, file: str, center: bool, invert: bool, convexity: int
+    ) -> RenderContextManifold:
+        raise NotImplementedError("surface is not implemented")
+
+    def fill(self, posc_obj: PoscRendererBase) -> RenderContextCrossSection:
+        return RenderStateCheckCrossSection.check(self, posc_obj, lambda ops: self._fill(ops))
+
+    def _fill(self, ops: list[RenderContextCrossSection]) -> RenderContextCrossSection:
+        solids = tuple(chain(*(op._apply_and_merge(op.get_solids) for op in ops)))
+
+        cross_section: m3d.CrossSection = (
+            (sum(solids[1:], start=solids[0]),) if len(solids) > 1 else solids[0]
+        )
+
         polygons = cross_section.to_polygons()
-        
+
         new_polygons = []
         for polygon in polygons:
             if get_polygon_signed_area(polygon) > 0:
                 new_polygons.append(polygon)
-        
-        return RenderContextCrossSection(
-            self, solid_objs=(m3d.CrossSection(new_polygons, fillrule=m3d.FillRule.Positive),))
-    
-    def text(self, 
-             text: str, 
-             size: float, 
-             font: str, 
-             halign: str, 
-             valign: str, 
-             spacing: float, 
-             direction: str, 
-             language: str, 
-             script: str, 
-             fa: float, 
-             fs: float, 
-             fn: int) -> RenderContextCrossSection:
-        
-        points, contours = render_text(
-            text, size, font, halign, valign, spacing, direction, language, script, fa, fs, fn)
 
-        return self.polygon(points, contours, 10)
-    
-    def polygon(self, 
-                points: list[list[float]], 
-                paths: list[list[int]], 
-                convexity: int) -> RenderContextCrossSection:
-        
+        return RenderContextCrossSection(
+            self, solid_objs=(m3d.CrossSection(new_polygons, fillrule=m3d.FillRule.Positive),)
+        )
+
+    def text(
+        self,
+        posc_obj: PoscRendererBase,
+        text: str,
+        size: float,
+        font: str,
+        halign: str,
+        valign: str,
+        spacing: float,
+        direction: str,
+        language: str,
+        script: str,
+        fa: float,
+        fs: float,
+        fn: int,
+    ) -> RenderContextCrossSection:
+        return RenderStateCheckCrossSection.check(
+            self,
+            posc_obj,
+            lambda: self._text(
+                text, size, font, halign, valign, spacing, direction, language, script, fa, fs, fn
+            ),
+        )
+
+    def _text(
+        self,
+        text: str,
+        size: float,
+        font: str,
+        halign: str,
+        valign: str,
+        spacing: float,
+        direction: str,
+        language: str,
+        script: str,
+        fa: float,
+        fs: float,
+        fn: int,
+    ) -> RenderContextCrossSection:
+        points, contours = render_text(
+            text, size, font, halign, valign, spacing, direction, language, script, fa, fs, fn
+        )
+        return self._polygon(points, contours, 10)
+
+    def polygon(
+        self,
+        posc_obj: PoscRendererBase,
+        points: list[list[float]],
+        paths: list[list[int]],
+        convexity: int,
+    ) -> RenderContextCrossSection:
+        return RenderStateCheckCrossSection.check(
+            self,
+            posc_obj,
+            lambda: self._polygon(points, paths, convexity),
+        )
+
+    def _polygon(
+        self, points: list[list[float]], paths: list[list[int]], convexity: int
+    ) -> RenderContextCrossSection:
         if not paths:
             paths = [list(range(len(points)))]
-        
+
         points = _make_array(points, np.float32)
         paths = [_make_array(path, np.uint32) for path in paths]
-        
+
         contours = [points[path] for path in paths]
         cross_section = m3d.CrossSection(contours, m3d.FillRule.Positive)
 
         return RenderContextCrossSection(self, solid_objs=(cross_section,))
-    
-    def square(self, size: float | tuple[float, float], center: bool = False) -> RenderContextCrossSection:
-        return RenderContextCrossSection(self,
-            solid_objs=(m3d.CrossSection.square(size, True if center else False),))
-    
-    def circle(self, radius: float, fn: int) -> RenderContextCrossSection:
-        return RenderContextCrossSection(self,
-            solid_objs=(m3d.CrossSection.circle(radius, fn),))
-    
-    def rotate_extrude(self, 
-                       context: RenderContextCrossSection, 
-                       angle: float, 
-                       convexity: int, 
-                       fn: int) -> RenderContextManifold:
-        assert isinstance(context, RenderContextCrossSection)
-        solids = context.get_solids()
-        if len(solids) != 1:
-            solids = context._apply_and_merge(context.get_solids)
-        solid = solids[0]
-        manifold = solid.revolve(fn, angle)
-        
-        rctxt =  RenderContextManifold(self,
-            solid_objs=(self._apply_properties(manifold),))
-        return rctxt
-    
-    def linear_extrude(self, 
-                       contexts: list[RenderContextCrossSection], 
-                       height: float, 
-                       center: bool = False, 
-                       convexity: int | None = None, 
-                       twist: float | None = None, 
-                       slices: int | None = None, 
-                       scale: tuple[float, float] | None = None,
-                       fn: float | None = None) -> RenderContextManifold:
+
+    def square(
+        self, posc_obj: PoscRendererBase, size: float | tuple[float, float], center: bool = False
+    ) -> RenderContextCrossSection:
+        return RenderStateCheckCrossSection.check(
+            self, posc_obj, lambda: self._square(size, center)
+        )
+
+    def _square(
+        self, size: float | tuple[float, float], center: bool = False
+    ) -> RenderContextCrossSection:
+        return RenderContextCrossSection(
+            self, solid_objs=(m3d.CrossSection.square(size, True if center else False),)
+        )
+
+    def circle(
+        self, posc_obj: PoscRendererBase, radius: float, fn: int
+    ) -> RenderContextCrossSection:
+        return RenderStateCheckCrossSection.check(self, posc_obj, lambda: self._circle(radius, fn))
+
+    def _circle(self, radius: float, fn: int) -> RenderContextCrossSection:
+        return RenderContextCrossSection(self, solid_objs=(m3d.CrossSection.circle(radius, fn),))
+
+    def rotate_extrude(
+        self,
+        posc_obj: PoscRendererBase,
+        angle: float,
+        convexity: int,
+        fn: int,
+        fa: float,
+        fs: float,
+    ) -> RenderContextManifold:
+        return RenderStateCheckManifold.check(
+            self,
+            posc_obj,
+            lambda contexts: self._rotate_extrude(contexts, angle, convexity, fn, fa, fs),
+        )
+
+    def _rotate_extrude(
+        self,
+        contexts: list[RenderContextCrossSection],
+        angle: float,
+        convexity: int,
+        fn: int,
+        fa: float,
+        fs: float,
+    ) -> RenderContextManifold:
+        # We need to know the radius so we can call get_fragments_from_fn_fa_fs.
+        # This means we need to get a bounding box of the context.
         assert all(isinstance(c, RenderContextCrossSection) for c in contexts)
-        union_solids = self.union(contexts)
+        union_contexts: RenderContextCrossSection = self._union(contexts)
+        union_context: RenderContextCrossSection = union_contexts.to_single_solid()
+        min_x, min_y, max_x, max_y = union_context.get_bbox()
+        if min_x < 0:
+            if max_x > 0:
+                raise ValueError("Cannot extrude a shape that spans the Y axis.")
+            r = -min_x
+        else:
+            r = max_x
+        circular_segments = get_fragments_from_fn_fa_fs(r, fn, fa, fs)
+
+        solids = union_context.get_solids()
+        if len(solids) != 1:
+            solids = union_context._apply_and_merge(union_context.get_solids)
+        solid = solids[0]
+        manifold = solid.revolve(circular_segments, angle)
+
+        rctxt = RenderContextManifold(self, solid_objs=(self._apply_properties(manifold),))
+        return rctxt
+
+    def linear_extrude(
+        self,
+        posc_obj: PoscRendererBase,
+        height: float,
+        center: bool = False,
+        convexity: int | None = None,
+        twist: float | None = None,
+        slices: int | None = None,
+        scale: tuple[float, float] | None = None,
+        fn: float | None = None,
+    ) -> RenderContextManifold:
+        return RenderStateCheckManifold.check(
+            self,
+            posc_obj,
+            lambda contexts: self._linear_extrude(
+                contexts, height, center, convexity, twist, slices, scale, fn
+            ),
+        )
+
+    def _linear_extrude(
+        self,
+        contexts: list[RenderContextCrossSection],
+        height: float,
+        center: bool = False,
+        convexity: int | None = None,
+        twist: float | None = None,
+        slices: int | None = None,
+        scale: tuple[float, float] | None = None,
+        fn: float | None = None,
+    ) -> RenderContextManifold:
+        assert all(isinstance(c, RenderContextCrossSection) for c in contexts)
+        union_solids = self._union(contexts)
         solids = union_solids._apply_and_merge(union_solids.get_solids)
         if not scale:
             scale = (1.0, 1.0)
@@ -969,81 +1293,118 @@ class M3dRenderer:
             twist = 0.0
         if slices is None:
             slices = 16 if twist else 1
-        rctxt =  RenderContextManifold(self,
-            solid_objs=(self._apply_properties(solids[0].extrude(
-                height, 
-                slices, 
-                twist, 
-                scale)),))
-        
+        rctxt = RenderContextManifold(
+            self,
+            solid_objs=(self._apply_properties(solids[0].extrude(height, slices, twist, scale)),),
+        )
+
         if center:
             return rctxt.translate([0, 0, -height / 2])
         return rctxt
-        
-    def hull(self, ops: list[RenderContextManifold | RenderContextCrossSection]) \
-    -> RenderContextManifold | RenderContextCrossSection:
 
-        cls = type(ops[0])  
-        
+    def hull(self, posc_obj: PoscRendererBase) -> RenderContextManifold | RenderContextCrossSection:
+        return RenderStateCheckManifold.check(self, posc_obj, lambda ops: self._hull(ops))
+
+    def _hull(
+        self, ops: list[RenderContextManifold | RenderContextCrossSection]
+    ) -> RenderContextManifold | RenderContextCrossSection:
+        if not ops:
+            return RenderContextManifold(self)
+
+        cls = type(ops[0])
+
         solids = tuple(chain(*(op._apply_and_merge(op.get_solids) for op in ops)))
         shells = tuple(chain(*(op._apply_and_merge(op.get_shells) for op in ops)))
-        
+
         manifold_cls = cls.MANIFOLD_CLASS
         solid_obj = manifold_cls.batch_hull(solids)
-        
+
         if isinstance(solid_obj, m3d.Manifold):
             solid_obj = self._apply_properties(solid_obj)
-        
-        return cls(self, transform_mat=IDENTITY_TRANSFORM, solid_objs=(solid_obj,), shell_objs=shells)
-    
-    def minkowski(self, ops: list[RenderContextManifold]) -> RenderContextManifold:
+
+        return cls(
+            self, transform_mat=IDENTITY_TRANSFORM, solid_objs=(solid_obj,), shell_objs=shells
+        )
+
+    def minkowski(
+        self, posc_obj: PoscRendererBase, ops: list[RenderContextManifold]
+    ) -> RenderContextManifold:
+        return RenderStateCheckManifold.check(self, posc_obj, lambda ops: self._minkowski(ops))
+
+    def _minkowski(self, ops: list[RenderContextManifold]) -> RenderContextManifold:
         raise NotImplementedError("minkowski is not implemented")
-    
-    def render(self, ops: list[RenderContextManifold], convexity: int) -> RenderContextManifold:
-        return self.union(ops)
-    
-    def projection(self, ops: list[RenderContextManifold], cut: bool) -> RenderContextCrossSection:
+
+    def render(self, posc_obj: PoscRendererBase, convexity: int) -> RenderContextManifold:
+        return RenderStateCheckManifold.check(
+            self, posc_obj, lambda ops: self._render(ops, convexity)
+        )
+
+    def _render(self, ops: list[RenderContextManifold], convexity: int) -> RenderContextManifold:
+        return self._union(ops)
+
+    def projection(self, posc_obj: PoscRendererBase, cut: bool) -> RenderContextCrossSection:
+        return RenderStateCheckCrossSection.check(
+            self, posc_obj, lambda ops: self._projection(ops, cut)
+        )
+
+    def _projection(self, ops: list[RenderContextManifold], cut: bool) -> RenderContextCrossSection:
         solids = tuple(chain(*(op._apply_and_merge(op.get_solids) for op in ops)))
-        
+
         # Drop the shells.
         result_manif: m3d.Manifold = (
-            (sum(solids[1:], start=solids[0]),)
-            if len(solids) > 1
-            else solids[0]
+            (sum(solids[1:], start=solids[0]),) if len(solids) > 1 else solids[0]
         )
-        
+
         if cut:
             cross_section = result_manif.slice(0)
         else:
             cross_section = result_manif.project()
-        
+
         return RenderContextCrossSection(self, solid_objs=(cross_section,))
-    
-    def offset(self, 
-               ops: list[RenderContextCrossSection], 
-               delta: float, 
-               chamfer: bool | None = None, 
-               fn: int | None = None) -> RenderContextCrossSection:
-        solids = tuple(chain(*(op._apply_and_merge(op.get_solids) for op in ops)))
-        
-        cross_section: m3d.CrossSection = (
-            (sum(solids[1:], start=solids[0]),)
-            if len(solids) > 1
-            else solids[0]
+
+    def offset(
+        self,
+        posc_obj: PoscRendererBase,
+        r: float | None,
+        delta: float | None,
+        chamfer: bool | None = None,
+        fn: int | None = None,
+        fa: float | None = None,
+        fs: float | None = None,
+    ) -> RenderContextCrossSection:
+        if r is None:
+            r_or_delta = delta
+            fragnents = 0
+        else:
+            r_or_delta = r
+            fragnents = get_fragments_from_fn_fa_fs(r_or_delta, fn, fa, fs)
+
+        return RenderStateCheckCrossSection.check(
+            self, posc_obj, lambda ops: self._offset(ops, r_or_delta, chamfer, fragnents)
         )
-        
-        if fn > 1:
+
+    def _offset(
+        self, ops: list[RenderContextCrossSection], delta: float, chamfer: bool, fragnents: int
+    ) -> RenderContextCrossSection:
+        solids = tuple(chain(*(op._apply_and_merge(op.get_solids) for op in ops)))
+
+        cross_section: m3d.CrossSection = (
+            (sum(solids[1:], start=solids[0]),) if len(solids) > 1 else solids[0]
+        )
+
+        if fragnents > 1:
             join_type = m3d.JoinType.Round
         else:
-            join_type = m3d.JoinType.Square if chamfer else m3d.JoinType.Miter 
+            join_type = m3d.JoinType.Square if chamfer else m3d.JoinType.Miter
 
-        result_cross_section = cross_section.offset(delta, join_type=join_type, circular_segments=fn)
+        result_cross_section = cross_section.offset(
+            delta, join_type=join_type, circular_segments=fragnents
+        )
         return RenderContextCrossSection(self, solid_objs=(result_cross_section,))
-    
-    
-    def color(self, c: str | np.ndarray | None = None, alpha: float | None = None) -> "M3dRenderer":
-        """Returns a new renderer with the specified color and alpha.
-        """
+
+    def _color_renderer(
+        self, c: str | np.ndarray | None = None, alpha: float | None = None
+    ) -> Self:
         if c is None:
             if alpha is None:
                 raise ValueError("Both color and alpha cannot be None")
@@ -1064,7 +1425,7 @@ class M3dRenderer:
                 if alpha is None:
                     alpha = 1.0
                 if alpha > 1.0 or alpha < 0.0:
-                    raise ValueError("Alpha must be between 0.0 and 1.0")   
+                    raise ValueError("Alpha must be between 0.0 and 1.0")
                 c = np.concatenate((c, [alpha]))
             elif c.shape != (4,):
                 raise ValueError("Color must be a 3 or 4 element numpy array")
@@ -1072,7 +1433,61 @@ class M3dRenderer:
             raise ValueError("Color must be a string or a numpy array")
 
         return self.with_color(c)
-    
+
+    def color(
+        self,
+        posc_obj: PoscRendererBase,
+        c: str | np.ndarray | None = None,
+        alpha: float | None = None,
+    ) -> "M3dRenderer":
+        new_renderer = self._color_renderer(c, alpha)
+        return RenderStateCheckManifold.check(
+            new_renderer, posc_obj, lambda objs: self._union(objs)
+        )
+
+    def translate(self, posc_obj: PoscRendererBase, v: np.ndarray) -> Self:
+        return RenderStateCheckManifold.check(self, posc_obj, lambda ops: self._translate(ops, v))
+
+    def _translate(self, ops: list[RenderContextCrossSection], v: np.ndarray) -> Self:
+        return self._union(ops).translate(v)
+
+    def rotate(
+        self, posc_obj: PoscRendererBase, a: float | np.ndarray, v: np.ndarray | None = None
+    ) -> Self:
+        return RenderStateCheckManifold.check(self, posc_obj, lambda ops: self._rotate(ops, a, v))
+
+    def _rotate(
+        self,
+        ops: list[RenderContextCrossSection],
+        a: float | np.ndarray,
+        v: np.ndarray | None = None,
+    ) -> Self:
+        return self._union(ops).rotate(a, v)
+
+    def scale(self, posc_obj: PoscRendererBase, v: np.ndarray) -> Self:
+        return RenderStateCheckManifold.check(self, posc_obj, lambda ops: self._scale(ops, v))
+
+    def _scale(self, ops: list[RenderContextCrossSection], v: np.ndarray) -> Self:
+        return self._union(ops).scale(v)
+
+    def resize(self, posc_obj: PoscRendererBase, v: np.ndarray) -> Self:
+        return RenderStateCheckManifold.check(self, posc_obj, lambda ops: self._resize(ops, v))
+
+    def _resize(self, ops: list[RenderContextCrossSection], v: np.ndarray) -> Self:
+        return self._union(ops).resize(v)
+
+    def mirror(self, posc_obj: PoscRendererBase, v: np.ndarray) -> Self:
+        return RenderStateCheckManifold.check(self, posc_obj, lambda ops: self._mirror(ops, v))
+
+    def _mirror(self, ops: list[RenderContextCrossSection], v: np.ndarray) -> Self:
+        return self._union(ops).mirror(v)
+
+    def multmatrix(self, posc_obj: PoscRendererBase, m: np.ndarray) -> Self:
+        return RenderStateCheckManifold.check(self, posc_obj, lambda ops: self._multmatrix(ops, m))
+
+    def _multmatrix(self, ops: list[RenderContextCrossSection], m: np.ndarray) -> Self:
+        return self._union(ops).transform(m)
+
 
 def _triangulate(verts_array: np.ndarray, rings: list[int]) -> list[list[int]]:
     """Calls mapbox_earcut.triangulate_float32 or float64 depending on the given dtype."""
@@ -1083,11 +1498,12 @@ def _triangulate(verts_array: np.ndarray, rings: list[int]) -> list[list[int]]:
     else:
         raise ValueError("verts_array must be a numpy array of float32 or float64")
 
+
 def triangulate_3d_face(verts_array: np.ndarray, face: list[list[int]]) -> list[list[int]]:
     """Triangulate a 3D face using earcut. The face is assumed to be close to
     planar and the surface is rotated to ensure the normal is pointing in the
     +Z direction.
-    
+
     face is a list of lists. This may consist of multiple polygons where the winding order
     defines holes.
 
@@ -1162,18 +1578,18 @@ def triangulate_3d_face(verts_array: np.ndarray, face: list[list[int]]) -> list[
 
     # Create ring array (cumulative number of vertices in each ring/polygon)
     rings = np.cumsum([len(poly) for poly in face])
-    
+
     # Triangulate
     triangles = _triangulate(verts_2d, rings)
 
     # Convert triangle indices back to original vertex indices and group into triplets
     # First create a mapping from flattened index to (polygon, vertex) indices
     offsets = np.concatenate(([0], rings[:-1]))  # Starting index of each polygon
-    polygon_indices = np.searchsorted(rings, np.array(triangles), side='right')
+    polygon_indices = np.searchsorted(rings, np.array(triangles), side="right")
     vertex_indices = np.array(triangles) - offsets[polygon_indices]
-    
+
     tris = [
-        [face[p][v] for p, v in zip(polygon_indices[i:i+3], vertex_indices[i:i+3])]
+        [face[p][v] for p, v in zip(polygon_indices[i : i + 3], vertex_indices[i : i + 3])]
         for i in range(0, len(triangles), 3)
     ]
 
@@ -1182,6 +1598,7 @@ def triangulate_3d_face(verts_array: np.ndarray, face: list[list[int]]) -> list[
 
     return tris
 
+
 def get_polygon_signed_area(poly_verts: np.ndarray) -> float:
     """
     Calculates the signed area of a polygon using the Shoelace formula.
@@ -1189,11 +1606,11 @@ def get_polygon_signed_area(poly_verts: np.ndarray) -> float:
     Returns positive area for CCW winding, negative for CW
     (in standard Cartesian coordinates where Y increases upwards).
     """
-    
+
     poly_verts = np.asarray(poly_verts)
-    
+
     if poly_verts.shape[0] < 3:
-        return 0.0 # Not a polygon
+        return 0.0  # Not a polygon
 
     x = poly_verts[:, 0]
     y = poly_verts[:, 1]

@@ -406,17 +406,18 @@ class Model:
     @staticmethod
     def from_manifold(manifold: m3d.Manifold) -> "Model":
         """Convert a manifold3d Manifold to a viewer Model."""
-        
-        if manifold.num_prop() != 7:
-            raise ValueError("Manifold must have exactly 7 values in its property array: "
-                             f"{manifold.num_prop()} values found")
-        
+
         # Get the mesh from the manifold
         mesh = manifold.to_mesh()
         
         # Extract vertex positions and triangle indices
         positions = mesh.vert_properties
         triangles = mesh.tri_verts
+                
+        if len(triangles) > 0 and manifold.num_prop() != 7:
+            raise ValueError("Manifold must have exactly 7 values in its property array: "
+                             f"{manifold.num_prop()} values found")
+        
         
         tri_indices = triangles.reshape(-1)
         
