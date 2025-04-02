@@ -978,6 +978,151 @@ class Model:
                 print(f"Model._draw_lines_core_profile: Failed to draw: {e}")
             return False
 
+    def get_triangles(self) -> np.ndarray:
+        """Extract individual triangles from the model data.
+        
+        Returns:
+            numpy.ndarray: Array of triangles, each containing 3 vertices with full attributes
+                           Shape: (num_triangles, 3, stride)
+        """
+        triangle_count = self.num_points // 3
+        
+        # Reshape the data to extract triangles
+        # Each triangle has 3 vertices, each vertex has self.stride attributes
+        triangles = np.zeros((triangle_count, 3, self.stride), dtype=np.float32)
+        
+        for i in range(triangle_count):
+            for j in range(3):  # Three vertices per triangle
+                vertex_idx = i * 3 + j
+                start_idx = vertex_idx * self.stride
+                end_idx = start_idx + self.stride
+                
+                # Extract full vertex data for this triangle vertex
+                if start_idx < len(self.data) and end_idx <= len(self.data):
+                    triangles[i, j] = self.data[start_idx:end_idx]
+        
+        return triangles
+    
+    def is_triangle_transparent(self, triangle: np.ndarray) -> bool:
+        """Check if a triangle has any transparent vertices.
+        
+        Args:
+            triangle: Triangle data with shape (3, stride)
+            
+        Returns:
+            bool: True if any vertex in the triangle has alpha < 1.0
+        """
+        # Check alpha value (4th component of color) for each vertex
+        for vertex in triangle:
+            alpha = vertex[self.color_offset + 3]
+            if alpha < 1.0:
+                return True
+        return False
+    
+    def get_triangle_z_position(self, triangle: np.ndarray) -> float:
+        """Calculate average Z position of a triangle for depth sorting.
+        
+        Args:
+            triangle: Triangle data with shape (3, stride)
+            
+        Returns:
+            float: Average Z coordinate of the triangle's vertices
+        """
+        # Extract Z coordinate (3rd component of position) for each vertex
+        z_coords = [vertex[self.position_offset + 2] for vertex in triangle]
+        # Return average Z position
+        return sum(z_coords) / 3.0
+
+    @staticmethod
+    def create_coalesced_models(models: List["Model"]) -> Tuple["Model", "Model"]:
+        """Create two consolidated models from a list of models - one opaque, one transparent.
+        
+        This method scans through all triangles in all models and separates them based on
+        transparency (any vertex with alpha < 1.0). For the transparent model, triangles
+        are sorted by Z position for proper back-to-front rendering.
+        
+        Args:
+            models: List of Model objects to coalesce
+            
+        Returns:
+            tuple: (opaque_model, transparent_model)
+        """
+        if not models:
+            # Return empty models if no input
+            empty_data = np.array([], dtype=np.float32)
+            return Model(empty_data), Model(empty_data, has_alpha_lt1=True)
+        
+        # Use first model's structure as reference
+        reference_model = models[0]
+        stride = reference_model.stride
+        position_offset = reference_model.position_offset
+        color_offset = reference_model.color_offset
+        normal_offset = reference_model.normal_offset
+        
+        # Collect triangles from all models
+        opaque_triangles = []
+        transparent_triangles = []
+        
+        for model in models:
+            # Extract triangles from this model
+            triangles = model.get_triangles()
+            
+            # Categorize each triangle
+            for triangle in triangles:
+                if model.is_triangle_transparent(triangle):
+                    # Add triangle with its Z position for later sorting
+                    z_pos = model.get_triangle_z_position(triangle)
+                    transparent_triangles.append((z_pos, triangle))
+                else:
+                    opaque_triangles.append(triangle)
+        
+        # Sort transparent triangles by Z position (back to front)
+        transparent_triangles.sort(key=lambda item: item[0], reverse=True)
+        
+        # Extract just the triangle data after sorting
+        transparent_triangles = [t[1] for t in transparent_triangles]
+        
+        # Create the data arrays for the new models
+        opaque_data = np.zeros(len(opaque_triangles) * 3 * stride, dtype=np.float32)
+        transparent_data = np.zeros(len(transparent_triangles) * 3 * stride, dtype=np.float32)
+        
+        # Fill the opaque data array
+        idx = 0
+        for triangle in opaque_triangles:
+            for vertex in triangle:
+                opaque_data[idx:idx+stride] = vertex
+                idx += stride
+        
+        # Fill the transparent data array
+        idx = 0
+        for triangle in transparent_triangles:
+            for vertex in triangle:
+                transparent_data[idx:idx+stride] = vertex
+                idx += stride
+        
+        # Create and return the new models
+        opaque_model = Model(
+            opaque_data,
+            has_alpha_lt1=False,
+            num_points=len(opaque_triangles) * 3,
+            position_offset=position_offset,
+            color_offset=color_offset,
+            normal_offset=normal_offset,
+            stride=stride
+        )
+        
+        transparent_model = Model(
+            transparent_data,
+            has_alpha_lt1=True,
+            num_points=len(transparent_triangles) * 3,
+            position_offset=position_offset,
+            color_offset=color_offset,
+            normal_offset=normal_offset,
+            stride=stride
+        )
+        
+        return opaque_model, transparent_model
+
 
 class Viewer:
     """OpenGL viewer for 3D models."""
@@ -1090,6 +1235,7 @@ class Viewer:
      B - Toggle backface culling
      W - Toggle wireframe mode
      Z - Toggle Z-buffer occlusion for wireframes
+     C - Toggle coalesced model mode (improves transparency rendering)
      R - Reset view
      X - Toggle bounding box (off/wireframe/solid)
      S - Save screenshot
@@ -1142,7 +1288,8 @@ class Viewer:
             
             cls._initialized = True
 
-    def __init__(self, models: List[Model], width: int = 800, height: int = 600, title: str = "3D Viewer"):
+    def __init__(self, models: List[Model], width: int = 800, height: int = 600, title: str = "3D Viewer", 
+                 use_coalesced_models: bool = True):
         """
         Initialize the viewer with a list of models.
         
@@ -1151,6 +1298,7 @@ class Viewer:
             width: Window width
             height: Window height
             title: Window title
+            use_coalesced_models: Whether to coalesce models into opaque/transparent pairs for better rendering
         """
         if not HAS_OPENGL:
             raise ImportError("OpenGL libraries (PyOpenGL and PyGLM) are required for the viewer")
@@ -1158,7 +1306,27 @@ class Viewer:
         # Get the OpenGL context and capabilities
         self.gl_ctx = GLContext.get_instance()
         
-        self.models = models
+        # Store original models
+        self.original_models = models
+        
+        # Create coalesced models if requested
+        self.use_coalesced_models = use_coalesced_models
+        if self.use_coalesced_models and models:
+            # Create coalesced models (one opaque, one transparent)
+            opaque_model, transparent_model = Model.create_coalesced_models(models)
+            
+            # Set models for rendering
+            self.models = []
+            # Add opaque model if it has data
+            if opaque_model.num_points > 0:
+                self.models.append(opaque_model)
+            # Add transparent model if it has data
+            if transparent_model.num_points > 0:
+                self.models.append(transparent_model)
+        else:
+            # Use original models
+            self.models = models
+        
         self.width = width
         self.height = height
         self.title = title
@@ -1928,9 +2096,24 @@ class Viewer:
                 # Set up view
                 self._setup_view()
                 
-                # Sort models - opaque first, then transparent
-                opaque_models = [model for model in self.models if not model.has_alpha_lt1]
-                transparent_models = [model for model in self.models if model.has_alpha_lt1]
+                # When using coalesced models, they're already sorted with transparent last
+                if not self.use_coalesced_models:
+                    # Sort models - opaque first, then transparent
+                    opaque_models = [model for model in self.models if not model.has_alpha_lt1]
+                    transparent_models = [model for model in self.models if model.has_alpha_lt1]
+                else:
+                    # If we're using coalesced models, they're already properly sorted
+                    # The first model is opaque, and if there's a second one, it's transparent
+                    opaque_models = []
+                    transparent_models = []
+                    
+                    if len(self.models) > 0:
+                        # First model is always opaque when coalesced
+                        opaque_models = [self.models[0]]
+                        
+                        # Second model (if exists) contains all transparent triangles
+                        if len(self.models) > 1:
+                            transparent_models = [self.models[1]]
                 
                 # Check if we should use Z-buffer occlusion
                 if self.zbuffer_occlusion and self.wireframe_mode and self.backface_culling:
@@ -2287,6 +2470,10 @@ class Viewer:
             if PYOPENGL_VERBOSE:
                 print(f"Viewer: Bounding box mode set to {self.bounding_box_mode}")
             glut.glutPostRedisplay()
+        elif key == b'c':
+            # Toggle coalesced model mode
+            self.toggle_coalesced_mode()
+            # Already calls glutPostRedisplay()
         elif key == b's':
             # Save screenshot - only on key down
             try:
@@ -2539,6 +2726,57 @@ class Viewer:
                     vertex_data.extend(normal)
         
         return Model(np.array(vertex_data, dtype=np.float32), num_points=36)
+
+    def update_models(self, models: List[Model]):
+        """Update the models being displayed.
+        
+        Args:
+            models: New list of models to display
+        """
+        # Store original models
+        self.original_models = models
+        
+        # Create coalesced models if enabled
+        if self.use_coalesced_models and models:
+            # Create coalesced models (one opaque, one transparent)
+            opaque_model, transparent_model = Model.create_coalesced_models(models)
+            
+            # Set models for rendering
+            self.models = []
+            # Add opaque model if it has data
+            if opaque_model.num_points > 0:
+                self.models.append(opaque_model)
+            # Add transparent model if it has data
+            if transparent_model.num_points > 0:
+                self.models.append(transparent_model)
+        else:
+            # Use original models
+            self.models = models
+        
+        # Recompute scene bounds and camera position
+        self._compute_scene_bounds()
+        self._setup_camera()
+        
+        # Request redisplay
+        if self.window_id:
+            glut.glutPostRedisplay()
+    
+    def toggle_coalesced_mode(self):
+        """Toggle between using coalesced models and original models."""
+        self.use_coalesced_models = not self.use_coalesced_models
+        
+        # Update models with the new setting
+        self.update_models(self.original_models)
+        
+        if PYOPENGL_VERBOSE:
+            if self.use_coalesced_models:
+                print("Viewer: Coalesced model mode enabled")
+            else:
+                print("Viewer: Using original models (coalesced mode disabled)")
+        
+        # Request redisplay
+        if self.window_id:
+            glut.glutPostRedisplay()
 
 
 # Helper function to create a viewer with models
