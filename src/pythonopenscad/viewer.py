@@ -367,7 +367,7 @@ class BoundingBox:
 class Model:
     """3D model with vertex data including positions, colors, and normals."""
     data: np.ndarray
-    has_alpha_lt1: bool = False
+    has_alpha_lt1: bool | None = None
     num_points: int | None = None
     position_offset: int = 0
     color_offset: int = 3
@@ -396,6 +396,11 @@ class Model:
 
         self.gl_ctx = GLContext.get_instance()
         
+        if self.has_alpha_lt1 is None:
+            # Scan the data for alpha values less than 1, the sata array is single dimensional
+            # containing all the vertex data.
+            self.has_alpha_lt1 = np.any(self.data[self.color_offset + 3::self.stride] < 1.0)
+        
         # OpenGL objects
         self.vao = None
         self.vbo = None
@@ -405,7 +410,7 @@ class Model:
         self._compute_bounding_box()
         
     @staticmethod
-    def from_manifold(manifold: m3d.Manifold, has_alpha_lt1: bool = False) -> "Model":
+    def from_manifold(manifold: m3d.Manifold, has_alpha_lt1: bool | None = None) -> "Model":
         """Convert a manifold3d Manifold to a viewer Model."""
 
         # Get the mesh from the manifold

@@ -761,12 +761,12 @@ class M3dRenderer(RendererBase):
         return self.state.is_skip_rest()
 
     def apply_debug(self, ctxt: Ctxt) -> Ctxt:
-        return ctxt
+        solids = tuple(self._apply_alpha(0.5, solid) for solid in ctxt.get_solids())
+        return replace(ctxt, solid_objs=solids)
 
     def apply_transparent(self, ctxt: Ctxt) -> Ctxt:
-        new_shells = tuple(self._apply_alpha(0.5, solid) for solid in ctxt.solid_objs)
-        cls = type(ctxt)
-        return cls(self, shell_objs=new_shells + ctxt.shell_objs)
+        new_shells = tuple(self._apply_alpha(0.5, solid) for solid in ctxt.get_solids())
+        return replace(ctxt, shell_objs=new_shells + ctxt.get_shells(), solid_objs=())
 
     def with_color(self, color: np.ndarray | list[float]) -> Self:
         """Returns a new renderer with the specified color and alpha."""
