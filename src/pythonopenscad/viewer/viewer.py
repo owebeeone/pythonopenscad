@@ -63,12 +63,17 @@ class Viewer:
 
     axes_renderer_node: Node[AxesRenderer] = Node(AxesRenderer, prefix="axes_")
     axes_renderer: AxesRenderer = dtfield(self_default=lambda self: self.axes_renderer_node())
+    # REMOVED ortho_projection: bool = False - replaced by projection_mode
+
+    # Add state for projection mode and ortho scale
+    projection_mode: str = dtfield(default='perspective') # 'perspective' or 'orthographic'
+    ortho_scale: float = dtfield(default=20.0) # World-space width for ortho view
 
     VIEWER_HELP_TEXT = """
     Mouse Controls:
      Left button drag: Rotate camera
      Right button drag: Pan camera
-     Wheel: Zoom in/out
+     Wheel: Zoom in/out (Perspective) / Change scale (Orthographic)
     
     Keyboard Controls:
      B - Toggle backface culling
@@ -76,6 +81,7 @@ class Viewer:
      Z - Toggle Z-buffer occlusion for wireframes
      C - Toggle coalesced model mode (improves transparency rendering)
      H - Toggle shader-based rendering (modern vs. legacy mode)
+     O - Toggle Orthographic/Perspective projection
      D - Print diagnostic information about OpenGL capabilities
      P - Print detailed shader program diagnostics
      R - Reset view
@@ -101,6 +107,21 @@ class Viewer:
         """
         if not HAS_OPENGL:
             raise ImportError("OpenGL libraries (PyOpenGL and PyGLM) are required for the viewer")
+
+        # Initialize projection mode and scale using defaults or passed values
+        # The dtfield defaults handle this, no extra code needed here unless
+        # we want to override based on other initial state.
+        # For clarity, we ensure the values are set.
+        # Note: datatree handles setting these from kwargs if passed in constructor
+        # So, self.projection_mode and self.ortho_scale will have the passed values
+        # or the dtfield defaults if not passed.
+        
+        # Example check (optional):
+        # if hasattr(self, 'projection_mode') and self.projection_mode not in ['perspective', 'orthographic']:
+        #    warnings.warn(f"Invalid initial projection mode '{self.projection_mode}', defaulting to perspective.")
+        #    self.projection_mode = 'perspective'
+        # if not hasattr(self, 'ortho_scale') or self.ortho_scale <= 0:
+        #    self.ortho_scale = 20.0 # Ensure positive default if invalid
 
         # 1. Get GLContext instance (but don't initialize)
         self.gl_ctx = GLContext.get_instance()
@@ -129,6 +150,7 @@ class Viewer:
         # -----------------------------------------------------------
 
         # --- Camera Setup (based on models, before window) ---
+        # These are initialized here, but ortho_scale might be overridden by constructor args
         self.camera_pos = glm.vec3(0.0, 0.0, 5.0)
         self.camera_front = glm.vec3(0.0, 0.0, -1.0)
         self.camera_up = glm.vec3(0.0, 1.0, 0.0)
@@ -1161,6 +1183,28 @@ class Viewer:
             except Exception:
                 # At this point there's not much more we can do
                 pass
+            
+    def get_projection_mat(self) -> glm.mat4:
+        """Get the current projection matrix based on the projection mode."""
+        # Prevent division by zero if height is zero
+        aspect_ratio = self.width / self.height if self.height > 0 else 1.0
+        
+        if self.projection_mode == 'perspective':
+            projection = glm.perspective(glm.radians(45.0), aspect_ratio, 0.1, 1000.0)
+        else: # orthographic
+            if aspect_ratio >= 1.0: # Wider than tall or square
+                ortho_width = self.ortho_scale
+                ortho_height = self.ortho_scale / aspect_ratio
+            else: # Taller than wide
+                ortho_height = self.ortho_scale
+                ortho_width = self.ortho_scale * aspect_ratio
+
+            projection = glm.ortho(
+                -ortho_width / 2.0, ortho_width / 2.0,
+                -ortho_height / 2.0, ortho_height / 2.0,
+                0.1, 1000.0 # Use same near/far as perspective for consistency
+            )
+        return projection
 
     def _setup_view(self):
         """Set up the view transformation for rendering."""
@@ -1196,33 +1240,26 @@ class Viewer:
             is_core_profile = False
         except Exception:
             is_core_profile = True
-            if PYOPENGL_VERBOSE:
-                print("Viewer: Detected core profile in setup_view")
+            # if PYOPENGL_VERBOSE: # Reduced verbosity
+            #     print("Viewer: Detected core profile in setup_view")
 
-        # Set up matrices
+        # Get Projection Matrix
+        projection = self.get_projection_mat()
+
+        # Set up matrices for Shader pipeline
         if self.gl_ctx.has_shader and self.shader_program:
-            # Use the shader program for modern pipeline
-            gl.glUseProgram(self.shader_program)
-
             try:
+                gl.glUseProgram(self.shader_program)
+
                 # Update view position for specular highlights
                 view_pos_loc = gl.glGetUniformLocation(self.shader_program, "viewPos")
                 if view_pos_loc != -1:
-                    gl.glUniform3f(
-                        view_pos_loc, self.camera_pos.x, self.camera_pos.y, self.camera_pos.z
-                    )
+                    gl.glUniform3f(view_pos_loc, self.camera_pos.x, self.camera_pos.y, self.camera_pos.z)
 
                 # Set up model-view-projection matrices
-                # Convert NumPy model matrix to GLM format
-
                 model_mat = glm.mat4(*self.model_matrix.flatten())
-
-                view = glm.lookAt(
-                    self.camera_pos, self.camera_pos + self.camera_front, self.camera_up
-                )
-                projection = glm.perspective(
-                    glm.radians(45.0), self.width / self.height, 0.1, 1000.0
-                )
+                view = glm.lookAt(self.camera_pos, self.camera_pos + self.camera_front, self.camera_up)
+                # projection is calculated above using get_projection_mat()
 
                 # Send matrices to the shader
                 model_loc = gl.glGetUniformLocation(self.shader_program, "model")
@@ -1233,30 +1270,46 @@ class Viewer:
                     gl.glUniformMatrix4fv(model_loc, 1, gl.GL_FALSE, glm.value_ptr(model_mat))
                 if view_loc != -1:
                     gl.glUniformMatrix4fv(view_loc, 1, gl.GL_FALSE, glm.value_ptr(view))
-                if proj_loc != -1:
+                # Use the matrix obtained from get_projection_mat()
+                if proj_loc != -1 and projection is not None:
                     gl.glUniformMatrix4fv(proj_loc, 1, gl.GL_FALSE, glm.value_ptr(projection))
 
                 # Check for combined MVP matrix (used in basic shader)
                 mvp_loc = gl.glGetUniformLocation(self.shader_program, "modelViewProj")
-                if mvp_loc != -1:
-                    # Calculate combined MVP matrix
-                    mvp = projection * view * model_mat
+                # Use the matrix obtained from get_projection_mat()
+                if mvp_loc != -1 and projection is not None:
+                    mvp = projection * view * model_mat # projection comes from get_projection_mat()
                     gl.glUniformMatrix4fv(mvp_loc, 1, gl.GL_FALSE, glm.value_ptr(mvp))
 
-                # Unbind shader program after setting uniforms
                 gl.glUseProgram(0)
             except Exception as e:
                 if PYOPENGL_VERBOSE:
                     print(f"Viewer: Error setting up shader uniforms: {e}")
-                gl.glUseProgram(0)
+                try: gl.glUseProgram(0)
+                except: pass
 
-        # If we're not in a core profile, use fixed-function pipeline
+        # Set up matrices for Fixed-Function pipeline
         if not is_core_profile:
             try:
-                # Set up projection matrix
+                # Set up projection matrix based on mode (using legacy calls)
                 gl.glMatrixMode(gl.GL_PROJECTION)
                 gl.glLoadIdentity()
-                glu.gluPerspective(45.0, self.width / self.height, 0.1, 1000.0)
+                if self.projection_mode == 'perspective':
+                    aspect_ratio = self.width / self.height if self.height > 0 else 1.0
+                    glu.gluPerspective(45.0, aspect_ratio, 0.1, 1000.0)
+                else: # orthographic
+                    aspect_ratio = self.width / self.height if self.height > 0 else 1.0
+                    if aspect_ratio >= 1.0:
+                         ortho_width = self.ortho_scale
+                         ortho_height = self.ortho_scale / aspect_ratio
+                    else:
+                         ortho_height = self.ortho_scale
+                         ortho_width = self.ortho_scale * aspect_ratio
+                    gl.glOrtho(
+                         -ortho_width / 2.0, ortho_width / 2.0,
+                         -ortho_height / 2.0, ortho_height / 2.0,
+                         0.1, 1000.0
+                    )
 
                 # Set up modelview matrix
                 gl.glMatrixMode(gl.GL_MODELVIEW)
@@ -1264,18 +1317,14 @@ class Viewer:
 
                 # Set up view with gluLookAt
                 glu.gluLookAt(
-                    self.camera_pos.x,
-                    self.camera_pos.y,
-                    self.camera_pos.z,
+                    self.camera_pos.x, self.camera_pos.y, self.camera_pos.z,
                     self.camera_pos.x + self.camera_front.x,
                     self.camera_pos.y + self.camera_front.y,
                     self.camera_pos.z + self.camera_front.z,
-                    self.camera_up.x,
-                    self.camera_up.y,
-                    self.camera_up.z,
+                    self.camera_up.x, self.camera_up.y, self.camera_up.z,
                 )
 
-                # Apply model matrix (convert from NumPy to a format OpenGL can use)
+                # Apply model matrix
                 gl.glMultMatrixf(self.model_matrix.flatten())
             except Exception as e:
                 # Core profile with no shaders and no fixed function pipeline
@@ -1369,117 +1418,44 @@ class Viewer:
 
     def _wheel_callback(self, wheel, direction, x, y):
         """GLUT mouse wheel callback."""
-        # Zoom in/out by changing camera position along the front vector
-        self.camera_pos += self.camera_front * (direction * self.camera_speed * 10.0)
+        if self.projection_mode == 'perspective':
+            # Zoom in/out by changing camera position along the front vector
+            self.camera_pos += self.camera_front * (direction * self.camera_speed * 10.0)
+        else: # orthographic
+            # Zoom by changing the ortho scale (adjust sensitivity as needed)
+            zoom_factor = 1.1
+            if direction > 0: # Zoom in
+                self.ortho_scale /= zoom_factor
+            else: # Zoom out
+                self.ortho_scale *= zoom_factor
+            # Prevent scale from becoming too small or negative
+            self.ortho_scale = max(0.1, self.ortho_scale)
+            if PYOPENGL_VERBOSE: print(f"Viewer: Ortho scale set to {self.ortho_scale}")
+
         glut.glutPostRedisplay()
 
     def _keyboard_callback(self, key, x, y):
         """GLUT keyboard callback."""
-        # Handle basic keyboard controls
-        if key == b"\x1b":  # ESC key
-            # Use terminate to properly clean up
-            if PYOPENGL_VERBOSE:
-                print("Viewer: ESC key pressed, terminating application")
-            Viewer.terminate()
-        elif key == b"r":
-            # Reset view
-            self._reset_view()
-            glut.glutPostRedisplay()
-        elif key == b"a":
-            # Toggle antialiasing
-            if hasattr(gl, "GL_MULTISAMPLE") and Viewer._multisample_supported:
-                self.antialiasing_enabled = not self.antialiasing_enabled
-                if self.antialiasing_enabled:
-                    gl.glEnable(gl.GL_MULTISAMPLE)
-                    if PYOPENGL_VERBOSE:
-                        print("Viewer: Antialiasing enabled")
-                else:
-                    gl.glDisable(gl.GL_MULTISAMPLE)
-                    if PYOPENGL_VERBOSE:
-                        print("Viewer: Antialiasing disabled")
-                glut.glutPostRedisplay()
-            elif PYOPENGL_VERBOSE:
-                print("Viewer: Antialiasing (GL_MULTISAMPLE) not supported on this system.")
-        elif key == b"b":
-            # Toggle backface culling
-            self.backface_culling = not self.backface_culling
-            if self.backface_culling:
-                gl.glEnable(gl.GL_CULL_FACE)
-                gl.glCullFace(gl.GL_BACK)
-                if PYOPENGL_VERBOSE:
-                    print("Viewer: Backface culling enabled")
-            else:
-                gl.glDisable(gl.GL_CULL_FACE)
-                if PYOPENGL_VERBOSE:
-                    print("Viewer: Backface culling disabled")
-            glut.glutPostRedisplay()
-        elif key == b"w":
-            # Toggle wireframe mode
-            self.wireframe_mode = not self.wireframe_mode
-            if self.wireframe_mode:
-                gl.glPolygonMode(gl.GL_FRONT_AND_BACK, gl.GL_LINE)
-                if PYOPENGL_VERBOSE:
-                    print("Viewer: Wireframe mode enabled")
-            else:
-                gl.glPolygonMode(gl.GL_FRONT_AND_BACK, gl.GL_FILL)
-                if PYOPENGL_VERBOSE:
-                    print("Viewer: Wireframe mode disabled")
-            glut.glutPostRedisplay()
-        elif key == b"z":
-            # Toggle Z-buffer occlusion for wireframes
-            self.zbuffer_occlusion = not self.zbuffer_occlusion
-            if PYOPENGL_VERBOSE:
-                if self.zbuffer_occlusion:
-                    print("Viewer: Z-buffer occlusion enabled for wireframes")
-                else:
-                    print("Viewer: Z-buffer occlusion disabled for wireframes")
-            glut.glutPostRedisplay()
-        elif key == b"x":
-            # Toggle bounding box mode
-            self.bounding_box_mode = (self.bounding_box_mode + 1) % 3
-            if PYOPENGL_VERBOSE:
-                print(f"Viewer: Bounding box mode set to {self.bounding_box_mode}")
-            glut.glutPostRedisplay()
-        elif key == b"c":
-            # Toggle coalesced model mode
-            self.toggle_coalesced_mode()
-            # Already calls glutPostRedisplay()
-        elif key == b"h":
-            # Toggle shader-based rendering
-            self._toggle_and_diagnose_shader()
-            # Already calls glutPostRedisplay()
-        elif key == b"d":
-            # Print diagnostic information
-            self._print_diagnostics()
-            # No need to redisplay
-        elif key == b"p":
-            # Print detailed shader program debug information
-            try:
-                # Get current program
-                current_program = gl.glGetIntegerv(gl.GL_CURRENT_PROGRAM)
-                print(f"Current program: {current_program}")
+        func = KEY_BINDINGS.get(key)
+        if func:
+            func(self)
 
-                # Debug our shader program
-                if self.shader_program:
-                    self._print_shader_debug(self.shader_program)
+    def _reset_view(self):
+        """Reset camera and model transformations to defaults."""
+        # Reset model matrix
+        self.model_matrix = np.eye(4, dtype=np.float32)
 
-                # Debug the special program '3'
-                self._print_shader_debug(3)
+        # Reset camera position and orientation
+        self._setup_camera()
 
-            except Exception as e:
-                print(f"Error during shader debugging: {e}")
-            # No need to redisplay
-        elif key == b"s":
-            # Save screenshot - only on key down
-            try:
-                # Generate a default filename with timestamp
-                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                filename = f"screenshot_{timestamp}.png"
-                self.save_screenshot(filename)
-            except Exception as e:
-                if PYOPENGL_VERBOSE:
-                    print(f"Viewer: Failed to save screenshot: {str(e)}")
-            # Don't redisplay after saving screenshot
+        # Reset ortho scale to default
+        self.ortho_scale = 20.0
+
+        # Reset mouse rotation tracking
+        self.yaw = -90.0
+        self.pitch = 0.0
+        
+        if PYOPENGL_VERBOSE: print("Viewer: View reset.") # Added log
 
     def _print_shader_debug(self, program_id):
         """Print detailed debugging information about a shader program.
@@ -1704,18 +1680,6 @@ class Viewer:
                 print(f"Viewer: Failed to save screenshot: {str(e)}")
             raise
 
-    def _reset_view(self):
-        """Reset camera and model transformations to defaults."""
-        # Reset model matrix
-        self.model_matrix = np.eye(4, dtype=np.float32)
-
-        # Reset camera position and orientation
-        self._setup_camera()
-
-        # Reset mouse rotation tracking
-        self.yaw = -90.0
-        self.pitch = 0.0
-
     def _draw_bounding_box(self):
         """Draw the scene bounding box in the current mode (off/wireframe/solid)."""
         BBoxRender.render(self)
@@ -1886,7 +1850,7 @@ class Viewer:
         original_viewport = None  # Initialize to avoid reference before assignment warning
 
         try:
-            # --- FBO Setup ---
+            # FBO Setup
             # Check for errors before starting
             gl.glGetError()
 
@@ -2185,12 +2149,6 @@ class Viewer:
                     # This is expected if the original window (e.g. temp init window) was destroyed
                     pass
 
-    def _keyboard_callback(self, key, x, y):
-        """GLUT keyboard callback."""
-        func = KEY_BINDINGS.get(key)
-        if func:
-            func(self)
-
     def _query_actual_msaa_samples(self):
         """Queries OpenGL for the actual number of samples and sample buffers."""
         if not self.window_id or not Viewer._initialized:
@@ -2450,6 +2408,18 @@ def save_screenshot(viewer: Viewer):
 @keybinding(b"?")
 def print_help(viewer: Viewer):
     print(Viewer.VIEWER_HELP_TEXT)
+
+
+@keybinding(b'o')
+def toggle_projection(viewer: Viewer):
+    """Toggle between perspective and orthographic projection."""
+    if viewer.projection_mode == 'perspective':
+        viewer.projection_mode = 'orthographic'
+        if PYOPENGL_VERBOSE: print("Viewer: Switched to Orthographic projection")
+    else:
+        viewer.projection_mode = 'perspective'
+        if PYOPENGL_VERBOSE: print("Viewer: Switched to Perspective projection")
+    glut.glutPostRedisplay()
 
 
 # Helper function to create a viewer with models

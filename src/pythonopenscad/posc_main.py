@@ -134,11 +134,17 @@ class PoscMainRunner:
         add_bool_arg(parser, "zbuffer-occlusion", "Disable Z-buffer occlusion for wireframes.", default=True)
         add_bool_arg(parser, "coalesce", "Model coalescing (may impact transparency rendering).", default=True)
 
-
         # --- Viewer Options ---
         parser.add_argument("--width", type=int, default=800, help="Viewer window width.")
         parser.add_argument("--height", type=int, default=600, help="Viewer window height.")
         parser.add_argument("--title", type=str, default=None, help="Viewer window title.")
+        parser.add_argument(
+            "--projection",
+            type=str,
+            choices=['perspective', 'orthographic'],
+            default='perspective',
+            help="Initial viewer projection mode."
+        )
         parser.add_argument(
             "--bg-color",
             type=str,
@@ -233,6 +239,7 @@ class PoscMainRunner:
                     height=self.args.height,
                     title=self.args.title,
                     background_color=self.args.parsed_bg_color,
+                    projection_mode=self.args.projection,
                     wireframe_mode=self.args.wireframe,
                     backface_culling=self.args.backface_culling,
                     bounding_box_mode=self.args.bounding_box_mode,
@@ -282,6 +289,7 @@ if __name__ == "__main__":
             "--png",        # Action: Save PNG (will show TODO)
             "--no-wireframe",  # Viewer option
             "--bg-color", "1,1,1,1.0", # Viewer option
+            "--projection", "orthographic", # Viewer option
             # "--output-base", "my_test_output", # Output name override
         ]
 
