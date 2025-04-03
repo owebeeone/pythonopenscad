@@ -4,7 +4,7 @@ import os
 
 # Try to import the viewer module
 try:
-    from pythonopenscad.viewer import Model, Viewer, BoundingBox, is_opengl_available
+    from pythonopenscad.viewer.viewer import Model, Viewer, BoundingBox, is_opengl_available
     HAS_VIEWER = True
 except ImportError:
     HAS_VIEWER = False

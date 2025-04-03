@@ -118,7 +118,7 @@ from pythonopenscad.m3dapi import (
 
 # Try to import the viewer module, but don't fail if OpenGL is not available
 try:
-    from pythonopenscad.viewer import (
+    from pythonopenscad.viewer.viewer import (
         BoundingBox,
         Model,
         Viewer,

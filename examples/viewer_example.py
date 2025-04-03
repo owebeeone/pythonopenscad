@@ -12,7 +12,7 @@ import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 try:
-    from pythonopenscad.viewer import Model, Viewer, is_opengl_available
+    from pythonopenscad.viewer.viewer import Model, Viewer, is_opengl_available
 except ImportError:
     print("Failed to import viewer module. Make sure PyOpenGL and PyGLM are installed.")
     print("Try: pip install PyOpenGL PyOpenGL-accelerate PyGLM")

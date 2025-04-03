@@ -9,7 +9,7 @@ from pythonopenscad.modifier import DEBUG, DISABLE, SHOW_ONLY, PoscRendererBase
 
 try:
     from pythonopenscad.m3dapi import M3dRenderer
-    from pythonopenscad.viewer import Model, Viewer, is_opengl_available
+    from pythonopenscad.viewer.viewer import Model, Viewer, is_opengl_available
 except ImportError as e:
     print(f"Failed to import required modules: {e}")
     print("Make sure manifold3d, PyOpenGL, and PyGLM are installed.")

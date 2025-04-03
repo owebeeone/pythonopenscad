@@ -14,7 +14,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 try:
     import manifold3d as m3d
     from pythonopenscad.m3dapi import M3dRenderer
-    from pythonopenscad.viewer import Model, Viewer, is_opengl_available
+    from pythonopenscad.viewer.viewer import Model, Viewer, is_opengl_available
 except ImportError as e:
     print(f"Failed to import required modules: {e}")
     print("Make sure manifold3d, PyOpenGL, and PyGLM are installed.")
