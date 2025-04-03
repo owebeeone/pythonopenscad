@@ -4,25 +4,18 @@ from typing import ClassVar, Optional
 import numpy as np
 import warnings
 
-# Try importing OpenGL libraries, but make them optional
-try:
-    import OpenGL.GL as gl
-    import OpenGL.GLUT as glut
-    import OpenGL.GLU as glu
 
-    # Enable PyOpenGL's error checking
-    OpenGL = sys.modules["OpenGL"]
-    OpenGL.ERROR_CHECKING = True
-    OpenGL.ERROR_LOGGING = True
-    # Ensure PyOpenGL allows the deprecated APIs
-    OpenGL.FORWARD_COMPATIBLE_ONLY = False
-    import glm
+import OpenGL.GL as gl
+import OpenGL.GLUT as glut
 
-    HAS_OPENGL = True
-except ImportError:
-    HAS_OPENGL = False
+# Enable PyOpenGL's error checking
+OpenGL = sys.modules["OpenGL"]
+OpenGL.ERROR_CHECKING = True
+OpenGL.ERROR_LOGGING = True
+# Ensure PyOpenGL allows the deprecated APIs
+OpenGL.FORWARD_COMPATIBLE_ONLY = False
 
-PYOPENGL_VERBOSE = True
+PYOPENGL_VERBOSE = False
 
 
 @datatree
@@ -47,10 +40,6 @@ class GLContext:
     temp_window_id: Optional[int] = None
     dummy_display_callback = None
 
-    def __post_init__(self):
-        """Handle post-initialization setup."""
-        if not HAS_OPENGL:
-            return
 
     @classmethod
     def get_instance(cls) -> "GLContext":
@@ -72,8 +61,7 @@ class GLContext:
         This must be called AFTER a valid OpenGL context has been created and made current
         (e.g., after glutCreateWindow).
         """
-        if not HAS_OPENGL or self.is_initialized:
-            return
+
 
         # --- Check if we have a current context ---
         current_window = 0
@@ -281,9 +269,6 @@ class GLContext:
 
         This should be called before creating the real window.
         """
-        if not HAS_OPENGL:
-            return
-
         try:
             glut.glutInitContextVersion(major, minor)
             if core_profile:

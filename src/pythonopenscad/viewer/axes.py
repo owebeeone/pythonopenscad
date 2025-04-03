@@ -3,23 +3,7 @@ from datatrees import datatree, dtfield, Node
 from typing import ClassVar, List, Tuple
 import numpy as np
 
-# Try importing OpenGL libraries, but make them optional
-try:
-    import OpenGL.GL as gl
-    import OpenGL.GLUT as glut
-    import OpenGL.GLU as glu
-
-    # Enable PyOpenGL's error checking
-    OpenGL = sys.modules["OpenGL"]
-    OpenGL.ERROR_CHECKING = True
-    OpenGL.ERROR_LOGGING = True
-    # Ensure PyOpenGL allows the deprecated APIs
-    OpenGL.FORWARD_COMPATIBLE_ONLY = False
-    import glm
-
-    HAS_OPENGL = True
-except ImportError:
-    HAS_OPENGL = False
+import OpenGL.GL as gl
 
 
 @datatree
@@ -41,8 +25,6 @@ class AxesRenderer:
 
     def draw(self, viewer: "Viewer"):
         """Draw the axes lines."""
-        if not HAS_OPENGL:
-            return
 
         self.draw_axes(viewer)
 

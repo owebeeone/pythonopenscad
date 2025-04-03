@@ -3,24 +3,7 @@ from typing import Any
 
 from pythonopenscad.viewer.glctxt import PYOPENGL_VERBOSE
 
-# Try importing OpenGL libraries, but make them optional
-try:
-    import OpenGL.GL as gl
-    import OpenGL.GLUT as glut
-    import OpenGL.GLU as glu
-
-    # Enable PyOpenGL's error checking
-    OpenGL = sys.modules["OpenGL"]
-    OpenGL.ERROR_CHECKING = True
-    OpenGL.ERROR_LOGGING = True
-    # Ensure PyOpenGL allows the deprecated APIs
-    OpenGL.FORWARD_COMPATIBLE_ONLY = False
-    import glm
-
-    HAS_OPENGL = True
-except ImportError:
-    HAS_OPENGL = False
-
+import OpenGL.GL as gl
 
 class BBoxRender:
     @classmethod

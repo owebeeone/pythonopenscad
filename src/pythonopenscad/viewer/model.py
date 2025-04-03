@@ -10,23 +10,8 @@ from pythonopenscad.viewer.glctxt import GLContext, PYOPENGL_VERBOSE
 
 import ctypes
 
-# Try importing OpenGL libraries, but make them optional
-try:
-    import OpenGL.GL as gl
-    import OpenGL.GLUT as glut
-    import OpenGL.GLU as glu
-
-    # Enable PyOpenGL's error checking
-    OpenGL = sys.modules["OpenGL"]
-    OpenGL.ERROR_CHECKING = True
-    OpenGL.ERROR_LOGGING = True
-    # Ensure PyOpenGL allows the deprecated APIs
-    OpenGL.FORWARD_COMPATIBLE_ONLY = False
-    import glm
-
-    HAS_OPENGL = True
-except ImportError:
-    HAS_OPENGL = False
+import OpenGL.GL as gl
+import OpenGL.GLUT as glut
 
 
 @datatree
@@ -53,9 +38,6 @@ class Model:
             normal_offset: Offset of normal data in the vertex structure
             stride: Total stride of the vertex structure
         """
-        if not HAS_OPENGL:
-            raise ImportError("OpenGL libraries (PyOpenGL and PyGLM) are required for the viewer")
-
         self.data = self.data.astype(np.float32)
         if self.num_points is None:
             self.num_points = len(self.data) // self.stride
@@ -110,9 +92,6 @@ class Model:
 
         This must be called when the correct OpenGL context is active.
         """
-        # Skip if OpenGL is not available or resources already initialized
-        if not HAS_OPENGL:
-            return
         if self.vbo is not None or self.vao is not None:
             return
 
@@ -380,8 +359,6 @@ class Model:
 
     def draw(self):
         """Draw the model using OpenGL."""
-        if not HAS_OPENGL:
-            return
 
         gl_ctx: GLContext = self.gl_ctx
         current_window = glut.glutGetWindow()

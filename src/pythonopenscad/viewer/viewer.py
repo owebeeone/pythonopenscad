@@ -23,23 +23,10 @@ from pythonopenscad.viewer.axes import AxesRenderer
 import anchorscad_lib.linear as linear
 from pythonopenscad.viewer.shader import BASIC_SHADER_PROGRAM, SHADER_PROGRAM
 
-# Try importing OpenGL libraries, but make them optional
-try:
-    import OpenGL.GL as gl
-    import OpenGL.GLUT as glut
-    import OpenGL.GLU as glu
-
-    # Enable PyOpenGL's error checking
-    OpenGL = sys.modules["OpenGL"]
-    OpenGL.ERROR_CHECKING = True
-    OpenGL.ERROR_LOGGING = True
-    # Ensure PyOpenGL allows the deprecated APIs
-    OpenGL.FORWARD_COMPATIBLE_ONLY = False
-    import glm
-
-    HAS_OPENGL = True
-except ImportError:
-    HAS_OPENGL = False
+import OpenGL.GL as gl
+import OpenGL.GLUT as glut
+import OpenGL.GLU as glu
+import glm
 
 
 @datatree
@@ -105,8 +92,6 @@ class Viewer:
         """
         Initialize the viewer.
         """
-        if not HAS_OPENGL:
-            raise ImportError("OpenGL libraries (PyOpenGL and PyGLM) are required for the viewer")
 
         # Initialize projection mode and scale using defaults or passed values
         # The dtfield defaults handle this, no extra code needed here unless
@@ -675,19 +660,18 @@ class Viewer:
         gl_ctx.is_initialized = False
 
         # Exit GLUT if it's running
-        if HAS_OPENGL:
+        try:
+            if PYOPENGL_VERBOSE:
+                print("Viewer: Exiting GLUT main loop")
+            glut.glutLeaveMainLoop()
+        except Exception as e:
+            if PYOPENGL_VERBOSE:
+                print(f"Viewer: Error exiting GLUT main loop: {e}")
+            # As a fallback, try to exit more abruptly
             try:
-                if PYOPENGL_VERBOSE:
-                    print("Viewer: Exiting GLUT main loop")
-                glut.glutLeaveMainLoop()
-            except Exception as e:
-                if PYOPENGL_VERBOSE:
-                    print(f"Viewer: Error exiting GLUT main loop: {e}")
-                # As a fallback, try to exit more abruptly
-                try:
-                    glut.glutExit()
-                except Exception:
-                    pass
+                glut.glutExit()
+            except Exception:
+                pass
 
     def _render_absolute_fallback(self):
         """An absolute fallback rendering mode that should work on any OpenGL version.
@@ -1750,9 +1734,6 @@ class Viewer:
 
     def get_view_to_world_matrix(self) -> np.ndarray:
         """Calculate and return the view-to-world transformation matrix."""
-        if not HAS_OPENGL:
-            return np.eye(4, dtype=np.float32)  # Return identity if no OpenGL
-
         try:
             # Calculate the view matrix (world-to-view)
             view_matrix = glm.lookAt(
@@ -1774,9 +1755,6 @@ class Viewer:
 
     def get_current_window_dims(self) -> Tuple[int, int]:
         """Get the current dimensions (width, height) of the viewer window."""
-        if not HAS_OPENGL or not Viewer._initialized or self.window_id is None:
-            return (self.width, self.height)  # Return stored dimensions if GLUT not ready
-
         try:
             # Ensure we query the correct window if multiple exist (though unlikely with current structure)
             current_win = glut.glutGetWindow()
@@ -1827,9 +1805,6 @@ class Viewer:
 
     def offscreen_render(self, filename: str):
         """Renders the model to an offscreen buffer and saves the screen as a PNG image."""
-        if not HAS_OPENGL:
-            raise RuntimeError("OpenGL is not available.")
-
         if self.window_id is None or not Viewer._initialized:
             raise RuntimeError(
                 "Viewer window is not initialized. Offscreen rendering requires an active OpenGL context."
@@ -2432,19 +2407,11 @@ def create_viewer_with_models(models, width=800, height=600, title="3D Viewer"):
 # Helper function to check if OpenGL is available
 def is_opengl_available():
     """Check if OpenGL libraries are available."""
-    return HAS_OPENGL
+    return True
 
 
 def get_opengl_capabilities(gl_ctx: GLContext):
     """Get a dictionary describing the available OpenGL capabilities."""
-    if not HAS_OPENGL:
-        return {
-            "opengl_available": False,
-            "vbo_support": False,
-            "shader_support": False,
-            "vao_support": False,
-            "message": "OpenGL libraries not available. Install PyOpenGL and PyGLM.",
-        }
 
     capabilities = {
         "opengl_available": True,
@@ -2469,10 +2436,6 @@ def get_opengl_capabilities(gl_ctx: GLContext):
 if __name__ == "__main__":
     import signal
     import sys
-
-    if not HAS_OPENGL:
-        print("OpenGL libraries (PyOpenGL and PyGLM) are required for the viewer")
-        sys.exit(1)
 
     # Enable verbose mode
     PYOPENGL_VERBOSE = True
