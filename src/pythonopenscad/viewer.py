@@ -1494,6 +1494,7 @@ class Viewer:
     wireframe_mode: bool = False
     bounding_box_mode: int = 0  # 0: off, 1: wireframe, 2: solid
     zbuffer_occlusion: bool = True
+    antialiasing_enabled: bool = True # Added antialiasing state
     
     background_color: Tuple[float, float, float, float] = (0.98, 0.98, 0.85, 1.0)
     
@@ -1626,6 +1627,8 @@ class Viewer:
             # OpenGL state
     window_id: int | None = dtfield(default=0, init=False)
     shader_program: Any | None = dtfield(default=None, init=False)
+    # Flag to track if multisample is supported by the system
+    _multisample_supported: bool = dtfield(default=False, init=False)
 
     def __post_init__(self):
         """
@@ -1761,15 +1764,27 @@ class Viewer:
                 print("Viewer: Initializing GLUT")
             # Initialize GLUT
             glut.glutInit()
-            
-            # Try to set a default display mode that should work everywhere
+
+            # Try to set a display mode with multisampling
             display_mode = glut.GLUT_DOUBLE | glut.GLUT_RGBA | glut.GLUT_DEPTH
             try:
-                glut.glutInitDisplayMode(display_mode)
+                glut.glutInitDisplayMode(display_mode | glut.GLUT_MULTISAMPLE)
+                # Assume multisample is supported if this doesn't raise an error
+                cls._multisample_supported = True
+                if PYOPENGL_VERBOSE:
+                    print("Viewer: Requested multisample display mode.")
             except Exception as e:
                 if PYOPENGL_VERBOSE:
-                    print(f"Viewer: Error setting display mode: {e}")
-            
+                    print(f"Viewer: Multisample display mode failed, falling back ({e}). Antialiasing might not work.")
+                # Fallback to non-multisample mode
+                try:
+                    glut.glutInitDisplayMode(display_mode)
+                except Exception as e_fallback:
+                    if PYOPENGL_VERBOSE:
+                         print(f"Viewer: Error setting even basic display mode: {e_fallback}")
+                cls._multisample_supported = False # Mark as not supported
+
+
             # Initialize OpenGL context and detect capabilities
             if PYOPENGL_VERBOSE:
                 print("Viewer: Getting GLContext instance")
@@ -1875,6 +1890,18 @@ class Viewer:
         else:
             gl.glPolygonMode(gl.GL_FRONT_AND_BACK, gl.GL_FILL)
         
+        # Configure antialiasing (multisample)
+        # Check if GL_MULTISAMPLE is defined in the current OpenGL module
+        if hasattr(gl, 'GL_MULTISAMPLE') and Viewer._multisample_supported:
+            if self.antialiasing_enabled:
+                gl.glEnable(gl.GL_MULTISAMPLE)
+            else:
+                gl.glDisable(gl.GL_MULTISAMPLE)
+        elif self.antialiasing_enabled: # Only warn if trying to enable when not supported
+            if PYOPENGL_VERBOSE:
+                 print("Viewer: GL_MULTISAMPLE not defined or supported by driver/GLUT. Antialiasing disabled.")
+            self.antialiasing_enabled = False # Force disable if not supported
+
         # Always enable color material mode
         try:
             gl.glEnable(gl.GL_COLOR_MATERIAL)
@@ -3089,6 +3116,21 @@ class Viewer:
             # Reset view
             self._reset_view()
             glut.glutPostRedisplay()
+        elif key == b'a':
+            # Toggle antialiasing
+            if hasattr(gl, 'GL_MULTISAMPLE') and Viewer._multisample_supported:
+                 self.antialiasing_enabled = not self.antialiasing_enabled
+                 if self.antialiasing_enabled:
+                     gl.glEnable(gl.GL_MULTISAMPLE)
+                     if PYOPENGL_VERBOSE:
+                          print("Viewer: Antialiasing enabled")
+                 else:
+                     gl.glDisable(gl.GL_MULTISAMPLE)
+                     if PYOPENGL_VERBOSE:
+                          print("Viewer: Antialiasing disabled")
+                 glut.glutPostRedisplay()
+            elif PYOPENGL_VERBOSE:
+                 print("Viewer: Antialiasing (GL_MULTISAMPLE) not supported on this system.")
         elif key == b'b':
             # Toggle backface culling
             self.backface_culling = not self.backface_culling
