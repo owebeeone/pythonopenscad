@@ -41,12 +41,19 @@ class ErrorLogger(ABC):
     def warn(self, message: str):
         pass
     
+    @abstractmethod
+    def info(self, message: str):
+        pass
+    
 class ConsoleErrorLogger(ErrorLogger):
     def error(self, message: str):
+        print(message)
+            
+    def warn(self, message: str):
         if PYOPENGL_VERBOSE:
             print(message)
             
-    def warn(self, message: str):
+    def info(self, message: str):
         if PYOPENGL_VERBOSE:
             print(message)
 
@@ -62,28 +69,31 @@ class Shader:
     is_bound: bool = dtfield(default=False, init=False)
     
     def compile(self, error_logger: ErrorLogger) -> bool:
-        clear_gl_errors()
-        
-        # Create vertex shader
-        self.shader_id = gl.glCreateShader(self.shader_type)
-        if self.shader_id == 0:
-            error_logger.error(f"Shader {self.name}: Failed to create "
-                               f"{shader_type_to_string(self.shader_type)} shader object")
-            return False
+        try:
+            clear_gl_errors()
             
-        gl.glShaderSource(self.shader_id, self.shader_source)
-        gl.glCompileShader(self.shader_id)
-        
-        # Check for vertex shader compilation errors
-        compile_status = gl.glGetShaderiv(self.shader_id, gl.GL_COMPILE_STATUS)
-        if not compile_status:
-            error = gl.glGetShaderInfoLog(self.shader_id)
+            # Create vertex shader
+            self.shader_id = gl.glCreateShader(self.shader_type)
+            if self.shader_id == 0:
+                raise RuntimeError(f"Shader {self.name}: Failed to create "
+                                f"{shader_type_to_string(self.shader_type)} shader object")
+                
+                
+            gl.glShaderSource(self.shader_id, self.shader_source)
+            gl.glCompileShader(self.shader_id)
+            
+            # Check for vertex shader compilation errors
+            compile_status = gl.glGetShaderiv(self.shader_id, gl.GL_COMPILE_STATUS)
+            if not compile_status:
+                error = gl.glGetShaderInfoLog(self.shader_id)
+                raise RuntimeError(f"Viewer: {self.name} shader compilation failed: {error}")
+            return True
+        except:
             self.delete()
-            error_logger.error(f"Viewer: {self.name} shader compilation failed: {error}")
-            return False
-        return True
+            raise
     
     def attach(self, program_id: int):
+        self.program_id = program_id
         gl.glAttachShader(program_id, self.shader_id)
         
     def delete(self):
@@ -101,6 +111,7 @@ class Shader:
 
 @datatree
 class ShaderProgram:
+    name: str
     vertex_shader: Shader
     fragment_shader: Shader
     error_logger: ErrorLogger = dtfield(default_factory=ConsoleErrorLogger)
@@ -108,16 +119,12 @@ class ShaderProgram:
     program_id: int = dtfield(default=0, init=False)
     is_bound: bool = dtfield(default=False, init=False)
 
-    def compile(self):
+    def compile(self) -> int | None:
         clear_gl_errors()
 
         try:
-            if not self.vertex_shader.compile(self.error_logger):
-                return False
-            
-            if not self.fragment_shader.compile(self.error_logger):
-                return False
-
+            self.vertex_shader.compile(self.error_logger)
+            self.fragment_shader.compile(self.error_logger)
 
             # Create and link shader program
             self.program_id = gl.glCreateProgram()
@@ -151,14 +158,12 @@ class ShaderProgram:
                 raise RuntimeError(f"Shader program validation failed: {error}")
                 
             self.error_logger.info(f"Successfully compiled and linked shader program: {self.program_id}")
-            return True
+            return self.program_id
             
         except Exception as e:
             self.error_logger.error(f"Shader program {self.name} compilation failed: {e}")
             self.delete()
-            return False
-        
-        return True
+            return None
     
     def delete(self):
         self.vertex_shader.delete()
@@ -247,6 +252,7 @@ void main() {
 """)
 
 SHADER_PROGRAM = ShaderProgram(
+    name="shader_program",
     vertex_shader=VERTEX_SHADER,
     fragment_shader=FRAGMENT_SHADER,
 )
@@ -297,6 +303,7 @@ void main() {
 """)
 
 BASIC_SHADER_PROGRAM = ShaderProgram(
+    name="basic_shader_program",
     vertex_shader=BASIC_VERTEX_SHADER,
     fragment_shader=BASIC_FRAGMENT_SHADER,
 )

@@ -16,6 +16,7 @@ except ImportError as e:
     print("Try: pip install manifold3d PyOpenGL PyOpenGL-accelerate PyGLM")
     sys.exit(1)
 
+
 @dataclass
 class PrimitiveCreatorBase:
     contexts: list[posc.RenderContext] = field(default_factory=list)
@@ -36,7 +37,6 @@ class PrimitiveCreatorBase:
     
     def get_shell_model(self) -> list[Model]:
         return [Model.from_manifold(mfd, has_alpha_lt1=True) for mfd in self.get_shell_manifolds()]
-    
     
 
 @dataclass
