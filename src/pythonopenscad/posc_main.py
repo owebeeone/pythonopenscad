@@ -8,7 +8,7 @@ import manifold3d as m3d
 # Assume these imports are valid within the project structure
 from datatrees import datatree, Node, dtfield
 import pythonopenscad as posc
-from pythonopenscad.m3dapi import M3dRenderer, RenderContextManifold
+from pythonopenscad.m3dapi import M3dRenderer, RenderContextManifold, manifold_to_stl
 from pythonopenscad.viewer import Viewer, Model
 from pythonopenscad.modifier import PoscRendererBase
 
@@ -28,7 +28,7 @@ class PoscModel:
         if isinstance(self.item, PoscRendererBase):
             self._posc_obj = self.item
 
-    def _get_posc_obj(self) -> posc.PoscBase:
+    def get_posc_obj(self) -> posc.PoscBase:
         """Retrieves or computes the PoscBase object."""
         if self._posc_obj is None:
             self._posc_obj = self.item()
@@ -37,7 +37,7 @@ class PoscModel:
     def render(self) -> RenderContextManifold:
         """Renders the PoscBase object using M3dRenderer if not already cached."""
         if self._render_context is None:
-            posc_obj = self._get_posc_obj()
+            posc_obj = self.get_posc_obj()
             try:
                 self._render_context = posc_obj.renderObj(M3dRenderer())
             except Exception as e:
@@ -129,9 +129,9 @@ class PoscMainRunner:
         add_bool_arg(parser, "png", "Save a PNG image using the viewer settings (requires viewer modification for non-interactive use).", default=False)
         add_bool_arg(parser, "scad", "Export to SCAD file (Not implemented).", default=False)
         add_bool_arg(parser, "wireframe", "Start viewer in wireframe mode.", default=False)
-        add_bool_arg(parser, "backface-culling", "Disable backface culling in the viewer.", default=False)
+        add_bool_arg(parser, "backface-culling", "Disable backface culling in the viewer.", default=True)
         add_bool_arg(parser, "bounding-box-mode", "Initial bounding box mode (0=off, 1=wireframe, 2=solid).", default=False)
-        add_bool_arg(parser, "zbuffer-occlusion", "Disable Z-buffer occlusion for wireframes.", default=False)
+        add_bool_arg(parser, "zbuffer-occlusion", "Disable Z-buffer occlusion for wireframes.", default=True)
         add_bool_arg(parser, "coalesce", "Model coalescing (may impact transparency rendering).", default=True)
 
 
@@ -184,7 +184,7 @@ class PoscMainRunner:
 
         actions_requested = self.args.view or self.args.stl or self.args.png or self.args.scad
         if not actions_requested:
-            print("No action specified. Use --view, --stl, or --png.", file=sys.stderr)
+            print("No action specified. Use --view, --stl, --png etc.", file=sys.stderr)
             return
 
         # --- SCAD Action ---
@@ -195,29 +195,19 @@ class PoscMainRunner:
 
         # --- STL Action ---
         if self.args.stl:
-            if m3d is None:
-                print("Error: manifold3d library is required for STL export. Please install it.", file=sys.stderr)
-            else:
-                exported_count = 0
-                for i, model in enumerate(self.posc_models):
-                    solid_manifold = model.get_solid_manifold()
-                    if solid_manifold:
-                        suffix = f"_{i}" if len(self.posc_models) > 1 else ""
-                        filename = f"{self.args.output_base}{suffix}.stl"
-                        try:
-                            # Export using manifold3d's mesh export
-                            mesh = solid_manifold.to_mesh()
-                            m3d.export_mesh(filename, mesh)
-                            print(f"Exported STL: {filename}")
-                            exported_count += 1
-                        except Exception as e:
-                            print(f"Error exporting {filename}: {e}", file=sys.stderr)
-                    elif not self.args.solids:
-                         # If not filtering solids, warn if a model didn't produce solid geometry
-                         print(f"Warning: Model '{model.name}' produced no solid geometry for STL export.", file=sys.stderr)
+            exported_count = 0
+            for i, model in enumerate(self.posc_models):
+                solid_manifold = model.get_solid_manifold()
+                # TODO: Handle shell manifolds.
+                if solid_manifold:
+                    suffix = f"_{i}" if len(self.posc_models) > 1 else ""
+                    filename = f"{self.args.output_base}{suffix}.stl"
+                    manifold_to_stl(solid_manifold, filename=filename, update_normals=False)
+                    print(f"Exported STL: {filename}")
+                    exported_count += 1
 
-                if exported_count == 0:
-                     print("Warning: No solid geometry found to export to STL.", file=sys.stderr)
+            if exported_count == 0:
+                    print("Warning: No solid geometry found to export to STL.", file=sys.stderr)
 
 
         # --- Viewer / PNG Actions ---
@@ -252,7 +242,7 @@ class PoscMainRunner:
                 
                 if self.args.png:
                     
-                    viewer.save_png(f"{self.args.output_base}.png")
+                    viewer.offscreen_render(f"{self.args.output_base}.png")
                     
                 if self.args.view:
                     print(Viewer.VIEWER_HELP_TEXT)
@@ -280,28 +270,28 @@ def posc_main(items: List[Union[Callable[[], posc.PoscBase], posc.PoscBase]]):
 
 # Example usage (would typically be in a user's script):
 if __name__ == "__main__":
-    # This block allows testing the script structure directly,
-    # but usually posc_main would be called from another file.
 
-    # Define some example objects/lambdas
-    def create_sphere():
-        return posc.Sphere(r=5)
-
-    my_cube = posc.Cube(10)
-
-    # Simulate command line arguments for testing
-    # In real use, these come from the actual command line
-    sys.argv = [
-        __file__,       # Script name
-        "--view",       # Action: View the models
-        # "--stl",      # Action: Export STL
-        # "--png",      # Action: Save PNG (will show TODO)
-        "--no-wireframe",  # Viewer option
-        #"--bg-color", "0.1,0.1,0.2,1.0", # Viewer option
-        # "--output-base", "my_test_output", # Output name override
-        # "--solids"    # Filter option
-    ]
+    if len(sys.argv) <= 1:
+        # Simulate command line arguments for testing
+        # In real use, these come from the actual command line
+        sys.argv = [
+            sys.argv[0],    # Script name
+            "--view",       # Action: View the models
+            "--scad",       # Action: Export SCAD
+            "--stl",        # Action: Export STL
+            "--png",        # Action: Save PNG (will show TODO)
+            "--no-wireframe",  # Viewer option
+            "--bg-color", "1,1,1,1.0", # Viewer option
+            # "--output-base", "my_test_output", # Output name override
+        ]
 
     print(f"Running example with simulated args: {' '.join(sys.argv[1:])}")
+    
+    # Define some example objects/lambdas
+    def create_sphere():
+        return posc.Sphere(r=5).add_modifier(posc.DEBUG)
+    
+    my_cube = posc.Cube(10)
+
     posc_main([my_cube, create_sphere])
     print("Example finished.")

@@ -3706,6 +3706,298 @@ class Viewer:
                 print(f"Viewer: Error getting window dimensions: {e}")
             return (self.width, self.height) # Fallback to stored dimensions
 
+    # Proposed helper function to be added inside the Viewer class
+
+    def _save_numpy_buffer_to_png(self, buffer: np.ndarray, width: int, height: int, filename: str):
+        """Saves a numpy pixel buffer (RGB, uint8) to a PNG file."""
+        try:
+            # Image needs flipping vertically (OpenGL reads bottom-left)
+            image = np.flipud(buffer.reshape((height, width, 3)))
+
+            # Save the image using PIL
+            from PIL import Image
+            img = Image.fromarray(image)
+            img.save(filename, 'PNG')
+
+            if PYOPENGL_VERBOSE:
+                print(f"Viewer: Image saved to {filename}")
+
+        except ImportError:
+            # Added file=sys.stderr for error messages
+            print("Error: PIL (Pillow) library is required to save images. Please install it (`pip install Pillow`).", file=sys.stderr)
+            raise # Re-raise to indicate failure
+        except Exception as e:
+            if PYOPENGL_VERBOSE:
+                print(f"Viewer: Failed to save image buffer: {str(e)}", file=sys.stderr)
+            raise # Re-raise to indicate failure
+
+    def offscreen_render(self, filename: str):
+        """Renders the model to an offscreen buffer and saves the screen as a PNG image."""
+        if not HAS_OPENGL:
+            raise RuntimeError("OpenGL is not available.")
+
+        if self.window_id is None or not Viewer._initialized:
+             raise RuntimeError("Viewer window is not initialized. Offscreen rendering requires an active OpenGL context.")
+
+        # Ensure the viewer's context is current
+        original_window = 0
+        try:
+            original_window = glut.glutGetWindow()
+            if original_window != self.window_id:
+                glut.glutSetWindow(self.window_id)
+        except Exception as e:
+            raise RuntimeError(f"Failed to set OpenGL context for offscreen rendering: {e}")
+
+        fbo = None
+        color_rbo = None
+        depth_rbo = None
+        original_viewport = None # Initialize to avoid reference before assignment warning
+
+        try:
+            # --- FBO Setup ---
+            # Check for errors before starting
+            gl.glGetError()
+
+            fbo = gl.glGenFramebuffers(1)
+            if gl.glGetError() != gl.GL_NO_ERROR or not fbo: raise RuntimeError("Failed to generate Framebuffer Object (FBO).")
+            gl.glBindFramebuffer(gl.GL_FRAMEBUFFER, fbo)
+            if gl.glGetError() != gl.GL_NO_ERROR: raise RuntimeError("Failed to bind FBO.")
+
+            # Color Renderbuffer
+            color_rbo = gl.glGenRenderbuffers(1)
+            if gl.glGetError() != gl.GL_NO_ERROR or not color_rbo: raise RuntimeError("Failed to generate color Renderbuffer Object (RBO).")
+            gl.glBindRenderbuffer(gl.GL_RENDERBUFFER, color_rbo)
+            if gl.glGetError() != gl.GL_NO_ERROR: raise RuntimeError("Failed to bind color RBO.")
+            # Use GL_RGB8 for color, GL_DEPTH_COMPONENT24 for depth (common choices)
+            gl.glRenderbufferStorage(gl.GL_RENDERBUFFER, gl.GL_RGB8, self.width, self.height)
+            if gl.glGetError() != gl.GL_NO_ERROR: raise RuntimeError("Failed to allocate color RBO storage.")
+            gl.glFramebufferRenderbuffer(gl.GL_FRAMEBUFFER, gl.GL_COLOR_ATTACHMENT0, gl.GL_RENDERBUFFER, color_rbo)
+            if gl.glGetError() != gl.GL_NO_ERROR: raise RuntimeError("Failed to attach color RBO to FBO.")
+
+            # Depth Renderbuffer
+            depth_rbo = gl.glGenRenderbuffers(1)
+            if gl.glGetError() != gl.GL_NO_ERROR or not depth_rbo: raise RuntimeError("Failed to generate depth RBO.")
+            gl.glBindRenderbuffer(gl.GL_RENDERBUFFER, depth_rbo)
+            if gl.glGetError() != gl.GL_NO_ERROR: raise RuntimeError("Failed to bind depth RBO.")
+            gl.glRenderbufferStorage(gl.GL_RENDERBUFFER, gl.GL_DEPTH_COMPONENT24, self.width, self.height)
+            if gl.glGetError() != gl.GL_NO_ERROR: raise RuntimeError("Failed to allocate depth RBO storage.")
+            gl.glFramebufferRenderbuffer(gl.GL_FRAMEBUFFER, gl.GL_DEPTH_ATTACHMENT, gl.GL_RENDERBUFFER, depth_rbo)
+            if gl.glGetError() != gl.GL_NO_ERROR: raise RuntimeError("Failed to attach depth RBO to FBO.")
+
+            # Unbind the RBO to avoid accidental modification
+            gl.glBindRenderbuffer(gl.GL_RENDERBUFFER, 0)
+
+            # Check FBO status
+            status = gl.glCheckFramebufferStatus(gl.GL_FRAMEBUFFER)
+            if status != gl.GL_FRAMEBUFFER_COMPLETE:
+                # Map common status codes to strings for better error messages
+                status_map = {
+                    gl.GL_FRAMEBUFFER_UNDEFINED: "GL_FRAMEBUFFER_UNDEFINED",
+                    gl.GL_FRAMEBUFFER_INCOMPLETE_ATTACHMENT: "GL_FRAMEBUFFER_INCOMPLETE_ATTACHMENT",
+                    gl.GL_FRAMEBUFFER_INCOMPLETE_MISSING_ATTACHMENT: "GL_FRAMEBUFFER_INCOMPLETE_MISSING_ATTACHMENT",
+                    gl.GL_FRAMEBUFFER_INCOMPLETE_DRAW_BUFFER: "GL_FRAMEBUFFER_INCOMPLETE_DRAW_BUFFER",
+                    gl.GL_FRAMEBUFFER_INCOMPLETE_READ_BUFFER: "GL_FRAMEBUFFER_INCOMPLETE_READ_BUFFER",
+                    gl.GL_FRAMEBUFFER_UNSUPPORTED: "GL_FRAMEBUFFER_UNSUPPORTED",
+                    gl.GL_FRAMEBUFFER_INCOMPLETE_MULTISAMPLE: "GL_FRAMEBUFFER_INCOMPLETE_MULTISAMPLE",
+                    # GL_FRAMEBUFFER_INCOMPLETE_LAYER_TARGETS might not be defined in older PyOpenGL
+                    # 36065: "GL_FRAMEBUFFER_INCOMPLETE_LAYER_TARGETS",
+                }
+                raise RuntimeError(f"Framebuffer is not complete: Status {status_map.get(status, status)}")
+
+            # --- Rendering to FBO ---
+            original_viewport = gl.glGetIntegerv(gl.GL_VIEWPORT)
+            gl.glViewport(0, 0, self.width, self.height)
+            if gl.glGetError() != gl.GL_NO_ERROR: print("Warning: Error setting viewport for FBO.", file=sys.stderr)
+
+            # Clear the FBO buffers
+            gl.glClearColor(*self.background_color)
+            gl.glClear(gl.GL_COLOR_BUFFER_BIT | gl.GL_DEPTH_BUFFER_BIT)
+            if gl.glGetError() != gl.GL_NO_ERROR: print("Warning: Error clearing FBO buffers.", file=sys.stderr)
+
+
+            # --- Replicate core rendering logic from _display_callback ---
+            # NOTE: This duplicates logic. A refactor of _display_callback is recommended.
+            try:
+                self._setup_view() # Set up projection and view matrices
+
+                # Determine models to render based on coalesce setting
+                if not self.use_coalesced_models:
+                    opaque_models = [model for model in self.original_models if not model.has_alpha_lt1]
+                    transparent_models = [model for model in self.original_models if model.has_alpha_lt1]
+                    # Create temporary coalesced models just for sorting if needed (less efficient)
+                    if opaque_models or transparent_models:
+                        temp_opaque, temp_transparent = Model.create_coalesced_models(opaque_models + transparent_models)
+                        # This approach might be complex, sticking to the coalesced/original logic for now
+                        # Reverting to simpler logic based on self.models which ARE already coalesced or not
+                        if not self.use_coalesced_models:
+                             opaque_models = [model for model in self.models if not model.has_alpha_lt1]
+                             transparent_models = [model for model in self.models if model.has_alpha_lt1]
+                             # Need to sort transparent models if not coalesced
+                             # This requires Z positions which are not readily available without recalculation
+                             # Sticking to the assumption that self.models is correct for now
+                        else:
+                             opaque_models = [self.models[0]] if len(self.models) > 0 else []
+                             transparent_models = [self.models[1]] if len(self.models) > 1 else []
+
+                else: # Already using coalesced models
+                    opaque_models = [self.models[0]] if len(self.models) > 0 else []
+                    transparent_models = [self.models[1]] if len(self.models) > 1 else []
+
+
+                # Shader usage check
+                using_shader = False
+                active_program = 0
+                if self.use_shaders and self.gl_ctx.has_shader and self.shader_program:
+                     if isinstance(self.shader_program, int) and self.shader_program > 0:
+                         # Further check if the program is valid before using
+                         if self._check_shader_program(self.shader_program):
+                              using_shader = True
+                              active_program = self.shader_program
+
+                # Set polygon mode, culling, color material based on viewer state
+                if self.wireframe_mode:
+                     gl.glPolygonMode(gl.GL_FRONT_AND_BACK, gl.GL_LINE)
+                else:
+                     gl.glPolygonMode(gl.GL_FRONT_AND_BACK, gl.GL_FILL)
+
+                if self.backface_culling:
+                     gl.glEnable(gl.GL_CULL_FACE)
+                     gl.glCullFace(gl.GL_BACK)
+                else:
+                     gl.glDisable(gl.GL_CULL_FACE)
+
+                try: # Ensure color material is enabled for fixed-function or basic shaders
+                     gl.glEnable(gl.GL_COLOR_MATERIAL)
+                     gl.glColorMaterial(gl.GL_FRONT_AND_BACK, gl.GL_AMBIENT_AND_DIFFUSE)
+                except Exception: pass # Ignore if not available
+
+                # Render opaque models
+                if using_shader:
+                    try:
+                        gl.glUseProgram(active_program)
+                        # Uniforms (lightPos, viewPos) should be set if using the main shader
+                        if active_program == self.shader_program: # Check if it's the main shader
+                            light_pos_loc = gl.glGetUniformLocation(active_program, "lightPos")
+                            view_pos_loc = gl.glGetUniformLocation(active_program, "viewPos")
+                            if light_pos_loc != -1:
+                                gl.glUniform3f(light_pos_loc, self.camera_pos.x + 5.0, self.camera_pos.y + 5.0, self.camera_pos.z + 10.0)
+                            if view_pos_loc != -1:
+                                gl.glUniform3f(view_pos_loc, self.camera_pos.x, self.camera_pos.y, self.camera_pos.z)
+                    except Exception as e:
+                        if PYOPENGL_VERBOSE: print(f"Viewer (offscreen): Error setting shader uniforms: {e}", file=sys.stderr)
+                        gl.glUseProgram(0) # Fallback if uniforms fail
+                        active_program = 0
+
+                for model in opaque_models:
+                    # Pass the active shader program to draw, if any
+                    model.draw() # Model.draw now handles using the current program
+
+                # Render transparent models
+                if transparent_models:
+                     try:
+                         gl.glDepthMask(gl.GL_FALSE) # Don't write to depth buffer
+                         # Blending is enabled within model.draw if needed
+                         for model in transparent_models:
+                             model.draw() # Pass active shader
+                         gl.glDepthMask(gl.GL_TRUE) # Restore depth writes
+                     except Exception as e:
+                         if PYOPENGL_VERBOSE: print(f"Viewer (offscreen): Error during transparent rendering: {e}", file=sys.stderr)
+                         gl.glDepthMask(gl.GL_TRUE) # Ensure depth mask is restored on error
+                         # Fallback rendering without depth mask modification
+                         for model in transparent_models: model.draw()
+
+
+                # Unbind shader if it was used
+                if active_program != 0:
+                     try: gl.glUseProgram(0)
+                     except Exception: pass
+
+                # Draw bounding box if enabled (uses immediate mode)
+                self._draw_bounding_box()
+
+                # Draw axes (uses immediate mode)
+                self.axes_renderer.draw(self)
+
+            except Exception as render_err:
+                 # Handle rendering errors specifically
+                 print(f"Viewer (offscreen): Error during scene rendering: {render_err}", file=sys.stderr)
+                 # Continue to cleanup if possible, but report the error
+                 # We might still have partial results in the buffer
+
+
+            # --- Read Pixels ---
+            # Ensure reading from the correct FBO attachment
+            gl.glReadBuffer(gl.GL_COLOR_ATTACHMENT0)
+            if gl.glGetError() != gl.GL_NO_ERROR: print("Warning: Error setting read buffer to FBO attachment.", file=sys.stderr)
+
+            buffer = gl.glReadPixels(0, 0, self.width, self.height, gl.GL_RGB, gl.GL_UNSIGNED_BYTE)
+            read_error = gl.glGetError()
+            if read_error != gl.GL_NO_ERROR:
+                raise RuntimeError(f"Failed to read pixels from FBO: OpenGL Error {read_error}")
+            if buffer is None:
+                 raise RuntimeError("glReadPixels returned None.")
+
+            pixel_data = np.frombuffer(buffer, dtype=np.uint8)
+            # Check if the buffer size matches expected size
+            expected_size = self.width * self.height * 3
+            if pixel_data.size != expected_size:
+                 print(f"Warning: Read pixel buffer size ({pixel_data.size}) does not match expected size ({expected_size}). Image may be incorrect.", file=sys.stderr)
+                 # Attempt to reshape anyway, might fail if size is wrong
+                 # pixel_data = pixel_data[:expected_size] # Truncate/Pad? Risky.
+
+            # --- Save Image ---
+            # Check size again before saving
+            if pixel_data.size == expected_size:
+                 self._save_numpy_buffer_to_png(pixel_data, self.width, self.height, filename)
+            else:
+                 raise RuntimeError(f"Cannot save image due to incorrect pixel buffer size. Expected {expected_size}, got {pixel_data.size}.")
+
+
+        except Exception as e:
+            print(f"Error during offscreen rendering: {e}", file=sys.stderr)
+            # Re-raise the exception after attempting cleanup
+            raise
+        finally:
+            # --- Cleanup ---
+            # Unbind FBO and restore default framebuffer (0)
+            gl.glBindFramebuffer(gl.GL_FRAMEBUFFER, 0)
+
+            # Delete FBO and renderbuffers if they were created
+            if fbo is not None:
+                # Check if fbo is still a valid framebuffer before deleting
+                # try:
+                #      if gl.glIsFramebuffer(fbo):
+                #           gl.glDeleteFramebuffers(1, [fbo])
+                # except Exception: pass # Ignore cleanup errors
+                 gl.glDeleteFramebuffers(1, [fbo]) # Simpler deletion
+            if color_rbo is not None:
+                # try:
+                #      if gl.glIsRenderbuffer(color_rbo):
+                #           gl.glDeleteRenderbuffers(1, [color_rbo])
+                # except Exception: pass
+                 gl.glDeleteRenderbuffers(1, [color_rbo])
+            if depth_rbo is not None:
+                # try:
+                #      if gl.glIsRenderbuffer(depth_rbo):
+                #           gl.glDeleteRenderbuffers(1, [depth_rbo])
+                # except Exception: pass
+                 gl.glDeleteRenderbuffers(1, [depth_rbo])
+
+
+            # Restore viewport
+            if original_viewport is not None:
+                 gl.glViewport(*original_viewport)
+
+            # Restore original window context if necessary
+            if original_window != 0 and original_window != self.window_id:
+                try:
+                    # Only set if the original window ID is still valid (might have been destroyed)
+                    # This check is difficult, simply trying might be best
+                    glut.glutSetWindow(original_window)
+                except Exception:
+                     # This is expected if the original window (e.g. temp init window) was destroyed
+                     pass
+
 
 # Helper function to create a viewer with models
 def create_viewer_with_models(models, width=800, height=600, title="3D Viewer"):
