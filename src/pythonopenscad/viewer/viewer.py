@@ -9,12 +9,14 @@ import sys
 import signal
 from datetime import datetime
 import manifold3d as m3d
+from pythonopenscad.viewer.basic_models import create_colored_test_cube, create_triangle_model, create_cube_model
 from pythonopenscad.viewer.bbox import BoundingBox
 from pythonopenscad.viewer.glctxt import GLContext, PYOPENGL_VERBOSE
 from pythonopenscad.viewer.model import Model
 from pythonopenscad.viewer.axes import AxesRenderer
 
 import anchorscad_lib.linear as linear
+from pythonopenscad.viewer.shader import BASIC_SHADER_PROGRAM, SHADER_PROGRAM
 
 # Try importing OpenGL libraries, but make them optional
 try:
@@ -55,103 +57,6 @@ class Viewer:
     axes_renderer_node: Node[AxesRenderer] = Node(AxesRenderer, prefix="axes_")
     axes_renderer: AxesRenderer = dtfield(self_default=lambda self: self.axes_renderer_node())
 
-    # Shader source code - using GLSL 1.20 for broader compatibility
-    VERTEX_SHADER = """
-    #version 120
-    
-    attribute vec3 aPos;
-    attribute vec4 aColor;
-    attribute vec3 aNormal;
-    
-    uniform mat4 model;
-    uniform mat4 view;
-    uniform mat4 projection;
-    
-    varying vec3 FragPos;
-    varying vec4 VertexColor;
-    varying vec3 Normal;
-    
-    void main() {
-        FragPos = vec3(model * vec4(aPos, 1.0));
-        // Simple normal transformation - avoiding inverse which fails on some drivers
-        Normal = normalize(mat3(model) * aNormal);
-        VertexColor = aColor;
-        gl_Position = projection * view * model * vec4(aPos, 1.0);
-    }
-    """
-
-    FRAGMENT_SHADER = """
-    #version 120
-    
-    varying vec3 FragPos;
-    varying vec4 VertexColor;
-    varying vec3 Normal;
-    
-    uniform vec3 lightPos;
-    uniform vec3 viewPos;
-    
-    void main() {
-        // Ambient - increase to make colors more visible
-        float ambientStrength = 0.5;  // Increased from 0.3
-        vec3 ambient = ambientStrength * VertexColor.rgb;
-        
-        // Diffuse - increase strength
-        vec3 norm = normalize(Normal);
-        vec3 lightDir = normalize(lightPos - FragPos);
-        float diff = max(dot(norm, lightDir), 0.0);
-        vec3 diffuse = diff * VertexColor.rgb * 0.8;  // More diffuse influence
-        
-        // Specular - keep the same
-        float specularStrength = 0.5;
-        vec3 viewDir = normalize(viewPos - FragPos);
-        vec3 reflectDir = reflect(-lightDir, norm);
-        float spec = pow(max(dot(viewDir, reflectDir), 0.0), 32.0);
-        vec3 specular = specularStrength * spec * vec3(1.0, 1.0, 1.0);
-        
-        // Result - ensure colors are visible regardless of lighting
-        vec3 result = ambient + diffuse + specular;
-        
-        // Add a minimum brightness to ensure visibility
-        result = max(result, VertexColor.rgb * 0.4);
-        
-        // Preserve alpha from vertex color for transparent objects
-        gl_FragColor = vec4(result, VertexColor.a);
-    }
-    """
-
-    # Basic fallback shader for maximum compatibility
-    BASIC_VERTEX_SHADER = """
-    #version 110
-    
-    attribute vec3 position;
-    attribute vec4 color;
-    
-    varying vec4 fragColor;
-    
-    uniform mat4 modelViewProj;
-    
-    void main() {
-        // Pass the color directly to the fragment shader
-        fragColor = color;
-        
-        // Transform the vertex position
-        gl_Position = modelViewProj * vec4(position, 1.0);
-        
-        // Set point size for better visibility
-        gl_PointSize = 5.0;
-    }
-    """
-
-    BASIC_FRAGMENT_SHADER = """
-    #version 110
-    
-    varying vec4 fragColor;
-    
-    void main() {
-        // Use the interpolated color from the vertex shader
-        gl_FragColor = fragColor;
-    }
-    """
     
     VIEWER_HELP_TEXT = """
     Mouse Controls:
@@ -660,110 +565,8 @@ class Viewer:
         """
         if not self.gl_ctx.has_shader:
             return None
-            
-        try:
-            # Clear any previous shader-related errors
-            gl.glGetError()
-            
-            # Create vertex shader
-            vertex_shader = gl.glCreateShader(gl.GL_VERTEX_SHADER)
-            if vertex_shader == 0:
-                if PYOPENGL_VERBOSE:
-                    print("Viewer: Failed to create vertex shader object")
-                return None
-                
-            gl.glShaderSource(vertex_shader, self.VERTEX_SHADER)
-            gl.glCompileShader(vertex_shader)
-            
-            # Check for vertex shader compilation errors
-            compile_status = gl.glGetShaderiv(vertex_shader, gl.GL_COMPILE_STATUS)
-            if not compile_status:
-                error = gl.glGetShaderInfoLog(vertex_shader)
-                gl.glDeleteShader(vertex_shader)
-                if PYOPENGL_VERBOSE:
-                    print(f"Viewer: Vertex shader compilation failed: {error}")
-                return None
-            
-            # Create fragment shader
-            fragment_shader = gl.glCreateShader(gl.GL_FRAGMENT_SHADER)
-            if fragment_shader == 0:
-                gl.glDeleteShader(vertex_shader)
-                if PYOPENGL_VERBOSE:
-                    print("Viewer: Failed to create fragment shader object")
-                return None
-                
-            gl.glShaderSource(fragment_shader, self.FRAGMENT_SHADER)
-            gl.glCompileShader(fragment_shader)
-            
-            # Check for fragment shader compilation errors
-            compile_status = gl.glGetShaderiv(fragment_shader, gl.GL_COMPILE_STATUS)
-            if not compile_status:
-                error = gl.glGetShaderInfoLog(fragment_shader)
-                gl.glDeleteShader(vertex_shader)
-                gl.glDeleteShader(fragment_shader)
-                if PYOPENGL_VERBOSE:
-                    print(f"Viewer: Fragment shader compilation failed: {error}")
-                return None
-            
-            # Create and link shader program
-            program = gl.glCreateProgram()
-            if program == 0:
-                gl.glDeleteShader(vertex_shader)
-                gl.glDeleteShader(fragment_shader)
-                if PYOPENGL_VERBOSE:
-                    print("Viewer: Failed to create shader program object")
-                return None
-                
-            gl.glAttachShader(program, vertex_shader)
-            gl.glAttachShader(program, fragment_shader)
-            
-            # Bind attribute locations for GLSL 1.20 (before linking)
-            gl.glBindAttribLocation(program, 0, "aPos")
-            gl.glBindAttribLocation(program, 1, "aColor")
-            gl.glBindAttribLocation(program, 2, "aNormal")
-            
-            gl.glLinkProgram(program)
-            
-            # Check for linking errors
-            link_status = gl.glGetProgramiv(program, gl.GL_LINK_STATUS)
-            if not link_status:
-                error = gl.glGetProgramInfoLog(program)
-                gl.glDeleteShader(vertex_shader)
-                gl.glDeleteShader(fragment_shader)
-                gl.glDeleteProgram(program)
-                if PYOPENGL_VERBOSE:
-                    print(f"Viewer: Shader program linking failed: {error}")
-                return None
-            
-            # Delete shaders (they're not needed after linking)
-            gl.glDeleteShader(vertex_shader)
-            gl.glDeleteShader(fragment_shader)
-            
-            # Validate the program
-            gl.glValidateProgram(program)
-            validate_status = gl.glGetProgramiv(program, gl.GL_VALIDATE_STATUS)
-            if not validate_status:
-                error = gl.glGetProgramInfoLog(program)
-                if PYOPENGL_VERBOSE:
-                    print(f"Viewer: Shader program validation failed: {error}")
-                gl.glDeleteProgram(program)
-                return None
-                
-            if PYOPENGL_VERBOSE:
-                print(f"Viewer: Successfully compiled and linked shader program: {program}")
-            return program
-            
-        except Exception as e:
-            # Handle any unexpected errors
-            if PYOPENGL_VERBOSE:
-                print(f"Viewer: Error during shader compilation: {str(e)}")
-            # Make sure we clean up any resources
-            if 'program' in locals() and program:
-                try:
-                    gl.glDeleteProgram(program)
-                except Exception:
-                    pass
-            return None
+       
+        return SHADER_PROGRAM.compile()
     
     def _compile_basic_shader(self):
         """Compile a very minimal shader program for maximum compatibility.
@@ -771,189 +574,12 @@ class Viewer:
         Returns:
             int: Shader program ID if successful, None otherwise.
         """
-        if not self.gl_ctx.has_shader:
-            return None
-            
-        try:
-            # Clear any previous shader-related errors
-            gl.glGetError()
-            
-            # Create vertex shader
-            vertex_shader = gl.glCreateShader(gl.GL_VERTEX_SHADER)
-            if vertex_shader == 0:
-                if PYOPENGL_VERBOSE:
-                    print("Viewer: Failed to create basic vertex shader object")
-                return None
-                
-            gl.glShaderSource(vertex_shader, self.BASIC_VERTEX_SHADER)
-            gl.glCompileShader(vertex_shader)
-            
-            # Check for vertex shader compilation errors
-            compile_status = gl.glGetShaderiv(vertex_shader, gl.GL_COMPILE_STATUS)
-            if not compile_status:
-                error = gl.glGetShaderInfoLog(vertex_shader)
-                gl.glDeleteShader(vertex_shader)
-                if PYOPENGL_VERBOSE:
-                    print(f"Viewer: Basic vertex shader compilation failed: {error}")
-                return None
-            
-            # Create fragment shader
-            fragment_shader = gl.glCreateShader(gl.GL_FRAGMENT_SHADER)
-            if fragment_shader == 0:
-                gl.glDeleteShader(vertex_shader)
-                if PYOPENGL_VERBOSE:
-                    print("Viewer: Failed to create basic fragment shader object")
-                return None
-                
-            gl.glShaderSource(fragment_shader, self.BASIC_FRAGMENT_SHADER)
-            gl.glCompileShader(fragment_shader)
-            
-            # Check for fragment shader compilation errors
-            compile_status = gl.glGetShaderiv(fragment_shader, gl.GL_COMPILE_STATUS)
-            if not compile_status:
-                error = gl.glGetShaderInfoLog(fragment_shader)
-                gl.glDeleteShader(vertex_shader)
-                gl.glDeleteShader(fragment_shader)
-                if PYOPENGL_VERBOSE:
-                    print(f"Viewer: Basic fragment shader compilation failed: {error}")
-                return None
-            
-            # Create and link shader program
-            program = gl.glCreateProgram()
-            if program == 0:
-                gl.glDeleteShader(vertex_shader)
-                gl.glDeleteShader(fragment_shader)
-                if PYOPENGL_VERBOSE:
-                    print("Viewer: Failed to create basic shader program object")
-                return None
-                
-            gl.glAttachShader(program, vertex_shader)
-            gl.glAttachShader(program, fragment_shader)
-            
-            # Bind attribute locations for position and color
-            gl.glBindAttribLocation(program, 0, "position")
-            gl.glBindAttribLocation(program, 1, "color")
-            
-            gl.glLinkProgram(program)
-            
-            # Check for linking errors
-            link_status = gl.glGetProgramiv(program, gl.GL_LINK_STATUS)
-            if not link_status:
-                error = gl.glGetProgramInfoLog(program)
-                gl.glDeleteShader(vertex_shader)
-                gl.glDeleteShader(fragment_shader)
-                gl.glDeleteProgram(program)
-                if PYOPENGL_VERBOSE:
-                    print(f"Viewer: Basic shader program linking failed: {error}")
-                return None
-            
-            # Delete shaders (they're not needed after linking)
-            gl.glDeleteShader(vertex_shader)
-            gl.glDeleteShader(fragment_shader)
-            
-            # Validate the program
-            gl.glValidateProgram(program)
-            validate_status = gl.glGetProgramiv(program, gl.GL_VALIDATE_STATUS)
-            if not validate_status:
-                error = gl.glGetProgramInfoLog(program)
-                if PYOPENGL_VERBOSE:
-                    print(f"Viewer: Basic shader program validation failed: {error}")
-                gl.glDeleteProgram(program)
-                return None
-            
-            if PYOPENGL_VERBOSE:
-                print(f"Viewer: Successfully compiled and linked basic shader program: {program}")
-            return program
-            
-        except Exception as e:
-            # Handle any unexpected errors
-            if PYOPENGL_VERBOSE:
-                print(f"Viewer: Error during basic shader compilation: {str(e)}")
-            # Clean up any resources
-            if 'program' in locals() and program:
-                try:
-                    gl.glDeleteProgram(program)
-                except Exception:
-                    pass
-            return None
+        return BASIC_SHADER_PROGRAM.compile()
     
     def run(self):
         """Start the main rendering loop."""
         glut.glutMainLoop()
     
-    @staticmethod
-    def create_triangle_model(color: Tuple[float, float, float, float] = (1.0, 0.0, 0.0, 1.0)) -> Model:
-        """Create a simple triangle model for testing."""
-        # Create a simple colored triangle with different colors for each vertex
-        vertex_data = np.array([
-            # position (3)     # color (4)           # normal (3)
-            -1.5, -1.5, 0.0,   1.0, 0.0, 0.0, 1.0,   0.0, 0.0, 1.0,  # Red
-            1.5, -1.5, 0.0,    0.0, 1.0, 0.0, 1.0,   0.0, 0.0, 1.0,  # Green
-            0.0, 1.5, 0.0,     0.0, 0.0, 1.0, 1.0,   0.0, 0.0, 1.0   # Blue
-        ], dtype=np.float32)
-        
-        return Model(vertex_data, num_points=3)
-    
-    @staticmethod
-    def create_cube_model(size: float = 1.0, color: Tuple[float, float, float, float] = (0.0, 1.0, 0.0, 1.0)) -> Model:
-        """Create a simple cube model for testing."""
-        # Create a colored cube
-        s = size / 2
-        vertex_data = []
-        
-        # Define the 8 vertices of the cube
-        vertices = [
-            [-s, -s, -s], [s, -s, -s], [s, s, -s], [-s, s, -s],
-            [-s, -s, s], [s, -s, s], [s, s, s], [-s, s, s]
-        ]
-        
-        # Define the 6 face normals
-        normals = [
-            [0, 0, -1], [0, 0, 1], [0, -1, 0],
-            [0, 1, 0], [-1, 0, 0], [1, 0, 0]
-        ]
-        
-        # Define faces with different colors
-        face_colors = [
-            [1.0, 0.0, 0.0, 1.0],  # Red - back
-            [0.0, 1.0, 0.0, 1.0],  # Green - front
-            [0.0, 0.0, 1.0, 1.0],  # Blue - bottom
-            [1.0, 1.0, 0.0, 1.0],  # Yellow - top
-            [0.0, 1.0, 1.0, 1.0],  # Cyan - left
-            [1.0, 0.0, 1.0, 1.0]   # Magenta - right
-        ]
-        
-        # Define the faces using indices
-        faces = [
-            [0, 1, 2, 3],  # back
-            [4, 7, 6, 5],  # front
-            [0, 4, 5, 1],  # bottom
-            [3, 2, 6, 7],  # top
-            [0, 3, 7, 4],  # left
-            [1, 5, 6, 2]   # right
-        ]
-        
-        # Create vertex data for each face
-        for face_idx, face in enumerate(faces):
-            normal = normals[face_idx]
-            face_color = face_colors[face_idx]
-            
-            # Create two triangles per face
-            tri1 = [face[0], face[1], face[2]]
-            tri2 = [face[0], face[2], face[3]]
-            
-            for tri in [tri1, tri2]:
-                for vertex_idx in tri:
-                    # position
-                    vertex_data.extend(vertices[vertex_idx])
-                    # color
-                    vertex_data.extend(face_color)
-                    # normal
-                    vertex_data.extend(normal)
-        
-        
-        return Model(np.array(vertex_data, dtype=np.float32), num_points=36)
-
     @staticmethod
     def terminate():
         """Safely terminate all viewers and clean up GLUT resources.
@@ -2130,68 +1756,6 @@ class Viewer:
         if was_culling_enabled:
             gl.glEnable(gl.GL_CULL_FACE)
 
-    @staticmethod
-    def create_colored_test_cube(size: float = 2.0) -> Model:
-        """Create a test cube with distinct bright colors for each face."""
-        s = size / 2
-        vertex_data = []
-        
-        # Define cube vertices
-        vertices = [
-            [s, -s, -s], [-s, -s, -s], [-s, s, -s], [s, s, -s],  # 0-3 back face
-            [s, -s, s], [-s, -s, s], [-s, s, s], [s, s, s]       # 4-7 front face
-        ]
-        
-        # Define face normals
-        normals = [
-            [0, 0, -1],  # back - red
-            [0, 0, 1],   # front - green
-            [0, -1, 0],  # bottom - blue
-            [0, 1, 0],   # top - yellow
-            [-1, 0, 0],  # left - magenta
-            [1, 0, 0]    # right - cyan
-        ]
-        
-        # Bright colors for each face
-        colors = [
-            [1.0, 0.0, 0.0, 1.0],  # red - back
-            [0.0, 1.0, 0.0, 1.0],  # green - front
-            [0.0, 0.0, 1.0, 1.0],  # blue - bottom
-            [1.0, 1.0, 0.0, 1.0],  # yellow - top
-            [1.0, 0.0, 1.0, 1.0],  # magenta - left
-            [0.0, 1.0, 1.0, 1.0]   # cyan - right
-        ]
-        
-        # Face definitions (vertices comprising each face)
-        faces = [
-            [0, 1, 2, 3],  # back
-            [4, 7, 6, 5],  # front
-            [0, 4, 5, 1],  # bottom
-            [3, 2, 6, 7],  # top
-            [0, 3, 7, 4],  # left
-            [1, 5, 6, 2]   # right
-        ]
-        
-        # Create vertex data for each face
-        for face_idx, face in enumerate(faces):
-            normal = normals[face_idx]
-            color = colors[face_idx]
-            
-            # Create two triangles per face
-            tri1 = [face[0], face[1], face[2]]
-            tri2 = [face[0], face[2], face[3]]
-            
-            for tri in [tri1, tri2]:
-                for vertex_idx in tri:
-                    # position
-                    vertex_data.extend(vertices[vertex_idx])
-                    # color
-                    vertex_data.extend(color)
-                    # normal
-                    vertex_data.extend(normal)
-        
-        return Model(np.array(vertex_data, dtype=np.float32), num_points=36)
-    
     def toggle_coalesced_mode(self):
         """Toggle between using coalesced models and original models."""
         self.use_coalesced_models = not self.use_coalesced_models
@@ -2659,8 +2223,8 @@ if __name__ == "__main__":
     print(f"OpenGL capabilities: {capabilities['message']}")
     
     # Create our test models
-    triangle = Viewer.create_triangle_model()
-    color_cube = Viewer.create_colored_test_cube(2.0)  # Use our special test cube with bright colors
+    triangle = create_triangle_model()
+    color_cube = create_colored_test_cube(2.0)  # Use our special test cube with bright colors
     
     # Create a viewer with both models - using just the color cube for testing colors
     viewer = create_viewer_with_models([color_cube, triangle], title="PyOpenSCAD Viewer Color Test")
