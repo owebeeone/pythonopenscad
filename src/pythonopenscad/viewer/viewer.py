@@ -11,6 +11,7 @@ from datetime import datetime
 import manifold3d as m3d
 from pythonopenscad.viewer.basic_models import create_colored_test_cube, create_triangle_model, create_cube_model
 from pythonopenscad.viewer.bbox import BoundingBox
+from pythonopenscad.viewer.bbox_render import BBoxRender
 from pythonopenscad.viewer.glctxt import GLContext, PYOPENGL_VERBOSE
 from pythonopenscad.viewer.model import Model
 from pythonopenscad.viewer.axes import AxesRenderer
@@ -1628,134 +1629,8 @@ class Viewer:
 
     def _draw_bounding_box(self):
         """Draw the scene bounding box in the current mode (off/wireframe/solid)."""
-        if self.bounding_box_mode == 0:
-            return
-            
-        # Store current backface culling state and disable it for the bounding box
-        was_culling_enabled = gl.glIsEnabled(gl.GL_CULL_FACE)
-        if was_culling_enabled:
-            gl.glDisable(gl.GL_CULL_FACE)
-            
-        # Get bounding box coordinates
-        min_x, min_y, min_z = self.bounding_box.min_point
-        max_x, max_y, max_z = self.bounding_box.max_point
+        BBoxRender.render(self)
         
-        # Set up transparency for solid mode
-        was_blend_enabled = False
-        if self.bounding_box_mode == 2:
-            try:
-                # Save current blend state
-                was_blend_enabled = gl.glIsEnabled(gl.GL_BLEND)
-                
-                # Enable blending
-                gl.glEnable(gl.GL_BLEND)
-                gl.glBlendFunc(gl.GL_SRC_ALPHA, gl.GL_ONE_MINUS_SRC_ALPHA)
-                
-                # Semi-transparent green
-                gl.glColor4f(0.0, 1.0, 0.0, 0.2)  
-            except Exception as e:
-                if PYOPENGL_VERBOSE:
-                    print(f"Viewer: Blending setup failed: {e}")
-                # Fall back to wireframe
-                self.bounding_box_mode = 1
-                if PYOPENGL_VERBOSE:
-                    print("Viewer: Blending not supported, falling back to wireframe mode")
-        
-        # Draw the bounding box
-        if self.bounding_box_mode == 1:  # Wireframe mode
-            gl.glColor3f(0.0, 1.0, 0.0)  # Green
-            
-            # Front face
-            gl.glBegin(gl.GL_LINE_LOOP)
-            gl.glVertex3f(min_x, min_y, max_z)
-            gl.glVertex3f(max_x, min_y, max_z)
-            gl.glVertex3f(max_x, max_y, max_z)
-            gl.glVertex3f(min_x, max_y, max_z)
-            gl.glEnd()
-            
-            # Back face
-            gl.glBegin(gl.GL_LINE_LOOP)
-            gl.glVertex3f(min_x, min_y, min_z)
-            gl.glVertex3f(max_x, min_y, min_z)
-            gl.glVertex3f(max_x, max_y, min_z)
-            gl.glVertex3f(min_x, max_y, min_z)
-            gl.glEnd()
-            
-            # Connecting edges
-            gl.glBegin(gl.GL_LINES)
-            gl.glVertex3f(min_x, min_y, min_z)
-            gl.glVertex3f(min_x, min_y, max_z)
-            
-            gl.glVertex3f(max_x, min_y, min_z)
-            gl.glVertex3f(max_x, min_y, max_z)
-            
-            gl.glVertex3f(max_x, max_y, min_z)
-            gl.glVertex3f(max_x, max_y, max_z)
-            
-            gl.glVertex3f(min_x, max_y, min_z)
-            gl.glVertex3f(min_x, max_y, max_z)
-            gl.glEnd()
-            
-        else:  # Solid mode
-            # Front face
-            gl.glBegin(gl.GL_QUADS)
-            gl.glVertex3f(min_x, min_y, max_z)
-            gl.glVertex3f(max_x, min_y, max_z)
-            gl.glVertex3f(max_x, max_y, max_z)
-            gl.glVertex3f(min_x, max_y, max_z)
-            gl.glEnd()
-            
-            # Back face
-            gl.glBegin(gl.GL_QUADS)
-            gl.glVertex3f(min_x, min_y, min_z)
-            gl.glVertex3f(max_x, min_y, min_z)
-            gl.glVertex3f(max_x, max_y, min_z)
-            gl.glVertex3f(min_x, max_y, min_z)
-            gl.glEnd()
-            
-            # Top face
-            gl.glBegin(gl.GL_QUADS)
-            gl.glVertex3f(min_x, max_y, min_z)
-            gl.glVertex3f(max_x, max_y, min_z)
-            gl.glVertex3f(max_x, max_y, max_z)
-            gl.glVertex3f(min_x, max_y, max_z)
-            gl.glEnd()
-            
-            # Bottom face
-            gl.glBegin(gl.GL_QUADS)
-            gl.glVertex3f(min_x, min_y, min_z)
-            gl.glVertex3f(max_x, min_y, min_z)
-            gl.glVertex3f(max_x, min_y, max_z)
-            gl.glVertex3f(min_x, min_y, max_z)
-            gl.glEnd()
-            
-            # Right face
-            gl.glBegin(gl.GL_QUADS)
-            gl.glVertex3f(max_x, min_y, min_z)
-            gl.glVertex3f(max_x, max_y, min_z)
-            gl.glVertex3f(max_x, max_y, max_z)
-            gl.glVertex3f(max_x, min_y, max_z)
-            gl.glEnd()
-            
-            # Left face
-            gl.glBegin(gl.GL_QUADS)
-            gl.glVertex3f(min_x, min_y, min_z)
-            gl.glVertex3f(min_x, max_y, min_z)
-            gl.glVertex3f(min_x, max_y, max_z)
-            gl.glVertex3f(min_x, min_y, max_z)
-            gl.glEnd()
-        
-        # Clean up blending state
-        if self.bounding_box_mode == 2 and not was_blend_enabled:
-            try:
-                gl.glDisable(gl.GL_BLEND)
-            except Exception:
-                pass
-                
-        # Restore backface culling state
-        if was_culling_enabled:
-            gl.glEnable(gl.GL_CULL_FACE)
-
     def toggle_coalesced_mode(self):
         """Toggle between using coalesced models and original models."""
         self.use_coalesced_models = not self.use_coalesced_models
@@ -2158,6 +2033,277 @@ class Viewer:
                      # This is expected if the original window (e.g. temp init window) was destroyed
                      pass
 
+    def _keyboard_callback(self, key, x, y):
+        """GLUT keyboard callback."""
+        func = KEY_BINDINGS.get(key)
+        if func:
+            func(self)
+
+
+
+
+# def _keyboard_callback(viewer: Viewer, key, x, y):
+# """GLUT keyboard callback."""
+# # Handle basic keyboard controls
+# if key == b'\x1b':  # ESC key
+#     # Use terminate to properly clean up
+#     if PYOPENGL_VERBOSE:
+#         print("Viewer: ESC key pressed, terminating application")
+#     Viewer.terminate()
+# elif key == b'r':
+#     # Reset view
+#     viewer._reset_view()
+#     glut.glutPostRedisplay()
+# elif key == b'a':
+#     # Toggle antialiasing
+#     if hasattr(gl, 'GL_MULTISAMPLE') and Viewer._multisample_supported:
+#             viewer.antialiasing_enabled = not viewer.antialiasing_enabled
+#             if viewer.antialiasing_enabled:
+#                 gl.glEnable(gl.GL_MULTISAMPLE)
+#                 if PYOPENGL_VERBOSE:
+#                     print("Viewer: Antialiasing enabled")
+#             else:
+#                 gl.glDisable(gl.GL_MULTISAMPLE)
+#                 if PYOPENGL_VERBOSE:
+#                     print("Viewer: Antialiasing disabled")
+#             glut.glutPostRedisplay()
+#     elif PYOPENGL_VERBOSE:
+#             print("Viewer: Antialiasing (GL_MULTISAMPLE) not supported on this system.")
+# elif key == b'b':
+#     # Toggle backface culling
+#     viewer.backface_culling = not viewer.backface_culling
+#     if viewer.backface_culling:
+#         gl.glEnable(gl.GL_CULL_FACE)
+#         gl.glCullFace(gl.GL_BACK)
+#         if PYOPENGL_VERBOSE:
+#             print("Viewer: Backface culling enabled")
+#     else:
+#         gl.glDisable(gl.GL_CULL_FACE)
+#         if PYOPENGL_VERBOSE:
+#             print("Viewer: Backface culling disabled")
+#     glut.glutPostRedisplay()
+# elif key == b'w':
+#     # Toggle wireframe mode
+#     viewer.wireframe_mode = not viewer.wireframe_mode
+#     if viewer.wireframe_mode:
+#         gl.glPolygonMode(gl.GL_FRONT_AND_BACK, gl.GL_LINE)
+#         if PYOPENGL_VERBOSE:
+#             print("Viewer: Wireframe mode enabled")
+#     else:
+#         gl.glPolygonMode(gl.GL_FRONT_AND_BACK, gl.GL_FILL)
+#         if PYOPENGL_VERBOSE:
+#             print("Viewer: Wireframe mode disabled")
+#     glut.glutPostRedisplay()
+# elif key == b'z': 
+#     # Toggle Z-buffer occlusion for wireframes
+#     viewer.zbuffer_occlusion = not viewer.zbuffer_occlusion
+#     if PYOPENGL_VERBOSE:
+#         if viewer.zbuffer_occlusion:
+#             print("Viewer: Z-buffer occlusion enabled for wireframes")
+#         else:
+#             print("Viewer: Z-buffer occlusion disabled for wireframes")
+#     glut.glutPostRedisplay()
+# elif key == b'x':
+#     # Toggle bounding box mode
+#     viewer.bounding_box_mode = (viewer.bounding_box_mode + 1) % 3
+#     if PYOPENGL_VERBOSE:
+#         print(f"Viewer: Bounding box mode set to {viewer.bounding_box_mode}")
+#     glut.glutPostRedisplay()
+# elif key == b'c':
+#     # Toggle coalesced model mode
+#     viewer.toggle_coalesced_mode()
+#     # Already calls glutPostRedisplay()
+# elif key == b'h':
+#     # Toggle shader-based rendering
+#     viewer._toggle_and_diagnose_shader()
+#     # Already calls glutPostRedisplay()
+# elif key == b'd':
+#     # Print diagnostic information
+#     viewer._print_diagnostics()
+#     # No need to redisplay
+# elif key == b'p':
+#     # Print detailed shader program debug information
+#     try:
+#         # Get current program
+#         current_program = gl.glGetIntegerv(gl.GL_CURRENT_PROGRAM)
+#         print(f"Current program: {current_program}")
+        
+#         # Debug our shader program
+#         if viewer.shader_program:
+#             viewer._print_shader_debug(viewer.shader_program)
+        
+#         # Debug the special program '3'
+#         viewer._print_shader_debug(3)
+        
+#     except Exception as e:
+#         print(f"Error during shader debugging: {e}")
+#     # No need to redisplay
+# elif key == b's':
+#     # Save screenshot - only on key down
+#     try:
+#         # Generate a default filename with timestamp
+#         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+#         filename = f"screenshot_{timestamp}.png"
+#         viewer.save_screenshot(filename)
+#     except Exception as e:
+#         if PYOPENGL_VERBOSE:
+#             print(f"Viewer: Failed to save screenshot: {str(e)}")
+#     # Don't redisplay after saving screenshot
+            
+
+KEY_BINDINGS: dict[bytes, Callable[[Viewer], None]] = {}
+    
+def keybinding(key: bytes):
+    """Decorator to add a key binding to the viewer."""
+    def decorator(func: Callable[[Viewer], None]):
+        if key in KEY_BINDINGS:
+            raise ValueError(f"Key binding {key} already exists.")
+        KEY_BINDINGS[key] = func
+        return func
+    return decorator
+
+
+@keybinding(b'\x1b')
+def terminate(viewer: Viewer):
+    """Terminate the application."""
+    if PYOPENGL_VERBOSE:
+        print("Viewer: ESC key pressed, terminating application")
+    viewer.terminate()
+        
+@keybinding(b'r')
+def reset_view(viewer: Viewer):
+    """Reset the view."""
+    viewer._reset_view()
+    glut.glutPostRedisplay()
+    if PYOPENGL_VERBOSE:
+        print("Viewer: R key pressed, resetting view")
+        
+@keybinding(b'a')
+def toggle_antialiasing(viewer: Viewer):
+    """Toggle antialiasing."""
+    # Toggle antialiasing
+    if hasattr(gl, 'GL_MULTISAMPLE') and Viewer._multisample_supported:
+            viewer.antialiasing_enabled = not viewer.antialiasing_enabled
+            if viewer.antialiasing_enabled:
+                gl.glEnable(gl.GL_MULTISAMPLE)
+                if PYOPENGL_VERBOSE:
+                    print("Viewer: Antialiasing enabled")
+            else:
+                gl.glDisable(gl.GL_MULTISAMPLE)
+                if PYOPENGL_VERBOSE:
+                    print("Viewer: Antialiasing disabled")
+            glut.glutPostRedisplay()
+    elif PYOPENGL_VERBOSE:
+            print("Viewer: Antialiasing (GL_MULTISAMPLE) not supported on this system.")
+        
+@keybinding(b'b')
+def toggle_backface_culling(viewer: Viewer):    
+    # Toggle backface culling
+    viewer.backface_culling = not viewer.backface_culling
+    if viewer.backface_culling:
+        gl.glEnable(gl.GL_CULL_FACE)
+        gl.glCullFace(gl.GL_BACK)
+        if PYOPENGL_VERBOSE:
+            print("Viewer: Backface culling enabled")
+    else:
+        gl.glDisable(gl.GL_CULL_FACE)
+        if PYOPENGL_VERBOSE:
+            print("Viewer: Backface culling disabled")
+    glut.glutPostRedisplay()
+        
+@keybinding(b'w')
+def toggle_wireframe_mode(viewer: Viewer):
+    """Toggle wireframe mode."""
+    # Toggle wireframe mode
+    viewer.wireframe_mode = not viewer.wireframe_mode
+    if viewer.wireframe_mode:
+        gl.glPolygonMode(gl.GL_FRONT_AND_BACK, gl.GL_LINE)
+        if PYOPENGL_VERBOSE:
+            print("Viewer: Wireframe mode enabled")
+    else:
+        gl.glPolygonMode(gl.GL_FRONT_AND_BACK, gl.GL_FILL)
+        if PYOPENGL_VERBOSE:
+            print("Viewer: Wireframe mode disabled")
+    glut.glutPostRedisplay()
+        
+@keybinding(b'z')
+def toggle_zbuffer_occlusion(viewer: Viewer):
+    # Toggle Z-buffer occlusion for wireframes
+    viewer.zbuffer_occlusion = not viewer.zbuffer_occlusion
+    if PYOPENGL_VERBOSE:
+        if viewer.zbuffer_occlusion:
+            print("Viewer: Z-buffer occlusion enabled for wireframes")
+        else:
+            print("Viewer: Z-buffer occlusion disabled for wireframes")
+    glut.glutPostRedisplay()
+        
+@keybinding(b'x')
+def toggle_bounding_box_mode(viewer: Viewer):
+    # Toggle bounding box mode
+    viewer.bounding_box_mode = (viewer.bounding_box_mode + 1) % 3
+    if PYOPENGL_VERBOSE:
+        print(f"Viewer: Bounding box mode set to {viewer.bounding_box_mode}")
+    glut.glutPostRedisplay()
+        
+@keybinding(b'c')
+def toggle_coalesced_mode(viewer: Viewer):
+    # Toggle coalesced model mode
+    viewer.toggle_coalesced_mode()
+    # Already calls glutPostRedisplay()
+        
+@keybinding(b'h')
+def toggle_shader_based_rendering(viewer: Viewer):
+    # Toggle shader-based rendering
+    viewer._toggle_and_diagnose_shader()
+    # Already calls glutPostRedisplay()
+        
+@keybinding(b'd')
+def print_diagnostics(viewer: Viewer):
+    # Print diagnostic information
+    viewer._print_diagnostics()
+    # No need to redisplay
+        
+@keybinding(b'p')
+def print_detailed_shader_debug(viewer: Viewer):
+    """Print detailed shader debug information."""
+    # Print detailed shader program debug information
+    try:
+        # Get current program
+        current_program = gl.glGetIntegerv(gl.GL_CURRENT_PROGRAM)
+        print(f"Current program: {current_program}")
+        
+        # Debug our shader program
+        if viewer.shader_program:
+            viewer._print_shader_debug(viewer.shader_program)
+        
+        # Debug the special program '3'
+        viewer._print_shader_debug(3)
+        
+    except Exception as e:
+        print(f"Error during shader debugging: {e}")
+    if PYOPENGL_VERBOSE:
+        print("Viewer: P key pressed, printing detailed shader debug information")
+        
+@keybinding(b's')
+def save_screenshot(viewer: Viewer):
+    """Save a screenshot."""
+    try:
+        # Generate a default filename with timestamp
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"screenshot_{timestamp}.png"
+        # Save screenshot
+        viewer.save_screenshot(filename)
+        if PYOPENGL_VERBOSE:
+            print(f"Viewer: Screenshot saved to {filename}")
+    except Exception as e:
+        print(f"Error during screenshot saving: {e}")
+        if PYOPENGL_VERBOSE:
+            print(f"Viewer: Failed to save screenshot: {str(e)}")
+            
+@keybinding(b'?')
+def print_help(viewer: Viewer):
+    print(Viewer.VIEWER_HELP_TEXT)
+        
 
 # Helper function to create a viewer with models
 def create_viewer_with_models(models, width=800, height=600, title="3D Viewer"):
