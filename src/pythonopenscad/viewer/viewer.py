@@ -92,51 +92,43 @@ class Viewer:
 
     def __post_init__(self):
         """
-        Initialize the viewer with a list of models.
-        
-        Args:
-            models: List of Model objects to display
-            width: Window width
-            height: Window height
-            title: Window title
-            use_coalesced_models: Whether to coalesce models into opaque/transparent pairs for better rendering
+        Initialize the viewer.
         """
         if not HAS_OPENGL:
             raise ImportError("OpenGL libraries (PyOpenGL and PyGLM) are required for the viewer")
-        
-        # Get the OpenGL context and capabilities
+
+        # 1. Get GLContext instance (but don't initialize)
         self.gl_ctx = GLContext.get_instance()
-        
-        # Store original models
-        self.original_models = self.models
-        
-        # Create coalesced models
+
+        # 2. Basic GLUT Initialization (sets display mode)
+        Viewer._init_glut() # Does glutInit and glutInitDisplayMode
+
+        # 3. Request specific context *before* creating the window
+        try:
+            if PYOPENGL_VERBOSE:
+                 print("Viewer: Requesting OpenGL 3.0 compatibility profile")
+            self.gl_ctx.request_context_version(3, 0, core_profile=False)
+        except Exception as e:
+            if PYOPENGL_VERBOSE:
+                 print(f"Viewer: Error requesting OpenGL 3.0 context version: {e}")
+
+        # --- Model Preparation (can happen before window creation) ---
+        self.original_models = self.models # Store original models
         if self.models:
-            # Create coalesced models (one opaque, one transparent)
             opaque_model, transparent_model = Model.create_coalesced_models(self.models)
-            
-            # Set models for rendering
             self.models = []
-            # Add opaque model if it has data
-            if opaque_model.num_points > 0:
-                self.models.append(opaque_model)
-            # Add transparent model if it has data
-            if transparent_model.num_points > 0:
-                self.models.append(transparent_model)
- 
-        
-        # Camera parameters
+            if opaque_model.num_points > 0: self.models.append(opaque_model)
+            if transparent_model.num_points > 0: self.models.append(transparent_model)
+        # -----------------------------------------------------------
+
+        # --- Camera Setup (based on models, before window) ---
         self.camera_pos = glm.vec3(0.0, 0.0, 5.0)
         self.camera_front = glm.vec3(0.0, 0.0, -1.0)
         self.camera_up = glm.vec3(0.0, 1.0, 0.0)
         self.camera_speed = 0.05
         self.yaw = -90.0
         self.pitch = 0.0
-        
-        # Model transformation matrix (for rotation) - using NumPy instead of GLM
         self.model_matrix = np.eye(4, dtype=np.float32)
-        
-        # Mouse state
         self.last_mouse_x = self.width // 2
         self.last_mouse_y = self.height // 2
         self.first_mouse = True
@@ -144,36 +136,54 @@ class Viewer:
         self.right_button_pressed = False
         self.mouse_start_x = 0
         self.mouse_start_y = 0
-        
-        # Compute bounding box and set up camera
-        self._compute_scene_bounds()
-        self._setup_camera()
+        self._compute_scene_bounds() # Needs models
+        self._setup_camera()         # Needs bounds
+        # -----------------------------------------------------
 
-        
         # Register this instance
         self.instance_id = Viewer._next_id
         Viewer._next_id += 1
         Viewer._instances[self.instance_id] = self
-        
-        # Create the window and set up OpenGL
+
+        # 4. Create the main window (makes context current)
         self._create_window()
-        self._setup_gl()
-        
-        # Initialize GL resources for each model now that the main context is active
-        # Ensure the correct window context is current first
+
+        # 5. Initialize GLContext using the main window's context
         if self.window_id and self.window_id == glut.glutGetWindow():
-            if PYOPENGL_VERBOSE:
-                print(f"Viewer: Initializing GL resources for {len(self.models)} models in window {self.window_id}")
+            # Only initialize if not already done (e.g., by another Viewer instance)
+            if not self.gl_ctx.is_initialized:
+                if PYOPENGL_VERBOSE: print(f"Viewer: Initializing GLContext using main window ({self.window_id}) context.")
+                self.gl_ctx.initialize()
+            elif PYOPENGL_VERBOSE: print("GLContext already initialized.")
+        elif PYOPENGL_VERBOSE:
+             # Only initialize if not already done (e.g., by another Viewer instance)
+             if not self.gl_ctx.is_initialized:
+                 if PYOPENGL_VERBOSE: print(f"Viewer: Initializing GLContext using main window ({self.window_id}) context.")
+                 self.gl_ctx.initialize()
+             elif PYOPENGL_VERBOSE: print("GLContext already initialized.")
+        elif PYOPENGL_VERBOSE:
+             warnings.warn("Viewer: Cannot initialize GLContext, main window creation failed or context mismatch.")
+        # --------------------------------------------------------------------------
+
+
+        # --- Setup GL state (lighting, shaders, MSAA query etc.) AFTER context is initialized ---
+        self._setup_gl()
+        # --------------------------------------------------------------------------
+
+        # --- Initialize GL resources for models LAST ---
+        # Now that the context and shaders are ready, initialize VBOs/VAOs for each model
+        if self.window_id and self.window_id == glut.glutGetWindow() and self.gl_ctx.is_initialized:
+            if PYOPENGL_VERBOSE: print("Viewer: Initializing GL resources for models...")
             for model in self.models:
                 try:
                     model.initialize_gl_resources()
                 except Exception as e:
                     if PYOPENGL_VERBOSE:
-                        print(f"Viewer: Error initializing GL resources for a model: {e}")
+                        print(f"Viewer: Error initializing GL resources for model: {e}")
+            if PYOPENGL_VERBOSE: print("Viewer: Finished initializing GL resources for models.")
         elif PYOPENGL_VERBOSE:
-            print(f"Viewer: Warning - Cannot initialize model GL resources. Window ID mismatch or invalid window.")
-            print(f"  Expected Window ID: {self.window_id}, Current Window ID: {glut.glutGetWindow()}")
-    
+            warnings.warn("Viewer: Skipping model GL resource initialization due to missing window or context.")
+
     def _compute_scene_bounds(self):
         """Compute the overall scene bounding box."""
         # Start with a default bounding box
@@ -218,52 +228,43 @@ class Viewer:
 
     @classmethod
     def _init_glut(cls):
-        """Initialize GLUT if not already initialized."""
+        """Initialize GLUT and set display mode. Does NOT create a context."""
         if not cls._initialized:
             if PYOPENGL_VERBOSE:
                 print("Viewer: Initializing GLUT")
             # Initialize GLUT
-            glut.glutInit()
+            try:
+                glut.glutInit()
+            except Exception as e:
+                print(f"FATAL: glutInit() failed: {e}", file=sys.stderr)
+                # Potentially raise or exit here, as nothing else will work
+                raise RuntimeError("Failed to initialize GLUT") from e
 
             # Try to set a display mode with multisampling
             display_mode = glut.GLUT_DOUBLE | glut.GLUT_RGBA | glut.GLUT_DEPTH
             try:
                 glut.glutInitDisplayMode(display_mode | glut.GLUT_MULTISAMPLE)
-                # Assume multisample is supported if this doesn't raise an error
-                cls._multisample_supported = True
+                # Assume multisample is supported if this doesn't raise an error (will verify later)
+                # cls._multisample_supported = True # We now verify this later using glGet
                 if PYOPENGL_VERBOSE:
                     print("Viewer: Requested multisample display mode.")
             except Exception as e:
                 if PYOPENGL_VERBOSE:
-                    print(f"Viewer: Multisample display mode failed, falling back ({e}). Antialiasing might not work.")
+                    print(f"Viewer: Multisample display mode failed ({e}), falling back. Antialiasing might not work.")
                 # Fallback to non-multisample mode
                 try:
                     glut.glutInitDisplayMode(display_mode)
                 except Exception as e_fallback:
-                    if PYOPENGL_VERBOSE:
-                         print(f"Viewer: Error setting even basic display mode: {e_fallback}")
-                cls._multisample_supported = False # Mark as not supported
+                     # This is very bad if it fails
+                     print(f"FATAL: Error setting even basic display mode: {e_fallback}", file=sys.stderr)
+                     raise RuntimeError("Failed to set GLUT display mode") from e_fallback
+                # cls._multisample_supported = False # Verify later
 
+            # DO NOT initialize GLContext here - it needs a window context first
+            # DO NOT request context version here - needs to be done *before* glutCreateWindow
 
-            # Initialize OpenGL context and detect capabilities
-            if PYOPENGL_VERBOSE:
-                print("Viewer: Getting GLContext instance")
-            gl_ctx = GLContext.get_instance()
-            gl_ctx.initialize()
-            
-            # Always prefer compatibility profile to ensure immediate mode works
-            try:
-                if PYOPENGL_VERBOSE:
-                    print("Viewer: Requesting compatibility profile to ensure immediate mode functions work")
-                # Request compatibility profile for legacy OpenGL
-                gl_ctx.request_context_version(2, 1, core_profile=False)
-            except Exception as e:
-                if PYOPENGL_VERBOSE:
-                    print(f"Viewer: Error requesting OpenGL context version: {e}")
-                # Continue with default OpenGL version
-            
-            cls._initialized = True
-    
+            cls._initialized = True # Mark GLUT itself as initialized
+
     def _setup_camera(self):
         """Set up the camera based on the scene bounds."""
         center = self.bounding_box.center
@@ -334,6 +335,8 @@ class Viewer:
         if self.window_id != glut.glutGetWindow() and self.window_id is not None:
             glut.glutSetWindow(self.window_id)
             
+        self._query_actual_msaa_samples()
+        
         # Enable depth testing
         gl.glEnable(gl.GL_DEPTH_TEST)
         
@@ -420,14 +423,18 @@ class Viewer:
         if self.gl_ctx.has_shader:
             try:
                 # First try the more advanced shader
+                if PYOPENGL_VERBOSE: print("Viewer._setup_gl: Attempting to compile main shader...")
                 self.shader_program = self._compile_shaders()
-                
+                if PYOPENGL_VERBOSE: print(f"Viewer._setup_gl: _compile_shaders returned: {self.shader_program}")
+
                 if not self.shader_program:
                     # If the main shader fails, try the basic shader
                     if PYOPENGL_VERBOSE:
-                        print("Viewer: Main shader failed, trying basic shader")
+                        print("Viewer._setup_gl: Main shader failed, trying basic shader...")
                     self.shader_program = self._compile_basic_shader()
-                
+                    if PYOPENGL_VERBOSE: print(f"Viewer._setup_gl: _compile_basic_shader returned: {self.shader_program}")
+
+                # Add verification logging here:
                 if self.shader_program:
                     # Verify the shader program is valid
                     if isinstance(self.shader_program, int) and self.shader_program > 0:
@@ -2038,6 +2045,81 @@ class Viewer:
         func = KEY_BINDINGS.get(key)
         if func:
             func(self)
+
+    def _query_actual_msaa_samples(self):
+        """Queries OpenGL for the actual number of samples and sample buffers."""
+        if not self.window_id or not Viewer._initialized:
+             if PYOPENGL_VERBOSE: print("Viewer: Cannot query MSAA samples, window/GLUT not ready.")
+             return
+        # Get the current window before potentially changing it
+        original_window = glut.glutGetWindow()
+        context_changed = False
+        if self.window_id != original_window:
+             # Try setting the context, but don't proceed if it fails
+             try:
+                 glut.glutSetWindow(self.window_id)
+                 context_changed = True
+             except Exception as e:
+                 if PYOPENGL_VERBOSE: print(f"Viewer: Error setting window context for MSAA query: {e}")
+                 # Try to restore original context if possible
+                 if original_window != 0:
+                     try: glut.glutSetWindow(original_window)
+                     except: pass
+                 return
+
+        try:
+            self._actual_msaa_samples = 0 # Default if query fails
+            sample_buffers = 0
+            samples = 0
+
+            # Check if multisampling is reported as available by sample buffers
+            if hasattr(gl, 'GL_SAMPLE_BUFFERS'):
+                 error_before = gl.glGetError() # Clear errors before query
+                 sample_buffers = gl.glGetIntegerv(gl.GL_SAMPLE_BUFFERS)
+                 error_after_sb = gl.glGetError() # Check errors after query
+                 if PYOPENGL_VERBOSE:
+                     print(f"Viewer: Queried GL_SAMPLE_BUFFERS = {sample_buffers} (Error before: {error_before}, after: {error_after_sb})")
+
+                 # If sample buffers exist, query the number of samples
+                 if sample_buffers > 0 and hasattr(gl, 'GL_SAMPLES'):
+                     samples = gl.glGetIntegerv(gl.GL_SAMPLES)
+                     error_after_s = gl.glGetError() # Check errors after query
+                     if PYOPENGL_VERBOSE:
+                         print(f"Viewer: Queried GL_SAMPLES = {samples} (Error after: {error_after_s})")
+                     self._actual_msaa_samples = samples
+                     # Refine the static support flag based on actual query
+                     # Only truly supported if we have buffers AND samples > 1
+                     Viewer._multisample_supported = (samples > 1)
+                 elif sample_buffers == 0:
+                     # If no sample buffers, confirm multisample is not supported
+                     Viewer._multisample_supported = False
+                     if PYOPENGL_VERBOSE: print("Viewer: No sample buffers available, MSAA confirmed not supported for this context.")
+
+            else:
+                 # If GL_SAMPLE_BUFFERS doesn't exist, MSAA is likely not supported
+                 Viewer._multisample_supported = False
+                 if PYOPENGL_VERBOSE: print("Viewer: GL_SAMPLE_BUFFERS not defined, assuming MSAA not supported.")
+
+            # Update antialiasing_enabled state based on actual support
+            # If MSAA isn't supported, force antialiasing_enabled to False
+            if not Viewer._multisample_supported and self.antialiasing_enabled:
+                 if PYOPENGL_VERBOSE: print("Viewer: Disabling antialiasing as queries indicate no MSAA support.")
+                 self.antialiasing_enabled = False
+
+
+        except Exception as e:
+             if PYOPENGL_VERBOSE: print(f"Viewer: Error querying MSAA samples: {e}")
+             # Ensure support flag is false if query failed
+             Viewer._multisample_supported = False
+             self.antialiasing_enabled = False # Disable if query failed
+             self._actual_msaa_samples = 0
+        finally:
+            # Restore original window context if it was changed
+            if context_changed and original_window != 0:
+                 try: glut.glutSetWindow(original_window)
+                 except Exception as e_restore:
+                      if PYOPENGL_VERBOSE: print(f"Viewer: Error restoring original window context after MSAA query: {e_restore}")
+
             
 
 KEY_BINDINGS: dict[bytes, Callable[[Viewer], None]] = {}

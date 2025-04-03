@@ -1,4 +1,3 @@
-
 import sys
 from datatrees import datatree, dtfield, Node
 from typing import ClassVar, Optional
@@ -67,64 +66,36 @@ class GLContext:
     def initialize(self):
         """Initialize the OpenGL context and detect capabilities.
         
-        This must be called after glutInit() has been executed.
+        This must be called AFTER a valid OpenGL context has been created and made current
+        (e.g., after glutCreateWindow).
         """
         if not HAS_OPENGL or self.is_initialized:
             return
-        
-        # Initialize GLUT if needed
-        glut.glutInit()
-        
-        # Check if we already have a temporary window
-        if self.temp_window_id is not None:
-            # If we already have a temp window, make sure it's current
-            try:
-                glut.glutSetWindow(self.temp_window_id)
-                if PYOPENGL_VERBOSE:
-                    print(f"GLContext: Reusing existing temp window with ID: {self.temp_window_id}")
-            except Exception:
-                # If there was a problem, clear the reference so we create a new one
-                self.temp_window_id = None
-        
-        # Create a temporary window if needed
-        if self.temp_window_id is None:
-            try:
-                display_mode = glut.GLUT_RGBA | glut.GLUT_DOUBLE | glut.GLUT_DEPTH
-                glut.glutInitDisplayMode(display_mode)
-                glut.glutInitWindowSize(1, 1)  # Minimal window size
-                
-                # Try to create window off-screen
-                glut.glutInitWindowPosition(-9999, -9999)
-                self.temp_window_id = glut.glutCreateWindow(b"OpenGL Init")
-                if PYOPENGL_VERBOSE:
-                    print(f"GLContext: Created temp window with ID: {self.temp_window_id}")
-                
-                # Store the current window for proper cleanup (in case of nested calls)
-                current_window = glut.glutGetWindow()
-                if PYOPENGL_VERBOSE:
-                    print(f"GLContext: Current window before callback setup: {current_window}")
-                
-                # Make sure we're operating on the temporary window
-                glut.glutSetWindow(self.temp_window_id)
-                
-                # IMPORTANT: Register a display callback for the temporary window
-                # Create a proper method reference to prevent garbage collection issues
-                self.dummy_display_callback = GLContext._dummy_display
-                glut.glutDisplayFunc(self.dummy_display_callback)
-                if PYOPENGL_VERBOSE:
-                    print(f"GLContext: Registered display callback for window ID: {self.temp_window_id}")
-                
-                # Force a redisplay to ensure the callback is executed
-                glut.glutPostRedisplay()
-            except Exception as e:
-                if PYOPENGL_VERBOSE:
-                    print(f"GLContext: Error creating temporary window: {e}")
-                # Reset state and set fallback capabilities
-                self.temp_window_id = None
-                self._set_fallback_capabilities()
-                self.is_initialized = True
-                return
-        
+
+        # --- Check if we have a current context ---
+        current_window = 0
+        try:
+             current_window = glut.glutGetWindow()
+             if current_window == 0:
+                  if PYOPENGL_VERBOSE:
+                      warnings.warn("GLContext.initialize: No current GLUT window/context. Cannot detect capabilities.")
+                  # Set fallback capabilities as we can't query OpenGL
+                  self._set_fallback_capabilities()
+                  self.is_initialized = True # Mark as initialized even with fallback
+                  return
+        except Exception as e:
+             if PYOPENGL_VERBOSE:
+                 warnings.warn(f"GLContext.initialize: Error getting current window ({e}). Cannot detect capabilities.")
+             self._set_fallback_capabilities()
+             self.is_initialized = True # Mark as initialized even with fallback
+             return
+        # -----------------------------------------
+
+        if PYOPENGL_VERBOSE:
+             print(f"GLContext: Detecting capabilities using context from window ID: {current_window}")
+             print(f"GLContext: Error state BEFORE capability detection: {gl.glGetError()}")
+
+        # We assume a valid context exists now, proceed with detection
         try:
             # Now we have a valid OpenGL context, detect capabilities
             try:
@@ -162,19 +133,12 @@ class GLContext:
                 if not self.has_legacy_lighting and not self.has_shader:
                     warnings.warn("Neither modern shaders nor legacy lighting available. Rendering will be unlit.")
         
-        finally:
-            # We now keep the temporary window around instead of destroying it
-            # Only restore the previous window if applicable
-            current_window = glut.glutGetWindow()
-            if current_window != 0 and current_window != self.temp_window_id:
-                if PYOPENGL_VERBOSE:
-                    print(f"GLContext: Restoring previous window ID: {current_window}")
-                try:
-                    glut.glutSetWindow(current_window)
-                except Exception as e:
-                    if PYOPENGL_VERBOSE:
-                        print(f"GLContext: Error restoring window: {e}")
-        
+        except Exception as e:
+            if PYOPENGL_VERBOSE:
+                warnings.warn(f"GLContext: Unexpected error during capability detection: {e}")
+            # Use fallback if detection fails unexpectedly
+            self._set_fallback_capabilities()
+
         self.is_initialized = True
     
     def _detect_opengl_features(self):

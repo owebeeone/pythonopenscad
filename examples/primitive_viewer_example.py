@@ -195,6 +195,15 @@ class PrimitiveCreator(PrimitiveCreatorBase):
 
 
 def main():
+    # --- Initialize GLUT and request display mode early --- 
+    if is_opengl_available():
+        try:
+            Viewer._init_glut()
+        except Exception as e:
+            print(f"Warning: Early GLUT initialization failed: {e}")
+            # Continue anyway, viewer creation might still work or provide errors
+    # ----------------------------------------------------
+    
     # Create the models
     models = PrimitiveCreator().create_primitive_models()
 
