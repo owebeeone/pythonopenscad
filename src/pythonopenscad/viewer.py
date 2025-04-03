@@ -434,6 +434,9 @@ class Model:
         # Create a model from the vertex data
         return Model(flattened_vertex_data, has_alpha_lt1=has_alpha_lt1)
     
+    def num_triangles(self) -> int:
+        return len(self.data) // (3 * self.stride)
+    
     def initialize_gl_resources(self):
         """Initialize OpenGL vertex buffer and array objects.
         
@@ -1480,7 +1483,7 @@ class AxesRenderer:
 class Viewer:
     """OpenGL viewer for 3D models."""
     
-    models: List[Model]
+    models: list[Model]
     width: int = 800
     height: int = 600
     title: str = "3D Viewer"
@@ -3609,6 +3612,9 @@ class Viewer:
         # Request redisplay
         if self.window_id:
             glut.glutPostRedisplay()
+            
+    def num_triangles(self) -> int:
+        return sum((m.num_triangles() for m in self.models))
 
     def update_models(self, models: List[Model]):
         """Update the models displayed by the viewer and re-initialize GL resources."""
@@ -3644,7 +3650,7 @@ class Viewer:
                     if PYOPENGL_VERBOSE:
                         print(f"Viewer: Error initializing GL resources for an updated model: {e}")
         elif PYOPENGL_VERBOSE:
-            print(f"Viewer: Warning - Cannot initialize updated model GL resources. Window ID mismatch or invalid window.")
+            print("Viewer: Warning - Cannot initialize updated model GL resources. Window ID mismatch or invalid window.")
             
         # Request redisplay
         if self.window_id:

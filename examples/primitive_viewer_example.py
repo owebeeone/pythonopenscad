@@ -202,6 +202,7 @@ def main():
     viewer = Viewer(models)
     
     print(Viewer.VIEWER_HELP_TEXT)
+    print(f"Total triangles={viewer.num_triangles()}")
     viewer.run()
 
 
