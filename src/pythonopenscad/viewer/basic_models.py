@@ -3,14 +3,15 @@ import numpy as np
 from pythonopenscad.viewer.model import Model
 
 
-def create_triangle_model(color: tuple[float, float, float, float] = (1.0, 0.0, 0.0, 1.0)) -> Model:
+def create_triangle_model(size: float = 1.5) -> Model:
     """Create a simple triangle model for testing."""
     # Create a simple colored triangle with different colors for each vertex
+    s = size
     vertex_data = np.array([
         # position (3)     # color (4)           # normal (3)
-        -1.5, -1.5, 0.0,   1.0, 0.0, 0.0, 1.0,   0.0, 0.0, 1.0,  # Red
-        1.5, -1.5, 0.0,    0.0, 1.0, 0.0, 1.0,   0.0, 0.0, 1.0,  # Green
-        0.0, 1.5, 0.0,     0.0, 0.0, 1.0, 1.0,   0.0, 0.0, 1.0   # Blue
+        -s, -s, 0.0,     1.0, 0.0, 0.0, 1.0,   0.0, 0.0, 1.0,  # Red
+         s, -s, 0.0,     0.0, 1.0, 0.0, 1.0,   0.0, 0.0, 1.0,  # Green
+        0.0, s, 0.0,     0.0, 0.0, 1.0, 1.0,   0.0, 0.0, 1.0   # Blue
     ], dtype=np.float32)
     
     return Model(vertex_data, num_points=3)
@@ -95,7 +96,7 @@ def create_colored_test_cube(size: float = 2.0) -> Model:
         [1, 0, 0]    # right - cyan
     ]
     
-    alpha = 0.2
+    alpha = 0.3
     # Bright colors for each face
     colors = [
         [1.0, 0.0, 0.0, alpha],  # red - back

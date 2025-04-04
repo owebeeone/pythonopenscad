@@ -30,7 +30,7 @@ import glm
 
 from pythonopenscad.viewer.viewer_base import ViewerBase
 
-
+PYOPENGL_VERBOSE = True
 @datatree
 class Viewer(ViewerBase):
     """OpenGL viewer for 3D models."""

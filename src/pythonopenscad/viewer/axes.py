@@ -30,7 +30,7 @@ class ScreenContext:
 class AxesRenderer:
     """Renders X, Y, Z axes using immediate mode."""
 
-    factor: float = 1  # Length of axes relative to scene diagonal
+    factor: float = 3  # Length of axes relative to scene diagonal
     color: Tuple[float, float, float] = (0.0, 0.0, 0.0)  # Color for the axes lines
     line_width_px: float = 1.5  # Line width for the axes
     grad_line_width_px: float = 1.3  # Line width for the graduations
@@ -38,8 +38,8 @@ class AxesRenderer:
     stipple_factor: int = 4  # Scaling factor for the dash pattern
     negative_stipple_pattern: int = 0xAAAA
     
-    grad_size_px: list[float] = (10, 20, 40)
-    grad_size_px_min: float = 10
+    grad_tick_size_px: list[float] = (10, 20, 40) # Size of the graduations in pixels
+    grad_size_px_min: float = 5 # Min space between graduations
     grad_colors: tuple[tuple[float, float, float], 
                        tuple[float, float, float], 
                        tuple[float, float, float]] = ((1, 0, 0), (0, 0.5, 0), (0, 0, 1))
@@ -61,11 +61,17 @@ class AxesRenderer:
         # Get how wide one pixel is in world space.
         origin = np.array(glu.gluProject(0.0, 0.0, 0.0))
         x_first_grad = origin + self.AXES[0]
-        model_x_first_grad = glu.gluUnProject(*x_first_grad)
-        # Calculate the distance to the origin in model space.
-        distance_to_origin = np.sqrt(np.dot(model_x_first_grad, model_x_first_grad))
         
-        return distance_to_origin
+        model_origin_plus_1x = np.array(glu.gluUnProject(*x_first_grad))
+        # Mapping back origin and x_first_grad to model space because
+        # there might be some floating point precision issues.
+        model_origin = np.array(glu.gluUnProject(*origin))
+        
+        model_1x = model_origin_plus_1x - model_origin
+        model_1x_len = np.sqrt(np.dot(model_1x, model_1x))
+        
+        return model_1x_len 
+
     
     def get_scene_diagonal_px(self, viewer: ViewerBase):
         # Get the diagonal of the scene in pixels.
@@ -94,7 +100,7 @@ class AxesRenderer:
         global PYOPENGL_VERBOSE
         PYOPENGL_VERBOSE = True
         min_size_ws = screen_context.ws_width_per_px * self.grad_size_px_min
-        grad_heights = [screen_context.ws_width_per_px * grad_size for grad_size in self.grad_size_px]
+        grad_heights = [screen_context.ws_width_per_px * grad_size for grad_size in self.grad_tick_size_px]
         
         min_size_ws_tens = float(np.ceil(np.log10(min_size_ws)))
         min_size_ws_fives = float(np.ceil(np.log10(2 * min_size_ws)))
@@ -109,21 +115,28 @@ class AxesRenderer:
             per_grad = actual_min_size_tens_ws
             num_grads = 10
             mid_grad = 5
+            print("Picked tens")
         else:
             per_grad = actual_min_size_fives_ws
             num_grads = 2
             mid_grad = None
-        
+            print("Picked fives")
         length = screen_context.get_scene_diagonal_ws() * self.factor / 2
         
-        total_grads = int(length // per_grad)
-        curr_pos = -length
+        total_grads = (int(length // per_grad) // 10) * 10
+        curr_pos = -(total_grads * per_grad)
         gl.glLineWidth(self.grad_line_width_px)
-        for i in range(total_grads * 2):
+        for j in range(total_grads * 2):
             gl.glBegin(gl.GL_LINES)
             for i, axis, grad_dir in zip((0, 1, 2), self.AXES, self.GRAD_DIR):
                 start_pos = curr_pos * axis
-                end_pos = start_pos + grad_dir * grad_heights[0]
+                if j % num_grads == 0:
+                    tick_size = grad_heights[2]
+                elif mid_grad is not None and j % mid_grad == 0:
+                    tick_size = grad_heights[1]
+                else:
+                    tick_size = grad_heights[0]
+                end_pos = start_pos + grad_dir * tick_size
                 
                 gl.glColor3f(*self.grad_colors[i])
                 gl.glVertex3f(*start_pos)
