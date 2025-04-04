@@ -6,7 +6,6 @@ from typing import Any, Iterable, Iterator, List, Optional, Tuple, Union, Dict, 
 from datatrees import datatree, dtfield, Node
 import warnings
 import sys
-import signal
 from datetime import datetime
 import manifold3d as m3d
 from pythonopenscad.viewer.basic_models import (
@@ -2418,7 +2417,6 @@ def run_test_keybindings(viewer: Viewer, secs: float = 2):
     test_keybindings = TestKeybindings(secs=secs)
     test_keybindings.do_cycle(viewer)
     glut.glutTimerFunc(test_keybindings.getGlutTime(), test_keybindings.run_next, 0)
-    
 
 @keybinding(b'*')
 def run_test_keybindings_key_fast(viewer: Viewer):
@@ -2459,7 +2457,6 @@ def get_opengl_capabilities(gl_ctx: GLContext):
 # If this module is run directly, show a simple demo
 if __name__ == "__main__":
     import signal
-    import sys
 
     # Enable verbose mode
     PYOPENGL_VERBOSE = True
@@ -2478,12 +2475,21 @@ if __name__ == "__main__":
 
     # Create a viewer with both models - using just the color cube for testing colors
     viewer = create_viewer_with_models([color_cube, triangle], title="PyOpenSCAD Viewer Color Test")
+    
+    stop: list = []
+    def keep_alive(val):
+        if stop:
+            Viewer.terminate()
+        else:
+            glut.glutTimerFunc(200, keep_alive, 0)
+            
+            
+    glut.glutTimerFunc(200, keep_alive, 0)
 
     # Define a handler for Ctrl+C to properly terminate
     def signal_handler(sig, frame):
         print("\nCtrl+C detected, safely shutting down...")
-        Viewer.terminate()
-        sys.exit(0)
+        stop.append(True)
 
     # Register signal handler
     signal.signal(signal.SIGINT, signal_handler)
