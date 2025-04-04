@@ -38,8 +38,8 @@ class AxesRenderer:
     stipple_factor: int = 4  # Scaling factor for the dash pattern
     negative_stipple_pattern: int = 0xAAAA
     
-    grad_tick_size_px: list[float] = (10, 20, 40) # Size of the graduations in pixels
-    grad_size_px_min: float = 5 # Min space between graduations
+    grad_tick_size_px: list[float] = (10, 20, 25) # Size of the graduations in pixels
+    grad_size_px_min: float = 9 # Min space between graduations
     grad_colors: tuple[tuple[float, float, float], 
                        tuple[float, float, float], 
                        tuple[float, float, float]] = ((1, 0, 0), (0, 0.5, 0), (0, 0, 1))
@@ -52,8 +52,8 @@ class AxesRenderer:
     
     GRAD_DIR: ClassVar[List[np.ndarray]] = [
         np.array([0.0, 1.0, 0.0]),
-        np.array([1.0, 0.0, 0.0]),
-        np.array([1.0, 0.0, 0.0]),
+        np.array([-1.0, 0.0, 0.0]),
+        np.array([-1.0, 0.0, 0.0]),
     ]
 
     
@@ -98,53 +98,62 @@ class AxesRenderer:
         
     def draw_graduations(self, viewer: ViewerBase, screen_context: ScreenContext):
         global PYOPENGL_VERBOSE
-        PYOPENGL_VERBOSE = True
-        min_size_ws = screen_context.ws_width_per_px * self.grad_size_px_min
-        grad_heights = [screen_context.ws_width_per_px * grad_size for grad_size in self.grad_tick_size_px]
-        
-        min_size_ws_tens = float(np.ceil(np.log10(min_size_ws)))
-        min_size_ws_fives = float(np.ceil(np.log10(2 * min_size_ws)))
-        
+        # PYOPENGL_VERBOSE = True # Optional: uncomment for debugging
 
-        actual_min_size_tens_ws = 10.0 ** min_size_ws_tens
-        actual_min_size_fives_ws = 10.0 ** min_size_ws_fives / 2
-        print(f"{actual_min_size_tens_ws = }")
-        print(f"{actual_min_size_fives_ws = }")
-        
-        if actual_min_size_tens_ws >= actual_min_size_fives_ws:
-            per_grad = actual_min_size_tens_ws
-            num_grads = 10
-            mid_grad = 5
-            print("Picked tens")
+        # Calculate minimum world-space distance required between ticks
+        # to maintain grad_size_px_min pixel separation on screen.
+        min_size_ws = screen_context.ws_width_per_px * self.grad_size_px_min
+        # Calculate corresponding world-space tick heights for constant pixel size.
+        tick_heights_ws = [
+            screen_context.ws_width_per_px * grad_size for grad_size in self.grad_tick_size_px]
+
+        # Find the exponents needed for base-10 and base-5 spacing candidates.
+        min_ws_exp_base10 = float(np.ceil(np.log10(min_size_ws)))
+        min_ws_exp_base5 = float(np.ceil(np.log10(2 * min_size_ws))) # log10(2*ws) relates to 5*10^M
+
+        # Calculate the smallest power-of-10 spacing >= min_size_ws.
+        candidate_spacing_10 = 10.0 ** min_ws_exp_base10
+        # Calculate the smallest 5*(power-of-10) spacing >= min_size_ws.
+        candidate_spacing_5 = 10.0 ** min_ws_exp_base5 / 2
+
+        # *** Select the actual world-space spacing between graduations ***
+        if candidate_spacing_10 <= candidate_spacing_5:
+            grad_spacing_ws = candidate_spacing_10
+            steps_per_major_grad = 10 # Use 10 steps per major interval (e.g., 0 to 10)
+            mid_step_index = 5        # Intermediate tick at step 5
         else:
-            per_grad = actual_min_size_fives_ws
-            num_grads = 2
-            mid_grad = None
-            print("Picked fives")
-        length = screen_context.get_scene_diagonal_ws() * self.factor / 2
-        
-        total_grads = (int(length // per_grad) // 10) * 10
-        curr_pos = -(total_grads * per_grad)
+            grad_spacing_ws = candidate_spacing_5
+            steps_per_major_grad = 2 # Use 2 steps per major interval (e.g., 0 to 10, spaced by 5)
+            mid_step_index = None    # No intermediate tick needed
+
+        # Determine the dynamic world-space extent based on screen diagonal and factor.
+        dynamic_axis_extent_ws = screen_context.get_scene_diagonal_ws() * self.factor / 2
+
+        # Calculate how many intervals fit in half the extent.
+        num_intervals_half_axis = (int(dynamic_axis_extent_ws // grad_spacing_ws) // 10) * 10
+        curr_pos = -(num_intervals_half_axis * grad_spacing_ws)
+
         gl.glLineWidth(self.grad_line_width_px)
-        for j in range(total_grads * 2):
-            gl.glBegin(gl.GL_LINES)
-            for i, axis, grad_dir in zip((0, 1, 2), self.AXES, self.GRAD_DIR):
+        # Loop through calculated number of intervals for both negative and positive sides.
+        gl.glBegin(gl.GL_LINES)
+        for interval_index in range(num_intervals_half_axis * 2): # Iterate interval count
+            # Select tick height based on position relative to major/mid steps
+            if interval_index % steps_per_major_grad == 0: # Major tick
+                current_tick_height_ws = tick_heights_ws[2]
+            elif mid_step_index is not None and interval_index % mid_step_index == 0: # Mid tick
+                current_tick_height_ws = tick_heights_ws[1]
+            else: # Minor tick
+                current_tick_height_ws = tick_heights_ws[0]
+
+            for axis_idx, axis, grad_dir in zip((0, 1, 2), self.AXES, self.GRAD_DIR):
                 start_pos = curr_pos * axis
-                if j % num_grads == 0:
-                    tick_size = grad_heights[2]
-                elif mid_grad is not None and j % mid_grad == 0:
-                    tick_size = grad_heights[1]
-                else:
-                    tick_size = grad_heights[0]
-                end_pos = start_pos + grad_dir * tick_size
-                
-                gl.glColor3f(*self.grad_colors[i])
+                end_pos = start_pos + grad_dir * current_tick_height_ws
+
+                gl.glColor3f(*self.grad_colors[axis_idx])
                 gl.glVertex3f(*start_pos)
                 gl.glVertex3f(*end_pos)
-            gl.glEnd()
-            curr_pos += per_grad
-        
-        
+            curr_pos += grad_spacing_ws # Increment world position
+        gl.glEnd()
 
     def draw_axes(self, viewer: ViewerBase, screen_context: ScreenContext):
         try:
@@ -154,8 +163,7 @@ class AxesRenderer:
             if length <= 0:
                 length = 1.0  # Default length if diagonal is zero or negative
                 print("Warning: Scene diagonal is zero or negative, using default length of 1.0")
-            else:
-                print(f"{length = }")
+
 
             # Store current OpenGL state
             lighting_enabled = gl.glIsEnabled(gl.GL_LIGHTING)
