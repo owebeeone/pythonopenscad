@@ -14,7 +14,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 try:
     import manifold3d as m3d
     from pythonopenscad.m3dapi import M3dRenderer
-    from pythonopenscad.viewer.viewer import Model, Viewer, is_opengl_available
+    from pythonopenscad.viewer.viewer import Model, Viewer
 except ImportError as e:
     print(f"Failed to import required modules: {e}")
     print("Make sure manifold3d, PyOpenGL, and PyGLM are installed.")
@@ -98,12 +98,6 @@ def apply_translations(models, positions):
         model._compute_bounding_box()
 
 def main():
-    """Main function."""
-    if not is_opengl_available():
-        print("OpenGL is not available. Please install PyOpenGL and PyGLM.")
-        print("Try: pip install PyOpenGL PyOpenGL-accelerate PyGLM")
-        return
-    
     # Create M3d models and get their positions
     models= create_m3d_example_models()
     

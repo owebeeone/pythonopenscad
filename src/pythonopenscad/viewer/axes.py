@@ -5,6 +5,8 @@ import numpy as np
 
 import OpenGL.GL as gl
 
+from pythonopenscad.viewer.viewer_base import ViewerBase
+
 
 @datatree
 class AxesRenderer:
@@ -23,12 +25,12 @@ class AxesRenderer:
         np.array([0.0, 0.0, 1.0]),
     ]
 
-    def draw(self, viewer: "Viewer"):
+    def draw(self, viewer: ViewerBase):
         """Draw the axes lines."""
 
         self.draw_axes(viewer)
 
-    def draw_axes(self, viewer: "Viewer"):
+    def draw_axes(self, viewer: ViewerBase):
         try:
             win_xy = np.asarray(viewer.get_current_window_dims())
 

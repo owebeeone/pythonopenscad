@@ -4,7 +4,7 @@ import os
 
 # Try to import the viewer module
 try:
-    from pythonopenscad.viewer.viewer import Model, Viewer, BoundingBox, is_opengl_available
+    from pythonopenscad.viewer.viewer import Model, Viewer, BoundingBox
     HAS_VIEWER = True
 except ImportError:
     HAS_VIEWER = False
@@ -49,7 +49,6 @@ def test_bounding_box():
     np.testing.assert_array_equal(union_bbox.min_point, np.array([-1.0, -2.0, -3.0]))
     np.testing.assert_array_equal(union_bbox.max_point, np.array([10.0, 10.0, 10.0]))
 
-@pytest.mark.skipif(not is_opengl_available(), reason="OpenGL not available")
 def test_model_creation():
     """Test Model creation with triangle data."""
     # Create a simple triangle
@@ -83,7 +82,6 @@ def test_model_creation():
     # Cleanup
     model.delete()
 
-@pytest.mark.skipif(not is_opengl_available(), reason="OpenGL not available")
 def test_viewer_creation():
     """Test Viewer creation with a model."""
     # Skip if running in CI environment

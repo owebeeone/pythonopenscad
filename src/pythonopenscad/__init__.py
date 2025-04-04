@@ -122,8 +122,7 @@ try:
         BoundingBox,
         Model,
         Viewer,
-        create_viewer_with_models,
-        is_opengl_available
+        create_viewer_with_models
     )
     HAS_VIEWER = True
 except ImportError:
@@ -247,6 +246,5 @@ if HAS_VIEWER:
         "BoundingBox",
         "Model",
         "Viewer",
-        "create_viewer_with_models",
-        "is_opengl_available"
+        "create_viewer_with_models"
     ])

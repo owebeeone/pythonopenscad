@@ -12,7 +12,7 @@ import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 try:
-    from pythonopenscad.viewer.viewer import Model, Viewer, is_opengl_available
+    from pythonopenscad.viewer.viewer import Model, Viewer
 except ImportError:
     print("Failed to import viewer module. Make sure PyOpenGL and PyGLM are installed.")
     print("Try: pip install PyOpenGL PyOpenGL-accelerate PyGLM")
@@ -186,11 +186,6 @@ def create_torus_data(major_radius=1.0, minor_radius=0.3, color=(0.8, 0.2, 0.2, 
     return np.array(indexed_vertex_data, dtype=np.float32)
 
 def main():
-    """Main function."""
-    if not is_opengl_available():
-        print("OpenGL is not available. Please install PyOpenGL and PyGLM.")
-        print("Try: pip install PyOpenGL PyOpenGL-accelerate PyGLM")
-        return
     
     # Create vertex data for our models
     cube_data = create_cube_data(size=1.0, color=(0.0, 0.7, 0.2, 1.0))

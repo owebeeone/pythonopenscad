@@ -9,7 +9,7 @@ from pythonopenscad.modifier import DEBUG, DISABLE, SHOW_ONLY, PoscRendererBase
 
 try:
     from pythonopenscad.m3dapi import M3dRenderer
-    from pythonopenscad.viewer.viewer import Model, Viewer, is_opengl_available
+    from pythonopenscad.viewer.viewer import Model, Viewer
 except ImportError as e:
     print(f"Failed to import required modules: {e}")
     print("Make sure manifold3d, PyOpenGL, and PyGLM are installed.")
@@ -194,16 +194,9 @@ class PrimitiveCreator(PrimitiveCreatorBase):
         return self.get_solid_model() + self.get_shell_model()
 
 
-def main():
-    # --- Initialize GLUT and request display mode early --- 
-    if is_opengl_available():
-        try:
-            Viewer._init_glut()
-        except Exception as e:
-            print(f"Warning: Early GLUT initialization failed: {e}")
-            # Continue anyway, viewer creation might still work or provide errors
-    # ----------------------------------------------------
-    
+def main():    
+    #Viewer._init_glut()
+
     # Create the models
     models = PrimitiveCreator().create_primitive_models()
 

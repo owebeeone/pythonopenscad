@@ -28,9 +28,11 @@ import OpenGL.GLUT as glut
 import OpenGL.GLU as glu
 import glm
 
+from pythonopenscad.viewer.viewer_base import ViewerBase
+
 
 @datatree
-class Viewer:
+class Viewer(ViewerBase):
     """OpenGL viewer for 3D models."""
 
     models: list[Model]
@@ -901,9 +903,7 @@ class Viewer:
                     glm.vec3(0.0, 0.0, 0.0),  # Look at origin
                     glm.vec3(0.0, 1.0, 0.0),  # Up vector
                 )
-                projection = glm.perspective(
-                    glm.radians(45.0), self.width / self.height, 0.1, 100.0
-                )
+                projection = self.get_projection_mat()
                 mvp = projection * view * model
 
                 # Set the uniform
@@ -1189,6 +1189,12 @@ class Viewer:
                 0.1, 1000.0 # Use same near/far as perspective for consistency
             )
         return projection
+    
+    def get_model_mat(self) -> glm.mat4:
+        return glm.mat4(*self.model_matrix.flatten())
+    
+    def get_view_mat(self) -> glm.mat4:
+        return glm.lookAt(self.camera_pos, self.camera_pos + self.camera_front, self.camera_up)
 
     def _setup_view(self):
         """Set up the view transformation for rendering."""
@@ -1241,8 +1247,8 @@ class Viewer:
                     gl.glUniform3f(view_pos_loc, self.camera_pos.x, self.camera_pos.y, self.camera_pos.z)
 
                 # Set up model-view-projection matrices
-                model_mat = glm.mat4(*self.model_matrix.flatten())
-                view = glm.lookAt(self.camera_pos, self.camera_pos + self.camera_front, self.camera_up)
+                model_mat = self.get_model_mat()
+                view = self.get_view_mat()
                 # projection is calculated above using get_projection_mat()
 
                 # Send matrices to the shader
@@ -1731,27 +1737,6 @@ class Viewer:
         # Request redisplay
         if self.window_id:
             glut.glutPostRedisplay()
-
-    def get_view_to_world_matrix(self) -> np.ndarray:
-        """Calculate and return the view-to-world transformation matrix."""
-        try:
-            # Calculate the view matrix (world-to-view)
-            view_matrix = glm.lookAt(
-                self.camera_pos, self.camera_pos + self.camera_front, self.camera_up
-            )
-
-            # Invert the view matrix to get view-to-world
-            view_to_world_matrix = glm.inverse(view_matrix)
-
-            # Convert GLM matrix to NumPy array
-            # GLM stores matrices column-major, so we need to transpose after reshaping
-            np_matrix = np.array(view_to_world_matrix, dtype=np.float32).reshape(4, 4).T
-            return np_matrix
-
-        except Exception as e:
-            if PYOPENGL_VERBOSE:
-                print(f"Viewer: Error calculating view-to-world matrix: {e}")
-            return np.eye(4, dtype=np.float32)  # Return identity on error
 
     def get_current_window_dims(self) -> Tuple[int, int]:
         """Get the current dimensions (width, height) of the viewer window."""
@@ -2447,13 +2432,6 @@ def create_viewer_with_models(models, width=800, height=600, title="3D Viewer"):
     """Create and return a viewer with the given models."""
     viewer = Viewer(models, width, height, title)
     return viewer
-
-
-# Helper function to check if OpenGL is available
-def is_opengl_available():
-    """Check if OpenGL libraries are available."""
-    return True
-
 
 def get_opengl_capabilities(gl_ctx: GLContext):
     """Get a dictionary describing the available OpenGL capabilities."""
