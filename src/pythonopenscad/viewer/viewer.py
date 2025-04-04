@@ -2,7 +2,7 @@
 
 import numpy as np
 import ctypes
-from typing import Any, Iterable, List, Optional, Tuple, Union, Dict, Callable, ClassVar
+from typing import Any, Iterable, Iterator, List, Optional, Tuple, Union, Dict, Callable, ClassVar
 from datatrees import datatree, dtfield, Node
 import warnings
 import sys
@@ -2395,7 +2395,52 @@ def toggle_projection(viewer: Viewer):
         viewer.projection_mode = 'perspective'
         if PYOPENGL_VERBOSE: print("Viewer: Switched to Perspective projection")
     glut.glutPostRedisplay()
+    
+    
+@datatree
+class TestKeybindings:
+    secs: float = dtfield(default=2)
+    viewer: Viewer = dtfield(default=None, init=False)
+    _cycle: Iterator = dtfield(default=None, init=False) 
+    skip_keys: Tuple[bytes, ...] = (b'*', b'&', b'\x1b')
+    
+    def do_cycle(self, viewer: Viewer):
+        if self._cycle is None:
+            self._cycle = iter(KEY_BINDINGS.items())
+        self.viewer = viewer
+        
+    def run_next(self, val):
+        if self._cycle is None:
+            return
+        try:
+            while True:
+                key, func = next(self._cycle)
+                if key in self.skip_keys:
+                    continue
+                glut.glutTimerFunc(self.getGlutTime(), self.run_next, 0)
+                print(f"Running '{str(key)}'")
+                func(self.viewer)
+                break
+        except StopIteration:
+            self._cycle = None
 
+    def getGlutTime(self) -> int:
+        return int(self.secs * 1000)
+        
+def run_test_keybindings(viewer: Viewer, secs: float = 2):
+    print("Running a test for all the keybindings")
+    test_keybindings = TestKeybindings(secs=secs)
+    test_keybindings.do_cycle(viewer)
+    glut.glutTimerFunc(test_keybindings.getGlutTime(), test_keybindings.run_next, 0)
+    
+
+@keybinding(b'*')
+def run_test_keybindings_key_fast(viewer: Viewer):
+    run_test_keybindings(viewer, secs=0.1)
+
+@keybinding(b'&')
+def run_test_keybindings_key_slow(viewer: Viewer):
+    run_test_keybindings(viewer, secs=2)
 
 # Helper function to create a viewer with models
 def create_viewer_with_models(models, width=800, height=600, title="3D Viewer"):
