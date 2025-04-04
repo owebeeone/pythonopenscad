@@ -95,14 +95,15 @@ def create_colored_test_cube(size: float = 2.0) -> Model:
         [1, 0, 0]    # right - cyan
     ]
     
+    alpha = 0.2
     # Bright colors for each face
     colors = [
-        [1.0, 0.0, 0.0, 1.0],  # red - back
-        [0.0, 1.0, 0.0, 1.0],  # green - front
-        [0.0, 0.0, 1.0, 1.0],  # blue - bottom
-        [1.0, 1.0, 0.0, 1.0],  # yellow - top
-        [1.0, 0.0, 1.0, 1.0],  # magenta - left
-        [0.0, 1.0, 1.0, 1.0]   # cyan - right
+        [1.0, 0.0, 0.0, alpha],  # red - back
+        [0.0, 1.0, 0.0, alpha],  # green - front
+        [0.0, 0.0, 1.0, alpha],  # blue - bottom
+        [1.0, 1.0, 0.0, alpha],  # yellow - top
+        [1.0, 0.0, 1.0, alpha],  # magenta - left
+        [0.0, 1.0, 1.0, alpha]   # cyan - right
     ]
     
     # Face definitions (vertices comprising each face)

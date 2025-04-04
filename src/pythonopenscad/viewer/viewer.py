@@ -94,6 +94,7 @@ class Viewer(ViewerBase):
         """
         Initialize the viewer.
         """
+        PYOPENGL_VERBOSE = True
 
         # Initialize projection mode and scale using defaults or passed values
         # The dtfield defaults handle this, no extra code needed here unless
