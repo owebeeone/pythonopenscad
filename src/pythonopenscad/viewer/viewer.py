@@ -46,6 +46,7 @@ class Viewer(ViewerBase):
     bounding_box_mode: int = 0  # 0: off, 1: wireframe, 2: solid
     zbuffer_occlusion: bool = True
     antialiasing_enabled: bool = True  # Added antialiasing state
+    show_axes: bool = True
 
     background_color: Tuple[float, float, float, float] = (0.98, 0.98, 0.85, 1.0)
 
@@ -76,6 +77,9 @@ class Viewer(ViewerBase):
      X - Toggle bounding box (off/wireframe/solid)
      S - Save screenshot
      ESC - Close viewer
+     + - Toggle axes visibility
+     G - Toggle axes graduation ticks
+     V - Toggle axes graduation values
     """
 
     # Static window registry to handle GLUT callbacks
@@ -1146,7 +1150,8 @@ class Viewer(ViewerBase):
                     self._render_absolute_fallback()
 
             # Draw axes on top before swapping
-            self.axes_renderer.draw(self)
+            if self.show_axes:
+                self.axes_renderer.draw(self)
 
             # Swap buffers
             glut.glutSwapBuffers()
@@ -2021,7 +2026,8 @@ class Viewer(ViewerBase):
                 self._draw_bounding_box()
 
                 # Draw axes (uses immediate mode)
-                self.axes_renderer.draw(self)
+                if self.show_axes:
+                    self.axes_renderer.draw(self)
 
             except Exception as render_err:
                 # Handle rendering errors specifically
@@ -2426,6 +2432,30 @@ def run_test_keybindings_key_fast(viewer: Viewer):
 def run_test_keybindings_key_slow(viewer: Viewer):
     run_test_keybindings(viewer, secs=2)
 
+@keybinding(b'+')
+def toggle_axes_visibility(viewer: Viewer):
+    """Toggle the visibility of the main axes lines."""
+    viewer.show_axes = not viewer.show_axes
+    if PYOPENGL_VERBOSE:
+        print(f"Viewer: Axes visibility set to {viewer.show_axes}")
+    glut.glutPostRedisplay()
+
+@keybinding(b'g')
+def toggle_graduation_ticks(viewer: Viewer):
+    """Toggle the visibility of the graduation ticks on the axes."""
+    viewer.axes_renderer.show_graduation_ticks = not viewer.axes_renderer.show_graduation_ticks
+    if PYOPENGL_VERBOSE:
+        print(f"Viewer: Graduation ticks visibility set to {viewer.axes_renderer.show_graduation_ticks}")
+    glut.glutPostRedisplay()
+
+@keybinding(b'v')
+def toggle_graduation_values(viewer: Viewer):
+    """Toggle the visibility of the graduation values (text) on the axes."""
+    viewer.axes_renderer.show_graduation_values = not viewer.axes_renderer.show_graduation_values
+    if PYOPENGL_VERBOSE:
+        print(f"Viewer: Graduation values visibility set to {viewer.axes_renderer.show_graduation_values}")
+    glut.glutPostRedisplay()
+
 # Helper function to create a viewer with models
 def create_viewer_with_models(models, width=800, height=600, title="3D Viewer"):
     """Create and return a viewer with the given models."""
@@ -2508,3 +2538,4 @@ if __name__ == "__main__":
     finally:
         # Ensure proper cleanup
         Viewer.terminate()
+
