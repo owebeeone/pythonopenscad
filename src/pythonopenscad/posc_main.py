@@ -286,7 +286,7 @@ if __name__ == "__main__":
             "--view",       # Action: View the models
             "--scad",       # Action: Export SCAD
             "--stl",        # Action: Export STL
-            "--png",        # Action: Save PNG (will show TODO)
+            "--png",        # Action: Save PNG
             "--no-wireframe",  # Viewer option
             "--bg-color", "1,1,1,1.0", # Viewer option
             "--projection", "orthographic", # Viewer option

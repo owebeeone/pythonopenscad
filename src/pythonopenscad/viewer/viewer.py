@@ -47,6 +47,7 @@ class Viewer(ViewerBase):
     zbuffer_occlusion: bool = True
     antialiasing_enabled: bool = True  # Added antialiasing state
     show_axes: bool = True
+    edge_rotations: bool = False
 
     background_color: Tuple[float, float, float, float] = (0.98, 0.98, 0.85, 1.0)
 
@@ -76,10 +77,11 @@ class Viewer(ViewerBase):
      R - Reset view
      X - Toggle bounding box (off/wireframe/solid)
      S - Save screenshot
-     ESC - Close viewer
      + - Toggle axes visibility
      G - Toggle axes graduation ticks
      V - Toggle axes graduation values
+     E - Toggle edge effect rotation interaction
+     ESC - Close viewer
     """
 
     # Static window registry to handle GLUT callbacks
@@ -1342,6 +1344,19 @@ class Viewer(ViewerBase):
                 self.mouse_start_y = y
             elif state == glut.GLUT_UP:
                 self.right_button_pressed = False
+                
+    def relative_distance_from_screen_centre(self, x, y) \
+        -> tuple[float, float, float]:
+        # Get the window dimensions
+        width = glut.glutGet(glut.GLUT_WINDOW_WIDTH)
+        height = glut.glutGet(glut.GLUT_WINDOW_HEIGHT)
+        rel_x = 2* (x / width - 0.5)
+        rel_y = 2* (0.5 - y / height)
+        
+        rel_len = np.sqrt(rel_x * rel_x + rel_y * rel_y)
+        
+        return rel_x, rel_y, rel_len
+        
 
     def _motion_callback(self, x, y):
         """GLUT mouse motion callback."""
@@ -1349,20 +1364,15 @@ class Viewer(ViewerBase):
             # Handle rotation
             dx = x - self.mouse_start_x
             dy = y - self.mouse_start_y
+            
             self.mouse_start_x = x
             self.mouse_start_y = y
 
-            # Skip tiny movements to prevent division by zero
-            if abs(dx) < 1 and abs(dy) < 1:
-                return
-
             # Update rotation angles
             sensitivity = 0.5
-            dx *= sensitivity
-            dy *= sensitivity
 
             # Create a rotation vector
-            vec = linear.GVector((dy, dx, 0))
+            vec = linear.GVector((dy, dx, 0)) * sensitivity
             veclen = vec.length()
 
             # Only rotate if we have a meaningful rotation angle
@@ -1370,10 +1380,29 @@ class Viewer(ViewerBase):
                 try:
                     # Safely calculate normalized vector
                     unitvec = linear.GVector(vec.v[0:3] / veclen)
+                    edge_matrix = linear.IDENTITY
+                    if self.edge_rotations:
+                        # Attempt to improve rotation functionality - it's a TODO.
+                        try:
+                            rel_x, rel_y, rel_len = \
+                                self.relative_distance_from_screen_centre(x, y)
+                                
+                            if rel_len < 0.1:
+                                rel_len = 0
+                            else:
+                                rel_len = rel_len - 0.1
+                            edge_sensitivity = 1
+                            edge_vec = linear.GVector((rel_y, rel_x, 0))
+                            
+                            edge_matrix = linear.rotV(edge_vec,  rel_len * edge_sensitivity)
+                            
+                        except Exception as e:
+                            print(f"Broke edge_rotation {e} - turn it off with 'E'")
+                
 
                     # Apply rotation to model matrix
-                    rotation_matrix = linear.rotV(unitvec, -veclen).A
-                    self.model_matrix = self.model_matrix @ rotation_matrix
+                    rotation_matrix = edge_matrix * linear.rotV(unitvec, -veclen)
+                    self.model_matrix = self.model_matrix @ rotation_matrix.A
 
                 except (ZeroDivisionError, RuntimeWarning, ValueError) as e:
                     if PYOPENGL_VERBOSE:
@@ -2454,6 +2483,14 @@ def toggle_graduation_values(viewer: Viewer):
     viewer.axes_renderer.show_graduation_values = not viewer.axes_renderer.show_graduation_values
     if PYOPENGL_VERBOSE:
         print(f"Viewer: Graduation values visibility set to {viewer.axes_renderer.show_graduation_values}")
+    glut.glutPostRedisplay()
+    
+@keybinding(b'e')
+def toggle_edge_effect_rotations(viewer: Viewer):
+    """Toggles behaviour of rotations at the edge of the window."""
+    viewer.edge_rotations = not viewer.edge_rotations
+    if PYOPENGL_VERBOSE:
+        print(f"Viewer: Edge rotations set or {viewer.edge_rotations}")
     glut.glutPostRedisplay()
 
 # Helper function to create a viewer with models

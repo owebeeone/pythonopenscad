@@ -35,13 +35,12 @@ class AxesRenderer:
 
     show_graduation_ticks: bool = True
     show_graduation_values: bool = True
-    factor: float = 3  # Length of axes relative to scene diagonal
+    factor: float = 1  # Length of axes relative to scene diagonal
     color: Tuple[float, float, float] = (0.0, 0.0, 0.0)  # Color for the axes lines
     line_width_px: float = 1.5  # Line width for the axes
     grad_line_width_px: float = 1.3  # Line width for the graduations
-    dash_ratio: float = 0.6  # Ratio of dash length to total dash+space (for negative axes)
-    stipple_factor: int = 4  # Scaling factor for the dash pattern
-    negative_stipple_pattern: int = 0xAAAA
+    stipple_factor: int = 4  # Scaling factor for the dash pattern negtive of axes.
+    negative_stipple_pattern: int = 0xAAAA  # For negative side of axes.
     
     grad_tick_size_px: list[float] = (10, 20, 25) # Size of the graduations in pixels
     grad_size_px_min: float = 9 # Min space between graduations
