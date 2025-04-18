@@ -358,6 +358,7 @@ class RenderContext(Generic[TM3d]):
         )
 
     def transform(self, transform: np.ndarray) -> Self:
+        transform = np.asarray(transform)
         if transform.shape == (4, 4):
             # assert the bottom row is [0, 0, 0, 1]
             assert np.allclose(transform[-1], [0, 0, 0, 1])
@@ -715,6 +716,7 @@ class RenderStateCheckCrossSection(RenderStateCheck[RenderContextCrossSection]):
 @dataclass
 class RendererState:
     skip_rest: bool = False
+    render_cache: dict[str, RenderContext] = field(default_factory=dict)
 
     def is_skip_rest(self) -> bool:
         return self.skip_rest
@@ -722,6 +724,12 @@ class RendererState:
     def mark_skip_rest(self) -> Self:
         self.skip_rest = True
         return self
+    
+    def cache_fetch(self, uid: str) -> RenderContext:
+        return self.render_cache.get(uid)
+    
+    def cache_put(self, uid: str, val: RenderContext):
+        self.render_cache[str] = val
 
 
 @dataclass(frozen=True)
@@ -736,6 +744,11 @@ class M3dRenderer(RendererBase):
     def renderChildren(
         self, posc_obj: PoscRendererBase
     ) -> list[RenderContextManifold | RenderContextCrossSection]:
+        
+        cache_entry = self.state.cache_fetch(posc_obj.uid)
+        if cache_entry is not None:
+            return cache_entry
+        
         if self.is_skip_rest():
             return []
 
@@ -1022,7 +1035,7 @@ class M3dRenderer(RendererBase):
         self, ops: list[RenderContextManifold | RenderContextCrossSection]
     ) -> RenderContextManifold | RenderContextCrossSection:
         if len(ops) == 0:
-            raise ValueError("Must specify at least one other render context")
+            return RenderContextManifold(self)
 
         if len(ops) == 1:
             return ops[0]
@@ -1043,7 +1056,7 @@ class M3dRenderer(RendererBase):
         self, ops: list[RenderContextManifold | RenderContextCrossSection]
     ) -> RenderContextManifold | RenderContextCrossSection:
         if len(ops) == 0:
-            raise ValueError("Must specify at least one other render context")
+            return RenderContextManifold(self)
 
         if len(ops) == 1:
             return ops[0]
@@ -1191,6 +1204,12 @@ class M3dRenderer(RendererBase):
 
         contours = [points[path] for path in paths]
         cross_section = m3d.CrossSection(contours, m3d.FillRule.Positive)
+        
+        if cross_section.is_empty():
+            # Auto-fix for AnchorSCAD Paths may be incorrectly ordered.
+            # TODO: This should be explicitly requested rather than auto-fixing.
+            new_contours = [c[::-1] for c in contours]
+            cross_section = m3d.CrossSection(new_contours, m3d.FillRule.Positive)
 
         return RenderContextCrossSection(self, solid_objs=(cross_section,))
 
@@ -1412,7 +1431,7 @@ class M3dRenderer(RendererBase):
         return RenderContextCrossSection(self, solid_objs=(result_cross_section,))
 
     def _color_renderer(
-        self, c: str | np.ndarray | None = None, alpha: float | None = None
+        self, c: str | np.ndarray | list[float] | None = None, alpha: float | None = None
     ) -> Self:
         if c is None:
             if alpha is None:
@@ -1438,6 +1457,17 @@ class M3dRenderer(RendererBase):
                 c = np.concatenate((c, [alpha]))
             elif c.shape != (4,):
                 raise ValueError("Color must be a 3 or 4 element numpy array")
+        elif isinstance(c, list):
+            if len(c) == 3:
+                if alpha is None:
+                    alpha = 1.0
+                if alpha > 1.0 or alpha < 0.0:
+                    raise ValueError("Alpha must be between 0.0 and 1.0")
+                c = list(c)
+                c.append(alpha)
+                c = np.asarray(c)
+            elif len(c) != 4:
+                raise ValueError(f"Color must be a 3 or 4 element numpy array, got {len(c)=}")
         else:
             raise ValueError("Color must be a string or a numpy array")
 

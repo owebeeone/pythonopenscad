@@ -130,8 +130,24 @@ class PoscModifiers(PoscMetadataBase):
         return self
     
 
+class UidGen:
+    """Basic id generator class"""
+    curid: int = 1
+    
+    def genid(self):
+        self.curid += 1
+        return str(self.curid)
+_UIDGENNY = UidGen()
+
+@dataclass
 class PoscRendererBase(PoscModifiers):
     """Base class for renderer interfaces."""
+    
+    @property
+    def uid(self) -> str:
+        if not hasattr(self, "_uid"):
+            self._uid = _UIDGENNY.genid()
+        return self._uid
     
     def children(self) -> list["PoscRendererBase"]:
         # This should be implemented in PoscParentBase. Illegal to call on
