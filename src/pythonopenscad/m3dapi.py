@@ -1,6 +1,6 @@
 from dataclasses import dataclass, field, replace
 from itertools import chain
-from typing import Any, Callable, Generic, Iterable, Self, TypeVar
+from typing import Callable, Generic, Iterable, TypeVar
 import manifold3d as m3d
 import numpy as np
 import mapbox_earcut
@@ -348,7 +348,7 @@ class RenderContext(Generic[TM3d]):
     solid_objs: tuple[TM3d, ...] = ()
     shell_objs: tuple[TM3d, ...] = ()
 
-    def as_transparent(self) -> Self:
+    def as_transparent(self) -> 'RenderContext':
         """Applies the OpenSCAD % modifier."""
         return RenderContext(
             api=self.api,
@@ -357,7 +357,7 @@ class RenderContext(Generic[TM3d]):
             shell_objs=self.shell_objs + self.solid_objs,
         )
 
-    def transform(self, transform: np.ndarray) -> Self:
+    def transform(self, transform: np.ndarray) -> 'RenderContext':
         transform = np.asarray(transform)
         if transform.shape == (4, 4):
             # assert the bottom row is [0, 0, 0, 1]
@@ -371,12 +371,12 @@ class RenderContext(Generic[TM3d]):
         cls = type(self)
         return cls(self.api, new_transform, self.solid_objs, self.shell_objs)
 
-    def translate(self, v: np.ndarray) -> Self:
+    def translate(self, v: np.ndarray) -> 'RenderContext':
         return self.transform(
             np.array([[1, 0, 0, v[0]], [0, 1, 0, v[1]], [0, 0, 1, v[2]], [0, 0, 0, 1]])
         )
 
-    def rotate(self, a: float | np.ndarray, v: np.ndarray | None = None) -> Self:
+    def rotate(self, a: float | np.ndarray, v: np.ndarray | None = None) -> 'RenderContext':
         if is_iterable(a):
             if v is not None:
                 raise ValueError("Cannot specify both a vector and v for rotation")
@@ -388,10 +388,10 @@ class RenderContext(Generic[TM3d]):
             transform = _rotVSinCos(v, *_exactSinCos(a))
             return self.transform(transform)
 
-    def mirror(self, normal: np.ndarray) -> Self:
+    def mirror(self, normal: np.ndarray) -> 'RenderContext':
         return RenderContext(self.api, self.manifold.mirror(_make_array(normal, np.float64)))
 
-    def property(self, property_values: NpArray[np.float32], idx: int = 3) -> Self:
+    def property(self, property_values: NpArray[np.float32], idx: int = 3) -> 'RenderContext':
         # TODO: Implement this
         pass
 
@@ -421,7 +421,7 @@ class RenderContext(Generic[TM3d]):
         return result_manifs
 
     def _apply_and_merge_helper(
-        self, other: Self
+        self, other: 'RenderContext'
     ) -> tuple[tuple[TM3d], tuple[TM3d], tuple[TM3d], tuple[TM3d]]:
         solids = self._apply_and_merge(self.get_solids)
         shells = self._apply_and_merge(self.get_shells)
@@ -430,13 +430,13 @@ class RenderContext(Generic[TM3d]):
 
         return solids, shells, other_solids, other_shells
 
-    def union(self, other: Self) -> Self:
+    def union(self, other: 'RenderContext') -> 'RenderContext':
         solids, shells, other_solids, other_shells = self._apply_and_merge_helper(other)
 
         cls = type(self)
         return cls(self.api, IDENTITY_TRANSFORM, solids + other_solids, shells + other_shells)
 
-    def intersect(self, other: Self) -> Self:
+    def intersect(self, other: 'RenderContext') -> 'RenderContext':
         solids, shells, other_solids, other_shells = self._apply_and_merge_helper(other)
 
         if solids and other_solids:
@@ -455,7 +455,7 @@ class RenderContext(Generic[TM3d]):
         cls = type(self)
         return cls(self.api, IDENTITY_TRANSFORM, result_solids, result_shells)
 
-    def difference(self, other: Self) -> Self:
+    def difference(self, other: 'RenderContext') -> 'RenderContext':
         solids, shells, other_solids, other_shells = self._apply_and_merge_helper(other)
 
         if solids and other_solids:
@@ -525,7 +525,7 @@ class RenderContext(Generic[TM3d]):
 
         return newscale
 
-    def resize(self, newsize: np.ndarray, auto: np.ndarray | bool) -> Self:
+    def resize(self, newsize: np.ndarray, auto: np.ndarray | bool) -> 'RenderContext':
         newscale: np.ndarray = self.getResizeScale(newsize, auto)
         # Create a scaling transformation matrix.
         transform = np.array([
@@ -537,14 +537,14 @@ class RenderContext(Generic[TM3d]):
 
         return self.transform(transform)
 
-    def scale(self, v: np.ndarray | float) -> Self:
+    def scale(self, v: np.ndarray | float) -> 'RenderContext':
         if is_iterable(v):
             xform = np.array([[v[0], 0, 0, 0], [0, v[1], 0, 0], [0, 0, v[2], 0], [0, 0, 0, 1]])
         else:
             xform = np.array([[v, 0, 0, 0], [0, v, 0, 0], [0, 0, v, 0], [0, 0, 0, 1]])
         return self.transform(xform)
 
-    def to_single_solid(self) -> Self:
+    def to_single_solid(self) -> 'RenderContext':
         solids = self._apply_and_merge(self.get_solids)
         shells = self._apply_and_merge(self.get_shells)
         cls = type(self)
@@ -575,11 +575,11 @@ class RenderContextManifold(RenderContext[m3d.Manifold]):
             api=api, transform_mat=IDENTITY_TRANSFORM, solid_objs=(manifold,)
         )
 
-    def with_solid(self, manifold: m3d.Manifold) -> Self:
+    def with_solid(self, manifold: m3d.Manifold) -> 'RenderContext':
         solids, shells = self._apply_transforms()
         return RenderContextManifold(self.api, self.transform_mat, solids + (manifold,), shells)
 
-    def with_shell(self, manifold: m3d.Manifold) -> Self:
+    def with_shell(self, manifold: m3d.Manifold) -> 'RenderContext':
         solids, shells = self._apply_transforms()
         return RenderContextManifold(self.api, self.transform_mat, solids, shells + (manifold,))
 
@@ -721,7 +721,7 @@ class RendererState:
     def is_skip_rest(self) -> bool:
         return self.skip_rest
 
-    def mark_skip_rest(self) -> Self:
+    def mark_skip_rest(self) -> 'RendererState':
         self.skip_rest = True
         return self
     
@@ -766,7 +766,7 @@ class M3dRenderer(RendererBase):
             child_contexts.append(child_ctxt)
         return child_contexts
 
-    def mark_skip_rest(self) -> Self:
+    def mark_skip_rest(self) -> 'M3dRenderer':
         self.state.mark_skip_rest()
         return self
 
@@ -781,7 +781,7 @@ class M3dRenderer(RendererBase):
         new_shells = tuple(self._apply_alpha(0.5, solid) for solid in ctxt.get_solids())
         return replace(ctxt, shell_objs=new_shells + ctxt.get_shells(), solid_objs=())
 
-    def with_color(self, color: np.ndarray | list[float]) -> Self:
+    def with_color(self, color: np.ndarray | list[float]) -> 'M3dRenderer':
         """Returns a new renderer with the specified color and alpha."""
         if not isinstance(color, np.ndarray):
             color = np.array(color)
@@ -1432,7 +1432,7 @@ class M3dRenderer(RendererBase):
 
     def _color_renderer(
         self, c: str | np.ndarray | list[float] | None = None, alpha: float | None = None
-    ) -> Self:
+    ) -> 'M3dRenderer':
         if c is None:
             if alpha is None:
                 raise ValueError("Both color and alpha cannot be None")
@@ -1484,15 +1484,15 @@ class M3dRenderer(RendererBase):
             new_renderer, posc_obj, lambda objs: self._union(objs)
         )
 
-    def translate(self, posc_obj: PoscRendererBase, v: np.ndarray) -> Self:
+    def translate(self, posc_obj: PoscRendererBase, v: np.ndarray) -> 'M3dRenderer':
         return RenderStateCheckManifold.check(self, posc_obj, lambda ops: self._translate(ops, v))
 
-    def _translate(self, ops: list[RenderContextCrossSection], v: np.ndarray) -> Self:
+    def _translate(self, ops: list[RenderContextCrossSection], v: np.ndarray) -> 'M3dRenderer':
         return self._union(ops).translate(v)
 
     def rotate(
         self, posc_obj: PoscRendererBase, a: float | np.ndarray, v: np.ndarray | None = None
-    ) -> Self:
+    ) -> 'M3dRenderer':
         return RenderStateCheckManifold.check(self, posc_obj, lambda ops: self._rotate(ops, a, v))
 
     def _rotate(
@@ -1500,31 +1500,31 @@ class M3dRenderer(RendererBase):
         ops: list[RenderContextCrossSection],
         a: float | np.ndarray,
         v: np.ndarray | None = None,
-    ) -> Self:
+    ) -> 'M3dRenderer':
         return self._union(ops).rotate(a, v)
 
-    def scale(self, posc_obj: PoscRendererBase, v: np.ndarray) -> Self:
+    def scale(self, posc_obj: PoscRendererBase, v: np.ndarray) -> 'M3dRenderer':
         return RenderStateCheckManifold.check(self, posc_obj, lambda ops: self._scale(ops, v))
 
-    def _scale(self, ops: list[RenderContextCrossSection], v: np.ndarray) -> Self:
+    def _scale(self, ops: list[RenderContextCrossSection], v: np.ndarray) -> 'M3dRenderer':
         return self._union(ops).scale(v)
 
-    def resize(self, posc_obj: PoscRendererBase, v: np.ndarray) -> Self:
+    def resize(self, posc_obj: PoscRendererBase, v: np.ndarray) -> 'M3dRenderer':
         return RenderStateCheckManifold.check(self, posc_obj, lambda ops: self._resize(ops, v))
 
-    def _resize(self, ops: list[RenderContextCrossSection], v: np.ndarray) -> Self:
+    def _resize(self, ops: list[RenderContextCrossSection], v: np.ndarray) -> 'M3dRenderer':
         return self._union(ops).resize(v)
 
-    def mirror(self, posc_obj: PoscRendererBase, v: np.ndarray) -> Self:
+    def mirror(self, posc_obj: PoscRendererBase, v: np.ndarray) -> 'M3dRenderer':
         return RenderStateCheckManifold.check(self, posc_obj, lambda ops: self._mirror(ops, v))
 
-    def _mirror(self, ops: list[RenderContextCrossSection], v: np.ndarray) -> Self:
+    def _mirror(self, ops: list[RenderContextCrossSection], v: np.ndarray) -> 'M3dRenderer':
         return self._union(ops).mirror(v)
 
-    def multmatrix(self, posc_obj: PoscRendererBase, m: np.ndarray) -> Self:
+    def multmatrix(self, posc_obj: PoscRendererBase, m: np.ndarray) -> 'M3dRenderer':
         return RenderStateCheckManifold.check(self, posc_obj, lambda ops: self._multmatrix(ops, m))
 
-    def _multmatrix(self, ops: list[RenderContextCrossSection], m: np.ndarray) -> Self:
+    def _multmatrix(self, ops: list[RenderContextCrossSection], m: np.ndarray) -> 'M3dRenderer':
         return self._union(ops).transform(m)
 
 

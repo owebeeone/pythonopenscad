@@ -1046,6 +1046,7 @@ class Viewer(ViewerBase):
 
                     # Restore the original projection matrix
                     gl.glPopMatrix()
+                    gl.glMatrixMode(gl.GL_MODELVIEW) # Restore matrix mode
 
                     # Restore original depth function
                     gl.glDepthFunc(gl.GL_LESS)
