@@ -25,7 +25,7 @@ from pythonopenscad.viewer.shader import BASIC_SHADER_PROGRAM, SHADER_PROGRAM
 import OpenGL.GL as gl
 import OpenGL.GLUT as glut
 import OpenGL.GLU as glu
-import glm
+from pyglm import glm
 
 from pythonopenscad.viewer.viewer_base import ViewerBase
 

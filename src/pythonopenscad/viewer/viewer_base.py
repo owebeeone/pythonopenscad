@@ -2,7 +2,7 @@
 
 from abc import ABC, abstractmethod
 
-import glm
+from pyglm import glm
 
 
 class ViewerBase(ABC):

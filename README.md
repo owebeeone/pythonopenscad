@@ -2,10 +2,10 @@
 
 # Introduction
 
-PythonOpenScad is yet another [OpenSCAD](https://www.openscad.org/) script/model generator for Python.
+PythonOpenScad is a Python library for generating 3D models, primarily targeting [OpenSCAD](https://www.openscad.org/) scripts but now also supporting direct mesh generation via the [manifold3d](https://github.com/elalish/manifold) library.
 
-The primary client for PythonOpenScad is [anchorSCAD](https://github.com/owebeeone/anchorscad), which is a library for generating OpenSCAD models from Python code with much easier metaphors for building complex models (holes vs difference, composite shapes,
-multi-material and multi-part models, path builders, and a whole lot more). The plan is to keep PythonOpenScad as a thin layer for generating OpenSCAD scripts and only provide functionality for producing such scripts, although the author may add a target to [manifold](https://github.com/elalish/manifold) to generate meshes directly (no promises).
+The primary client for PythonOpenScad is [anchorSCAD](https://github.com/owebeeone/anchorscad), which is a library for generating models from Python code with much easier metaphors for building complex models (holes vs difference, composite shapes,
+multi-material and multi-part models, path builders, and a whole lot more). PythonOpenScad aims to provide a robust API for both script generation and direct mesh manipulation.
 
 # Examples
 
@@ -111,6 +111,11 @@ The best things come for free. You're free to use your favorite Python IDE and g
 
 * Supports both [OpenPyScad](https://github.com/taxpon/openpyscad) and [SolidPython](https://github.com/SolidCode/SolidPython) APIs for generating OpenScad code. Some differences exist between them in how the final model looks.
 
+* **New:** Direct mesh generation using the [manifold3d](https://github.com/elalish/manifold) backend, allowing export to formats like STL without requiring OpenSCAD.
+    * Note: The manifold3d backend currently does not implement `minkowski()`, `import()`, or `surface()`.
+
+* **New:** Includes a simple viewer and a `posc_main` helper function to quickly view models from your scripts (see `pythonopenscad/posc_main.py` and `pythonopenscad/examples/primitive_viewer_example.py`).
+
 * Flexible code dump API to make it easy to add new functionality if desired.
 
 * POSC PyDoc strings have URLs to all the implemented primitives. 
@@ -135,7 +140,7 @@ Each POSC object contains member functions for all the OpenScad transformations.
 
 PythonOpenSCAD is available under the terms of the [GNU LESSER GENERAL PUBLIC LICENSE](https://www.gnu.org/licenses/old-licenses/lgpl-2.1.en.html#SEC1).
 
-Copyright (C) 2022 Gianni Mariani
+Copyright (C) 2025 Gianni Mariani
 
 [PythonOpenScad](https://github.com/owebeeone/pythonopenscad) is free software; 
 you can redistribute it and/or modify it under the terms of the GNU Lesser General Public
@@ -183,7 +188,7 @@ Given there are 2 active projects the big difference seems to be the API. [Solid
 
 So why did I write PythonOpenScad? I really don't like the OpenScad syntax and I wanted a bit more error checking and flexibility with the supported data types. [OpenPyScad](https://github.com/taxpon/openpyscad) could be a whole lot better and it seems like it needs a bit of a rewrite. It still supports Python 2 (and 3) but I wanted to move on.
 
-PythonOpenScad is yet another OpenScad script generator (and only this). I will only entertain features that are specific to supporting OpenScad compatibility in PythonOpenScad . PythonOpenScad supports both the [SolidPython](https://github.com/SolidCode/SolidPython) and [OpenPyScad](https://github.com/taxpon/openpyscad) solid modelling API. (i.e. all the OpenScad transforms, 3D and 2D shapes etc are supported.
+PythonOpenScad provides a layer to generate OpenScad scripts or directly manipulate 3D meshes using Manifold3D. I will only entertain features that are specific to supporting OpenScad compatibility or Manifold3D integration in PythonOpenScad. PythonOpenScad supports both the [SolidPython](https://github.com/SolidCode/SolidPython) and [OpenPyScad](https://github.com/taxpon/openpyscad) solid modelling API styles.
 
 * Parameters are checked or converted and will raise exceptions if parameters are incompatible.
 
@@ -195,7 +200,7 @@ PythonOpenScad is yet another OpenScad script generator (and only this). I will 
 
 * repr(object) works and produces python code. similarly str(object) produces OpenScad code.
 
-PythonOpenScad code is very specifically only a layer to generate OpenScad scripts. I want to allow for one day where I will write bindings directly to a native OpenScad Python module that will allow more interesting interactions with the model. That's for another day.
+PythonOpenScad code aims to provide a robust interface for solid modeling in Python, whether targeting OpenSCAD or direct mesh generation.
 
 I am building another solid modelling tool, [AnchorScad](https://github.com/owebeeone/anchorscad) which allows building libraries of geometric solid models that will hopefully be a much easier way to build complex models. This is a layer on top of other CSG modules that hopefully will have an independent relationship with OpenScad.
 
@@ -211,18 +216,51 @@ Note: PythonOpenScad requires Python 3.10 or later.
 
 # Getting Started
 
-1. Install OpenSCAD from [openscad.org](https://openscad.org/)
-2. Install PythonOpenScad using pip
+1. Install OpenSCAD from [openscad.org](https://openscad.org/) (Optional, if only using the Manifold3D backend)
+2. Install PythonOpenScad using pip: `pip install pythonopenscad`
 3. Create your first model:
 
 ```python
 from pythonopenscad import Cube, Sphere
+from pythonopenscad.posc_main import posc_main, PoscModel
+from pythonopenscad import PoscBase, Cube, translate, Shere, Cone
 
 # Create a simple model
-model = Cube([10, 10, 10]).translate([0, 0, 5]) + Sphere(r=5) - Cube([1, 1, 20])
+def make_model() -> :
+	return Cube([10, 10, 10]).translate([0, 0, 5]) + Sphere(r=5) - Cube([1, 1, 20])
 
+model = make_model()
 # Save to OpenSCAD file
 model.write('my_model.scad')
+
+# Render to STL
+rc = model.renderObj(M3dRenderer())
+rc.write_solid_stl("mystl.stl")
+
+# Or, view the result in a 3D viewer.
+posc_main([make_model])
+
+def make_model() -> PoscBase:
+	return posc.Color("darkseagreen")(
+            posc.Translate([0.0, 0.0, 4.5])(
+                posc.Linear_Extrude(height=3.0, twist=45, slices=16, scale=(2.5, 0.5))(
+                    posc.Translate([0.0, 0.0, 0.0])(posc.Square([1.0, 1.0]))
+                )
+            )
+        )
+
+def test_base_viewer():
+    model = make_model()
+    # Save to OpenSCAD file
+    model.write('my_model.scad')
+
+    # Render to STL
+    rc = model.renderObj(M3dRenderer())
+    rc.write_solid_stl("mystl.stl")
+
+    # Or, view the result in a 3D viewer.
+    posc_main([make_model])   
+
 ```
 
 # Contributing
