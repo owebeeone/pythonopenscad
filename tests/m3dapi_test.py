@@ -29,7 +29,7 @@ def assert_rendercontext(rc: RenderContext):
 
 def test_cube():
     api = M3dRenderer()
-    result = api.cube((1.0, 2.0, 3.0))
+    result = api._cube((1.0, 2.0, 3.0))
     assert_rendercontext(result)
 
     solid_manifold: m3d.Manifold = result.get_solid_manifold()
@@ -38,7 +38,7 @@ def test_cube():
 
 def test_write_stl():
     api = M3dRenderer()
-    result = api.cube((1.0, 2.0, 3.0))
+    result = api._cube((1.0, 2.0, 3.0))
 
     solid_manifold: m3d.Manifold = result.get_solid_manifold()
     assert isinstance(solid_manifold, m3d.Manifold)
@@ -59,22 +59,22 @@ def test_write_stl():
 
 def test_sphere():
     api = M3dRenderer()
-    result = api.sphere(radius=1.0, fn=32)
+    result = api._sphere(radius=1.0, fn=32)
     assert_rendercontext(result)
 
 
 def test_cylinder():
     api = M3dRenderer()
     # Test regular cylinder
-    result = api.cylinder(h=2.0, r_base=1.0)
+    result = api._cylinder(h=2.0, r_base=1.0)
     assert_rendercontext(result)
 
     # Test cone
-    result = api.cylinder(h=2.0, r_base=1.0, r_top=0.5)
+    result = api._cylinder(h=2.0, r_base=1.0, r_top=0.5)
     assert_rendercontext(result)
 
     # Test centered cylinder
-    result = api.cylinder(h=2.0, r_base=1.0, center=True)
+    result = api._cylinder(h=2.0, r_base=1.0, center=True)
     assert_rendercontext(result)
 
 
@@ -126,7 +126,7 @@ def test_polyhedron():
     ])
     points = points @ rotation_matrix
 
-    result = api.polyhedron(points, faces)
+    result = api._polyhedron(points, faces)
     assert isinstance(result, RenderContext)
 
     manifold = result.get_solid_manifold()
@@ -204,7 +204,7 @@ def test_make_array():
 
 def test_transform():
     api = M3dRenderer()
-    cube = api.cube((1.0, 2.0, 3.0))
+    cube = api._cube((1.0, 2.0, 3.0))
 
     # Test translation
     transform = np.eye(4)
@@ -226,7 +226,7 @@ def test_transform():
 
 def test_get_resize_scale():
     api = M3dRenderer()
-    cube = api.cube((2.0, 3.0, 4.0))  # Create a cube with known dimensions
+    cube = api._cube((2.0, 3.0, 4.0))  # Create a cube with known dimensions
 
     # Test exact resize
     newsize = np.array([4.0, 6.0, 8.0])  # Double all dimensions

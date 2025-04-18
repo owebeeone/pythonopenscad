@@ -993,11 +993,11 @@ class M3dRenderer(RendererBase):
             for face in faces:
                 tri_verts.extend(triangulate_3d_face(verts_array, [face]))
 
-            return self.mesh(
+            return self._mesh(
                 vert_properties=verts_array, tri_verts=np.array(tri_verts, dtype=np.uint32)
             )
         elif faces is not None:
-            return self.mesh(vert_properties=verts_array, tri_verts=triangles)
+            return self._mesh(vert_properties=verts_array, tri_verts=triangles)
         else:
             raise ValueError("Must specify either faces or triangles but not both.")
 

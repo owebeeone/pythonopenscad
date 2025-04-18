@@ -25,6 +25,12 @@ dependencies = [
     "manifold3d>=3.0.1",
     "mapbox-earcut>=1.0.3",
     "mapbox>=0.18.1",
+    "frozendict>=2.3.0",
+    "fonttools>=4.57.0",
+    "pillow>=11.0.0",
+    "uharfbuzz>=0.48.0",
+    "datatrees>=0.2.1",
+    "numpy-stl>=3.2.0",
 ]
 
 [project.urls]
