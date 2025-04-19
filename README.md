@@ -7,6 +7,47 @@ PythonOpenScad is a Python library for generating 3D models, primarily targeting
 The primary client for PythonOpenScad is [anchorSCAD](https://github.com/owebeeone/anchorscad), which is a library for generating models from Python code with much easier metaphors for building complex models (holes vs difference, composite shapes,
 multi-material and multi-part models, path builders, and a whole lot more). PythonOpenScad aims to provide a robust API for both script generation and direct mesh manipulation.
 
+# Installation
+
+You can install PythonOpenScad using pip:
+
+```bash
+pip install pythonopenscad
+```
+
+Note: PythonOpenScad requires Python 3.10 or later.
+
+# Getting Started
+
+1. Install OpenSCAD from [openscad.org](https://openscad.org/) (Optional, if only using the pythonopenscad Manifold3D backend)
+2. Install PythonOpenScad using pip: `pip install pythonopenscad`
+3. Create your first model:
+
+```python
+from pythonopenscad.posc_main import posc_main, PoscModel
+from pythonopenscad import PoscBase, Cube, translate, Sphere
+from pythonopenscad.m3dapi import M3dRenderer
+
+# Create a simple model
+def make_model() -> PoscBase:
+	  return Cube([10, 10, 10]).translate([0, 0, 5]) + Sphere(r=10) - Cube([1, 1, 20])
+
+model = make_model()
+# Save to OpenSCAD file
+model.write('my_model.scad')
+
+# Render to STL
+rc = model.renderObj(M3dRenderer())
+rc.write_solid_stl("mystl.stl")
+
+# Or, view the result in a 3D viewer.
+posc_main([make_model])
+```
+
+Note posc_main() takes a list of model generator functions with the expectation
+that your source code has functions for various models allowing for easier 
+selection.
+
 # Examples
 
 The Python code below generates a 3D solid model of text saying 'Hello world!'. This demonstrates the [OpenPyScad](https://github.com/taxpon/openpyscad) style API. In fact, apart from the import line and conversion to string in print, this code should execute as expected using [OpenPyScad](https://github.com/taxpon/openpyscad).
@@ -204,64 +245,6 @@ PythonOpenScad code aims to provide a robust interface for solid modeling in Pyt
 
 I am building another solid modelling tool, [AnchorScad](https://github.com/owebeeone/anchorscad) which allows building libraries of geometric solid models that will hopefully be a much easier way to build complex models. This is a layer on top of other CSG modules that hopefully will have an independent relationship with OpenScad.
 
-# Installation
-
-You can install PythonOpenScad using pip:
-
-```bash
-pip install pythonopenscad
-```
-
-Note: PythonOpenScad requires Python 3.10 or later.
-
-# Getting Started
-
-1. Install OpenSCAD from [openscad.org](https://openscad.org/) (Optional, if only using the Manifold3D backend)
-2. Install PythonOpenScad using pip: `pip install pythonopenscad`
-3. Create your first model:
-
-```python
-from pythonopenscad import Cube, Sphere
-from pythonopenscad.posc_main import posc_main, PoscModel
-from pythonopenscad import PoscBase, Cube, translate, Shere, Cone
-
-# Create a simple model
-def make_model() -> :
-	return Cube([10, 10, 10]).translate([0, 0, 5]) + Sphere(r=5) - Cube([1, 1, 20])
-
-model = make_model()
-# Save to OpenSCAD file
-model.write('my_model.scad')
-
-# Render to STL
-rc = model.renderObj(M3dRenderer())
-rc.write_solid_stl("mystl.stl")
-
-# Or, view the result in a 3D viewer.
-posc_main([make_model])
-
-def make_model() -> PoscBase:
-	return posc.Color("darkseagreen")(
-            posc.Translate([0.0, 0.0, 4.5])(
-                posc.Linear_Extrude(height=3.0, twist=45, slices=16, scale=(2.5, 0.5))(
-                    posc.Translate([0.0, 0.0, 0.0])(posc.Square([1.0, 1.0]))
-                )
-            )
-        )
-
-def test_base_viewer():
-    model = make_model()
-    # Save to OpenSCAD file
-    model.write('my_model.scad')
-
-    # Render to STL
-    rc = model.renderObj(M3dRenderer())
-    rc.write_solid_stl("mystl.stl")
-
-    # Or, view the result in a 3D viewer.
-    posc_main([make_model])   
-
-```
 
 # Contributing
 

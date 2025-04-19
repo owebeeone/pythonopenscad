@@ -6,6 +6,7 @@ from typing import Any, Iterable, Iterator, List, Optional, Tuple, Union, Dict, 
 from datatrees import datatree, dtfield, Node
 import warnings
 import sys
+import signal
 from datetime import datetime
 import manifold3d as m3d
 from pythonopenscad.viewer.basic_models import (
@@ -632,9 +633,40 @@ class Viewer(ViewerBase):
         """
         return BASIC_SHADER_PROGRAM.compile()
 
-    def run(self):
+    def run_without_ctrlc_handler(self):
         """Start the main rendering loop."""
         glut.glutMainLoop()
+        
+    def run(self):
+        """Run the viewer with an interrupt handler."""
+        stop: list = []
+        
+        def keep_alive(val):
+            if stop:
+                Viewer.terminate()
+            else:
+                glut.glutTimerFunc(200, keep_alive, 0)
+                
+        glut.glutTimerFunc(200, keep_alive, 0)
+        
+        # Define a handler for Ctrl+C to properly terminate
+        def signal_handler(sig, frame):
+            print("\nCtrl+C detected, safely shutting down...")
+            stop.append(True)
+            
+            # Register signal handler
+        signal.signal(signal.SIGINT, signal_handler)
+
+        try:
+            # Start the main loop
+            print(Viewer.VIEWER_HELP_TEXT)
+            self.run_without_ctrlc_handler()
+        except KeyboardInterrupt:
+            # Handle Ctrl+C
+            print("\nSafely shutting down...")
+        finally:
+            # Ensure proper cleanup
+            Viewer.terminate()
 
     @staticmethod
     def terminate():
@@ -2495,7 +2527,7 @@ def toggle_edge_effect_rotations(viewer: Viewer):
     glut.glutPostRedisplay()
 
 # Helper function to create a viewer with models
-def create_viewer_with_models(models, width=800, height=600, title="3D Viewer"):
+def create_viewer_with_models(models, width=800, height=600, title="3D Viewer") -> Viewer:
     """Create and return a viewer with the given models."""
     viewer = Viewer(models, width, height, title)
     return viewer
@@ -2524,7 +2556,7 @@ def get_opengl_capabilities(gl_ctx: GLContext):
 
 # If this module is run directly, show a simple demo
 if __name__ == "__main__":
-    import signal
+
 
     # Enable verbose mode
     PYOPENGL_VERBOSE = True
@@ -2542,38 +2574,9 @@ if __name__ == "__main__":
     color_cube = create_colored_test_cube(2.0)  # Use our special test cube with bright colors
 
     # Create a viewer with both models - using just the color cube for testing colors
-    viewer = create_viewer_with_models([color_cube, triangle], title="PyOpenSCAD Viewer Color Test")
+    viewer: Viewer = create_viewer_with_models(
+        [color_cube, triangle], title="PyOpenSCAD Viewer Color Test")
     
-    stop: list = []
-    def keep_alive(val):
-        if stop:
-            Viewer.terminate()
-        else:
-            glut.glutTimerFunc(200, keep_alive, 0)
-            
-            
-    glut.glutTimerFunc(200, keep_alive, 0)
+    viewer.run()
 
-    # Define a handler for Ctrl+C to properly terminate
-    def signal_handler(sig, frame):
-        print("\nCtrl+C detected, safely shutting down...")
-        stop.append(True)
-
-    # Register signal handler
-    signal.signal(signal.SIGINT, signal_handler)
-
-    print("Press ESC in the viewer window or Ctrl+C in the terminal to exit")
-    print("If the cube appears with distinct colors on each face, the color issue is resolved")
-    print("If the cube appears black or all one color, the color issue remains")
-
-    try:
-        # Start the main loop
-        print(Viewer.VIEWER_HELP_TEXT)
-        viewer.run()
-    except KeyboardInterrupt:
-        # Handle Ctrl+C
-        print("\nSafely shutting down...")
-    finally:
-        # Ensure proper cleanup
-        Viewer.terminate()
 
