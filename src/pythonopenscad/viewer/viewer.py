@@ -145,9 +145,10 @@ class Viewer(ViewerBase):
 
         # --- Camera Setup (based on models, before window) ---
         # These are initialized here, but ortho_scale might be overridden by constructor args
-        self.camera_pos = glm.vec3(0.0, 0.0, 5.0)
-        self.camera_front = glm.vec3(0.0, 0.0, -1.0)
-        self.camera_up = glm.vec3(0.0, 1.0, 0.0)
+        self.camera_pos = glm.vec3(10.0, -10.0, 10.0)
+        self.camera_front = glm.vec3(0.0, 0.0, 1.0)
+        self.camera_up = glm.vec3(0.0, 0.0, 1.0)
+        self.camera_target = glm.vec3(0.0, 0.0, 0.0) # Initialize camera target
         self.camera_speed = 0.05
         self.yaw = -90.0
         self.pitch = 0.0
@@ -316,12 +317,24 @@ class Viewer(ViewerBase):
         cx = center[0] if not np.isinf(center[0]) else 0.0
         cy = center[1] if not np.isinf(center[1]) else 0.0
         cz = center[2] if not np.isinf(center[2]) else 0.0
+        center_vec = glm.vec3(cx, cy, cz)
 
-        # Position camera at a reasonable distance
-        self.camera_pos = glm.vec3(cx, cy, cz + diagonal * 1.5)
+        # Define the desired direction from the center
+        direction_vec = glm.normalize(glm.vec3(1.0, -1.0, 1.0))
 
-        # Look at the center of the scene
-        self.camera_front = glm.normalize(glm.vec3(cx, cy, cz) - self.camera_pos)
+        # Position camera at a reasonable distance along the direction vector from the center
+        # We add the direction vector scaled by distance to the center
+        self.camera_pos = center_vec + direction_vec * diagonal * 1.5
+        self.camera_target = center_vec # Set target to scene center
+
+        # Look back at the center of the scene
+        # The front vector is the direction from the camera *to* the center
+        #self.camera_front = glm.normalize(center_vec - self.camera_pos)
+        # Or simply: self.camera_front = -direction_vec
+        self.camera_front = glm.normalize(self.camera_target - self.camera_pos)
+
+        # Set the camera up vector to align with the world Z-axis
+        self.camera_up = glm.vec3(0.0, 0.0, 1.0)
 
         # Update the camera speed based on the scene size
         self.camera_speed = diagonal * 0.01
@@ -1234,7 +1247,7 @@ class Viewer(ViewerBase):
         return glm.mat4(*self.model_matrix.flatten())
     
     def get_view_mat(self) -> glm.mat4:
-        return glm.lookAt(self.camera_pos, self.camera_pos + self.camera_front, self.camera_up)
+        return glm.lookAt(self.camera_pos, self.camera_target, self.camera_up)
 
     def _setup_view(self):
         """Set up the view transformation for rendering."""
@@ -1348,9 +1361,7 @@ class Viewer(ViewerBase):
                 # Set up view with gluLookAt
                 glu.gluLookAt(
                     self.camera_pos.x, self.camera_pos.y, self.camera_pos.z,
-                    self.camera_pos.x + self.camera_front.x,
-                    self.camera_pos.y + self.camera_front.y,
-                    self.camera_pos.z + self.camera_front.z,
+                    self.camera_target.x, self.camera_target.y, self.camera_target.z, # Use camera_target
                     self.camera_up.x, self.camera_up.y, self.camera_up.z,
                 )
 
@@ -1368,6 +1379,8 @@ class Viewer(ViewerBase):
                 self.left_button_pressed = True
                 self.mouse_start_x = x
                 self.mouse_start_y = y
+                # Store initial point for trackball rotation
+                self.trackball_start_point = self._map_to_sphere(x, y)
             elif state == glut.GLUT_UP:
                 self.left_button_pressed = False
         elif button == glut.GLUT_RIGHT_BUTTON:
@@ -1393,91 +1406,103 @@ class Viewer(ViewerBase):
 
     def _motion_callback(self, x, y):
         """GLUT mouse motion callback."""
+        dx = x - self.mouse_start_x
+        dy = y - self.mouse_start_y
+        # We don't reset mouse_start_x/y here for trackball, 
+        # we always compare current x,y to the initial press point.
+        # However, we will update the trackball_start_point for continuous rotation.
+
         if self.left_button_pressed:
-            # Handle rotation
-            dx = x - self.mouse_start_x
-            dy = y - self.mouse_start_y
-            
-            self.mouse_start_x = x
-            self.mouse_start_y = y
+            # Trackball Rotation
+            p1 = self.trackball_start_point
+            p2 = self._map_to_sphere(x, y)
 
-            # Update rotation angles
-            sensitivity = 0.5
-
-            # Create a rotation vector
-            vec = linear.GVector((dy, dx, 0)) * sensitivity
-            veclen = vec.length()
-
-            # Only rotate if we have a meaningful rotation angle
-            if veclen > 0.001:  # Threshold to avoid tiny rotations
+            # Calculate rotation only if points are different enough
+            if glm.length(p1 - p2) > 0.001: # Threshold
                 try:
-                    # Safely calculate normalized vector
-                    unitvec = linear.GVector(vec.v[0:3] / veclen)
-                    edge_matrix = linear.IDENTITY
-                    if self.edge_rotations:
-                        # Attempt to improve rotation functionality - it's a TODO.
-                        try:
-                            rel_x, rel_y, rel_len = \
-                                self.relative_distance_from_screen_centre(x, y)
-                                
-                            if rel_len < 0.1:
-                                rel_len = 0
-                            else:
-                                rel_len = rel_len - 0.1
-                            edge_sensitivity = 1
-                            edge_vec = linear.GVector((rel_y, rel_x, 0))
-                            
-                            edge_matrix = linear.rotV(edge_vec,  rel_len * edge_sensitivity)
-                            
-                        except Exception as e:
-                            print(f"Broke edge_rotation {e} - turn it off with 'E'")
-                
+                    # Calculate axis in view space
+                    view_axis = glm.normalize(glm.cross(p1, p2))
+                    angle = glm.acos(glm.clamp(glm.dot(p1, p2), -1.0, 1.0)) * 2.0 # Scale angle
+                    
+                    # Prevent NaN/tiny angles
+                    if np.isnan(angle) or angle < 1e-6: 
+                        world_rotation = glm.mat4(1.0) # No rotation
+                    else:
+                        # Transform axis from view space to world space
+                        inv_view_mat = glm.inverse(self.get_view_mat())
+                        world_axis = glm.normalize(glm.vec3(inv_view_mat * glm.vec4(view_axis, 0.0)))
+                        # Negate the angle to invert rotation direction
+                        world_rotation = glm.rotate(glm.mat4(1.0), -angle, world_axis)
 
-                    # Apply rotation to model matrix
-                    rotation_matrix = edge_matrix * linear.rotV(unitvec, -veclen)
-                    self.model_matrix = self.model_matrix @ rotation_matrix.A
+                    # Rotate camera position around target in world space
+                    target_to_cam = self.camera_pos - self.camera_target
+                    new_target_to_cam = glm.vec3(world_rotation * glm.vec4(target_to_cam, 0.0))
+                    self.camera_pos = self.camera_target + new_target_to_cam
 
-                except (ZeroDivisionError, RuntimeWarning, ValueError) as e:
-                    if PYOPENGL_VERBOSE:
-                        print(f"Viewer: Error computing rotation: {e}")
+                    # Rotate camera up vector in world space
+                    self.camera_up = glm.normalize(glm.vec3(world_rotation * glm.vec4(self.camera_up, 0.0)))
 
-            # Redraw
-            glut.glutPostRedisplay()
+                    # Update camera front vector (always points from pos to target)
+                    self.camera_front = glm.normalize(self.camera_target - self.camera_pos)
+
+                    # Update the starting point for the next motion event
+                    self.trackball_start_point = p2
+
+                    glut.glutPostRedisplay()
+                except (ValueError, RuntimeWarning) as e:
+                     if PYOPENGL_VERBOSE:
+                         print(f"Viewer: Trackball rotation error: {e}")
 
         elif self.right_button_pressed:
-            # Handle translation
-            dx = x - self.mouse_start_x
-            dy = y - self.mouse_start_y
+            # Panning (moves camera_pos and camera_target together)
+            # Reset start coords for panning on each motion event
+            pan_dx = x - self.mouse_start_x
+            pan_dy = y - self.mouse_start_y
             self.mouse_start_x = x
             self.mouse_start_y = y
 
-            # Skip tiny movements
-            if abs(dx) < 1 and abs(dy) < 1:
-                return
+            pan_speed = self.camera_speed * 0.5 # Adjust sensitivity as needed
+            
+             # Calculate camera right vector (orthogonal to front and up)
+            try:
+                camera_right = glm.normalize(glm.cross(self.camera_front, self.camera_up))
+            except ValueError:
+                 # If front is parallel to up, choose an arbitrary right vector
+                 world_x = glm.vec3(1.0, 0.0, 0.0)
+                 if abs(glm.dot(self.camera_front, world_x)) < 0.99:
+                     camera_right = glm.normalize(glm.cross(self.camera_front, world_x))
+                 else:
+                     world_y = glm.vec3(0.0, 1.0, 0.0)
+                     camera_right = glm.normalize(glm.cross(self.camera_front, world_y))
 
-            # Scale the translation based on scene size for better control
-            translation_sensitivity = -self.camera_speed * 0.1
+            # Calculate the *actual* up direction for panning (cross product of right and front)
+            # This ensures panning moves parallel to the view plane even after trackball rotation.
+            pan_up = glm.normalize(glm.cross(camera_right, self.camera_front))
+            
+            # Note the sign adjustments for typical panning feel (dx moves right, dy moves up SCREEN)
+            # Panning up/down the screen should move along the calculated pan_up vector.
+            delta = (-camera_right * pan_dx * pan_speed) + (pan_up * pan_dy * pan_speed)
+            
+            self.camera_pos += delta
+            self.camera_target += delta
 
-            # Create a translation matrix
-
-            # Apply the translation to the model matrix
-            self.model_matrix = (
-                self.model_matrix
-                @ linear.translate((
-                    dx * translation_sensitivity,
-                    -dy * translation_sensitivity,
-                    0,
-                )).I.A.transpose()
-            )
-
-            # Redraw
+            # Trigger redraw for continuous panning
             glut.glutPostRedisplay()
 
     def _wheel_callback(self, wheel, direction, x, y):
         """GLUT mouse wheel callback."""
         if self.projection_mode == 'perspective':
-            # Zoom in/out by changing camera position along the front vector
-            self.camera_pos += self.camera_front * (direction * self.camera_speed * 10.0)
+            # Zoom in/out by changing camera position along the front vector towards/away from target
+            # Calculate distance to target
+            dist = glm.length(self.camera_pos - self.camera_target)
+            # Calculate new distance (ensure it doesn't go negative or too small)
+            new_dist = max(0.1, dist - (direction * self.camera_speed * 10.0))
+            # Update position along the front vector relative to the target
+            # Use -camera_front because camera_front points *towards* target
+            self.camera_pos = self.camera_target - self.camera_front * new_dist
+            
+            # Alternative: Just move along front vector (simpler, might lose target focus)
+            # self.camera_pos += self.camera_front * (direction * self.camera_speed * 10.0)
         else: # orthographic
             # Zoom by changing the ortho scale (adjust sensitivity as needed)
             zoom_factor = 1.1
@@ -1502,15 +1527,18 @@ class Viewer(ViewerBase):
         # Reset model matrix
         self.model_matrix = np.eye(4, dtype=np.float32)
 
-        # Reset camera position and orientation
+        # Recompute bounds just in case models changed (though unlikely needed here)
+        # self._compute_scene_bounds() 
+        
+        # Reset camera position, target, and orientation based on current bounds
         self._setup_camera()
 
         # Reset ortho scale to default
         self.ortho_scale = 20.0
 
-        # Reset mouse rotation tracking
-        self.yaw = -90.0
-        self.pitch = 0.0
+        # Reset mouse rotation tracking (no longer used for view matrix directly)
+        # self.yaw = -90.0
+        # self.pitch = 0.0
         
         if PYOPENGL_VERBOSE: print("Viewer: View reset.") # Added log
 
@@ -1827,6 +1855,32 @@ class Viewer(ViewerBase):
             return (self.width, self.height)  # Fallback to stored dimensions
 
     # Proposed helper function to be added inside the Viewer class
+
+    def _map_to_sphere(self, x: int, y: int) -> glm.vec3:
+        """Map window coordinates (x, y) to a point on a virtual unit sphere."""
+        # Normalize x, y to range [-1, 1] with origin at center
+        # Note: OpenGL window coordinates often have (0,0) at top-left,
+        # while sphere mapping typically assumes bottom-left or center origin.
+        # We need to adjust based on how GLUT reports coordinates.
+        # Assuming GLUT's y=0 is top, we invert y.
+        win_x = (2.0 * x / self.width) - 1.0
+        win_y = 1.0 - (2.0 * y / self.height) # Invert y for bottom-left origin
+
+        # Calculate squared distance from center
+        dist_sq = win_x * win_x + win_y * win_y
+
+        if dist_sq <= 1.0:
+            # Point is inside the sphere's projection
+            win_z = np.sqrt(1.0 - dist_sq)
+        else:
+            # Point is outside; map to the edge of the sphere
+            norm = np.sqrt(dist_sq)
+            win_x /= norm
+            win_y /= norm
+            win_z = 0.0
+
+        return glm.vec3(win_x, win_y, win_z)
+
 
     def _save_numpy_buffer_to_png(self, buffer: np.ndarray, width: int, height: int, filename: str):
         """Saves a numpy pixel buffer (RGB, uint8) to a PNG file."""

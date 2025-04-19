@@ -102,16 +102,18 @@ class PoscMainRunner:
     """Parses arguments and runs actions for viewing/exporting Posc models."""
     items: list[Callable[[], posc.PoscBase] | posc.PoscBase]
     script_path: str
-    args: argparse.Namespace | None = dtfield(default=None, init=False)
+    _args: argparse.Namespace | None = dtfield(default=None, init=False)
     posc_models: List[PoscModel] = dtfield(default_factory=list, init=False)
+    parser: argparse.ArgumentParser | None = dtfield(
+        self_default=lambda s: s._make_parser(), init=False)
 
-    def __post_init__(self):
-        if not self.items:
-            raise ValueError("No PythonOpenSCAD items provided to process.")
-        
-        self.parse_args()
+    @property
+    def args(self) -> argparse.Namespace:
+        if self._args is None:
+            self.parse_args()
+        return self._args
 
-    def parse_args(self):
+    def _make_parser(self) -> argparse.ArgumentParser:
         parser = argparse.ArgumentParser(description="View or export PythonOpenSCAD objects.")
 
         # --- Input/Output Control ---
@@ -151,23 +153,26 @@ class PoscMainRunner:
             default="0.98,0.98,0.85,1.0", # Default from Viewer
             help="Viewer background color as comma-separated RGBA floats (e.g., '0.1,0.1,0.1,1.0')."
         )
+        return parser
 
+    def parse_args(self):
 
-        self.args = parser.parse_args()
+        self._args = self.parser.parse_args()
 
+    def check_args(self):
         # Determine default output base name
-        if self.args.output_base is None:
-            self.args.output_base = os.path.splitext(os.path.basename(self.script_path))[0]
+        if self._args.output_base is None:
+            self._args.output_base = os.path.splitext(os.path.basename(self.script_path))[0]
 
         # Set default title if not provided
-        if self.args.title is None:
-            self.args.title = f"Posc View: {os.path.basename(self.script_path)}"
+        if self._args.title is None:
+            self._args.title = f"Posc View: {os.path.basename(self.script_path)}"
 
         # Parse background color
-        self.args.parsed_bg_color = parse_color(self.args.bg_color)
-        if self.args.parsed_bg_color is None:
+        self._args.parsed_bg_color = parse_color(self._args.bg_color)
+        if self._args.parsed_bg_color is None:
              # Fallback to default if parsing fails
-             self.args.parsed_bg_color = parse_color("0.98,0.98,0.85,1.0")
+             self._args.parsed_bg_color = parse_color("0.98,0.98,0.85,1.0")
 
 
     def _prepare_models(self):
@@ -181,7 +186,7 @@ class PoscMainRunner:
 
 
     def run(self):
-
+        self.check_args()
         self._prepare_models()
 
         if not self.posc_models:
