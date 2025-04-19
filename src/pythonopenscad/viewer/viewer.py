@@ -1888,8 +1888,8 @@ class Viewer(ViewerBase):
         # while sphere mapping typically assumes bottom-left or center origin.
         # We need to adjust based on how GLUT reports coordinates.
         # Assuming GLUT's y=0 is top, we invert y.
-        win_x = (2.0 * x / self.width) - 1.0
-        win_y = 1.0 - (2.0 * y / self.height)  # Invert y for bottom-left origin
+        win_x = (1.0 * x / self.width) - 1.0
+        win_y = 1.0 - (1.0 * y / self.height)  # Invert y for bottom-left origin
 
         # Calculate squared distance from center
         dist_sq = win_x * win_x + win_y * win_y
