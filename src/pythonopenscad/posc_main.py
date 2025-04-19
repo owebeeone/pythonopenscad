@@ -106,6 +106,7 @@ class PoscMainRunner:
     posc_models: List[PoscModel] = dtfield(default_factory=list, init=False)
     parser: argparse.ArgumentParser | None = dtfield(
         self_default=lambda s: s._make_parser(), init=False)
+    output_base: str | None = dtfield(default=None, init=False)
 
     @property
     def args(self) -> argparse.Namespace:
@@ -153,6 +154,7 @@ class PoscMainRunner:
             default="0.98,0.98,0.85,1.0", # Default from Viewer
             help="Viewer background color as comma-separated RGBA floats (e.g., '0.1,0.1,0.1,1.0')."
         )
+        
         return parser
 
     def parse_args(self):
@@ -161,18 +163,18 @@ class PoscMainRunner:
 
     def check_args(self):
         # Determine default output base name
-        if self._args.output_base is None:
-            self._args.output_base = os.path.splitext(os.path.basename(self.script_path))[0]
+        if self.args.output_base is None:
+            self.args.output_base = os.path.splitext(os.path.basename(self.script_path))[0]
 
         # Set default title if not provided
-        if self._args.title is None:
-            self._args.title = f"Posc View: {os.path.basename(self.script_path)}"
+        if self.args.title is None:
+            self.args.title = f"Posc View: {os.path.basename(self.script_path)}"
 
         # Parse background color
-        self._args.parsed_bg_color = parse_color(self._args.bg_color)
-        if self._args.parsed_bg_color is None:
+        self.args.parsed_bg_color = parse_color(self.args.bg_color)
+        if self.args.parsed_bg_color is None:
              # Fallback to default if parsing fails
-             self._args.parsed_bg_color = parse_color("0.98,0.98,0.85,1.0")
+             self.args.parsed_bg_color = parse_color("0.98,0.98,0.85,1.0")
 
 
     def _prepare_models(self):
