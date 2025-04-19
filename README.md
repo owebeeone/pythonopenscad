@@ -25,12 +25,14 @@ Note: PythonOpenScad requires Python 3.10 or later.
 
 ```python
 from pythonopenscad.posc_main import posc_main, PoscModel
-from pythonopenscad import PoscBase, Cube, translate, Sphere
+from pythonopenscad import PoscBase, Cube, translate, Sphere, Color
 from pythonopenscad.m3dapi import M3dRenderer
 
 # Create a simple model
 def make_model() -> PoscBase:
-	  return Cube([10, 10, 10]).translate([0, 0, 5]) + Sphere(r=10) - Cube([1, 1, 20])
+	  return Sphere(r=10) - Color("red")(
+            Cube([10, 10, 10]).translate([0, 2, 0])
+        ) - Color("cyan")(Cube([2, 2, 20]))
 
 model = make_model()
 # Save to OpenSCAD file
@@ -43,6 +45,8 @@ rc.write_solid_stl("mystl.stl")
 # Or, view the result in a 3D viewer.
 posc_main([make_model])
 ```
+
+![PythonOpenSCAD example snapshot](assets/example_screenshot.png)
 
 Note posc_main() takes a list of model generator functions with the expectation
 that your source code has functions for various models allowing for easier 
