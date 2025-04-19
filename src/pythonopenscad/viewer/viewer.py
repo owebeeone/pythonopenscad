@@ -30,7 +30,9 @@ from pyglm import glm
 
 from pythonopenscad.viewer.viewer_base import ViewerBase
 
-PYOPENGL_VERBOSE = True
+#PYOPENGL_VERBOSE = True
+
+
 @datatree
 class Viewer(ViewerBase):
     """OpenGL viewer for 3D models."""
@@ -57,8 +59,8 @@ class Viewer(ViewerBase):
     # REMOVED ortho_projection: bool = False - replaced by projection_mode
 
     # Add state for projection mode and ortho scale
-    projection_mode: str = dtfield(default='perspective') # 'perspective' or 'orthographic'
-    ortho_scale: float = dtfield(default=20.0) # World-space width for ortho view
+    projection_mode: str = dtfield(default="perspective")  # 'perspective' or 'orthographic'
+    ortho_scale: float = dtfield(default=20.0)  # World-space width for ortho view
 
     VIEWER_HELP_TEXT = """
     Mouse Controls:
@@ -109,7 +111,7 @@ class Viewer(ViewerBase):
         # Note: datatree handles setting these from kwargs if passed in constructor
         # So, self.projection_mode and self.ortho_scale will have the passed values
         # or the dtfield defaults if not passed.
-        
+
         # Example check (optional):
         # if hasattr(self, 'projection_mode') and self.projection_mode not in ['perspective', 'orthographic']:
         #    warnings.warn(f"Invalid initial projection mode '{self.projection_mode}', defaulting to perspective.")
@@ -148,7 +150,7 @@ class Viewer(ViewerBase):
         self.camera_pos = glm.vec3(10.0, -10.0, 10.0)
         self.camera_front = glm.vec3(0.0, 0.0, 1.0)
         self.camera_up = glm.vec3(0.0, 0.0, 1.0)
-        self.camera_target = glm.vec3(0.0, 0.0, 0.0) # Initialize camera target
+        self.camera_target = glm.vec3(0.0, 0.0, 0.0)  # Initialize camera target
         self.camera_speed = 0.05
         self.yaw = -90.0
         self.pitch = 0.0
@@ -325,11 +327,11 @@ class Viewer(ViewerBase):
         # Position camera at a reasonable distance along the direction vector from the center
         # We add the direction vector scaled by distance to the center
         self.camera_pos = center_vec + direction_vec * diagonal * 1.5
-        self.camera_target = center_vec # Set target to scene center
+        self.camera_target = center_vec  # Set target to scene center
 
         # Look back at the center of the scene
         # The front vector is the direction from the camera *to* the center
-        #self.camera_front = glm.normalize(center_vec - self.camera_pos)
+        # self.camera_front = glm.normalize(center_vec - self.camera_pos)
         # Or simply: self.camera_front = -direction_vec
         self.camera_front = glm.normalize(self.camera_target - self.camera_pos)
 
@@ -649,25 +651,26 @@ class Viewer(ViewerBase):
     def run_without_ctrlc_handler(self):
         """Start the main rendering loop."""
         glut.glutMainLoop()
-        
+
     def run(self):
         """Run the viewer with an interrupt handler."""
         stop: list = []
-        
+
         def keep_alive(val):
             if stop:
                 Viewer.terminate()
             else:
                 glut.glutTimerFunc(200, keep_alive, 0)
-                
+
         glut.glutTimerFunc(200, keep_alive, 0)
-        
+
         # Define a handler for Ctrl+C to properly terminate
         def signal_handler(sig, frame):
             print("\nCtrl+C detected, safely shutting down...")
             stop.append(True)
-            
+
             # Register signal handler
+
         signal.signal(signal.SIGINT, signal_handler)
 
         try:
@@ -1091,7 +1094,7 @@ class Viewer(ViewerBase):
 
                     # Restore the original projection matrix
                     gl.glPopMatrix()
-                    gl.glMatrixMode(gl.GL_MODELVIEW) # Restore matrix mode
+                    gl.glMatrixMode(gl.GL_MODELVIEW)  # Restore matrix mode
 
                     # Restore original depth function
                     gl.glDepthFunc(gl.GL_LESS)
@@ -1220,32 +1223,35 @@ class Viewer(ViewerBase):
             except Exception:
                 # At this point there's not much more we can do
                 pass
-            
+
     def get_projection_mat(self) -> glm.mat4:
         """Get the current projection matrix based on the projection mode."""
         # Prevent division by zero if height is zero
         aspect_ratio = self.width / self.height if self.height > 0 else 1.0
-        
-        if self.projection_mode == 'perspective':
+
+        if self.projection_mode == "perspective":
             projection = glm.perspective(glm.radians(45.0), aspect_ratio, 0.1, 1000.0)
-        else: # orthographic
-            if aspect_ratio >= 1.0: # Wider than tall or square
+        else:  # orthographic
+            if aspect_ratio >= 1.0:  # Wider than tall or square
                 ortho_width = self.ortho_scale
                 ortho_height = self.ortho_scale / aspect_ratio
-            else: # Taller than wide
+            else:  # Taller than wide
                 ortho_height = self.ortho_scale
                 ortho_width = self.ortho_scale * aspect_ratio
 
             projection = glm.ortho(
-                -ortho_width / 2.0, ortho_width / 2.0,
-                -ortho_height / 2.0, ortho_height / 2.0,
-                0.1, 1000.0 # Use same near/far as perspective for consistency
+                -ortho_width / 2.0,
+                ortho_width / 2.0,
+                -ortho_height / 2.0,
+                ortho_height / 2.0,
+                0.1,
+                1000.0,  # Use same near/far as perspective for consistency
             )
         return projection
-    
+
     def get_model_mat(self) -> glm.mat4:
         return glm.mat4(*self.model_matrix.flatten())
-    
+
     def get_view_mat(self) -> glm.mat4:
         return glm.lookAt(self.camera_pos, self.camera_target, self.camera_up)
 
@@ -1297,7 +1303,9 @@ class Viewer(ViewerBase):
                 # Update view position for specular highlights
                 view_pos_loc = gl.glGetUniformLocation(self.shader_program, "viewPos")
                 if view_pos_loc != -1:
-                    gl.glUniform3f(view_pos_loc, self.camera_pos.x, self.camera_pos.y, self.camera_pos.z)
+                    gl.glUniform3f(
+                        view_pos_loc, self.camera_pos.x, self.camera_pos.y, self.camera_pos.z
+                    )
 
                 # Set up model-view-projection matrices
                 model_mat = self.get_model_mat()
@@ -1321,15 +1329,19 @@ class Viewer(ViewerBase):
                 mvp_loc = gl.glGetUniformLocation(self.shader_program, "modelViewProj")
                 # Use the matrix obtained from get_projection_mat()
                 if mvp_loc != -1 and projection is not None:
-                    mvp = projection * view * model_mat # projection comes from get_projection_mat()
+                    mvp = (
+                        projection * view * model_mat
+                    )  # projection comes from get_projection_mat()
                     gl.glUniformMatrix4fv(mvp_loc, 1, gl.GL_FALSE, glm.value_ptr(mvp))
 
                 gl.glUseProgram(0)
             except Exception as e:
                 if PYOPENGL_VERBOSE:
                     print(f"Viewer: Error setting up shader uniforms: {e}")
-                try: gl.glUseProgram(0)
-                except: pass
+                try:
+                    gl.glUseProgram(0)
+                except:
+                    pass
 
         # Set up matrices for Fixed-Function pipeline
         if not is_core_profile:
@@ -1337,21 +1349,24 @@ class Viewer(ViewerBase):
                 # Set up projection matrix based on mode (using legacy calls)
                 gl.glMatrixMode(gl.GL_PROJECTION)
                 gl.glLoadIdentity()
-                if self.projection_mode == 'perspective':
+                if self.projection_mode == "perspective":
                     aspect_ratio = self.width / self.height if self.height > 0 else 1.0
                     glu.gluPerspective(45.0, aspect_ratio, 0.1, 1000.0)
-                else: # orthographic
+                else:  # orthographic
                     aspect_ratio = self.width / self.height if self.height > 0 else 1.0
                     if aspect_ratio >= 1.0:
-                         ortho_width = self.ortho_scale
-                         ortho_height = self.ortho_scale / aspect_ratio
+                        ortho_width = self.ortho_scale
+                        ortho_height = self.ortho_scale / aspect_ratio
                     else:
-                         ortho_height = self.ortho_scale
-                         ortho_width = self.ortho_scale * aspect_ratio
+                        ortho_height = self.ortho_scale
+                        ortho_width = self.ortho_scale * aspect_ratio
                     gl.glOrtho(
-                         -ortho_width / 2.0, ortho_width / 2.0,
-                         -ortho_height / 2.0, ortho_height / 2.0,
-                         0.1, 1000.0
+                        -ortho_width / 2.0,
+                        ortho_width / 2.0,
+                        -ortho_height / 2.0,
+                        ortho_height / 2.0,
+                        0.1,
+                        1000.0,
                     )
 
                 # Set up modelview matrix
@@ -1360,9 +1375,15 @@ class Viewer(ViewerBase):
 
                 # Set up view with gluLookAt
                 glu.gluLookAt(
-                    self.camera_pos.x, self.camera_pos.y, self.camera_pos.z,
-                    self.camera_target.x, self.camera_target.y, self.camera_target.z, # Use camera_target
-                    self.camera_up.x, self.camera_up.y, self.camera_up.z,
+                    self.camera_pos.x,
+                    self.camera_pos.y,
+                    self.camera_pos.z,
+                    self.camera_target.x,
+                    self.camera_target.y,
+                    self.camera_target.z,  # Use camera_target
+                    self.camera_up.x,
+                    self.camera_up.y,
+                    self.camera_up.z,
                 )
 
                 # Apply model matrix
@@ -1390,25 +1411,23 @@ class Viewer(ViewerBase):
                 self.mouse_start_y = y
             elif state == glut.GLUT_UP:
                 self.right_button_pressed = False
-                
-    def relative_distance_from_screen_centre(self, x, y) \
-        -> tuple[float, float, float]:
+
+    def relative_distance_from_screen_centre(self, x, y) -> tuple[float, float, float]:
         # Get the window dimensions
         width = glut.glutGet(glut.GLUT_WINDOW_WIDTH)
         height = glut.glutGet(glut.GLUT_WINDOW_HEIGHT)
-        rel_x = 2* (x / width - 0.5)
-        rel_y = 2* (0.5 - y / height)
-        
+        rel_x = 2 * (x / width - 0.5)
+        rel_y = 2 * (0.5 - y / height)
+
         rel_len = np.sqrt(rel_x * rel_x + rel_y * rel_y)
-        
+
         return rel_x, rel_y, rel_len
-        
 
     def _motion_callback(self, x, y):
         """GLUT mouse motion callback."""
         dx = x - self.mouse_start_x
         dy = y - self.mouse_start_y
-        # We don't reset mouse_start_x/y here for trackball, 
+        # We don't reset mouse_start_x/y here for trackball,
         # we always compare current x,y to the initial press point.
         # However, we will update the trackball_start_point for continuous rotation.
 
@@ -1418,19 +1437,21 @@ class Viewer(ViewerBase):
             p2 = self._map_to_sphere(x, y)
 
             # Calculate rotation only if points are different enough
-            if glm.length(p1 - p2) > 0.001: # Threshold
+            if glm.length(p1 - p2) > 0.001:  # Threshold
                 try:
                     # Calculate axis in view space
                     view_axis = glm.normalize(glm.cross(p1, p2))
-                    angle = glm.acos(glm.clamp(glm.dot(p1, p2), -1.0, 1.0)) * 2.0 # Scale angle
-                    
+                    angle = glm.acos(glm.clamp(glm.dot(p1, p2), -1.0, 1.0)) * 2.0  # Scale angle
+
                     # Prevent NaN/tiny angles
-                    if np.isnan(angle) or angle < 1e-6: 
-                        world_rotation = glm.mat4(1.0) # No rotation
+                    if np.isnan(angle) or angle < 1e-6:
+                        world_rotation = glm.mat4(1.0)  # No rotation
                     else:
                         # Transform axis from view space to world space
                         inv_view_mat = glm.inverse(self.get_view_mat())
-                        world_axis = glm.normalize(glm.vec3(inv_view_mat * glm.vec4(view_axis, 0.0)))
+                        world_axis = glm.normalize(
+                            glm.vec3(inv_view_mat * glm.vec4(view_axis, 0.0))
+                        )
                         # Negate the angle to invert rotation direction
                         world_rotation = glm.rotate(glm.mat4(1.0), -angle, world_axis)
 
@@ -1440,7 +1461,9 @@ class Viewer(ViewerBase):
                     self.camera_pos = self.camera_target + new_target_to_cam
 
                     # Rotate camera up vector in world space
-                    self.camera_up = glm.normalize(glm.vec3(world_rotation * glm.vec4(self.camera_up, 0.0)))
+                    self.camera_up = glm.normalize(
+                        glm.vec3(world_rotation * glm.vec4(self.camera_up, 0.0))
+                    )
 
                     # Update camera front vector (always points from pos to target)
                     self.camera_front = glm.normalize(self.camera_target - self.camera_pos)
@@ -1450,8 +1473,8 @@ class Viewer(ViewerBase):
 
                     glut.glutPostRedisplay()
                 except (ValueError, RuntimeWarning) as e:
-                     if PYOPENGL_VERBOSE:
-                         print(f"Viewer: Trackball rotation error: {e}")
+                    if PYOPENGL_VERBOSE:
+                        print(f"Viewer: Trackball rotation error: {e}")
 
         elif self.right_button_pressed:
             # Panning (moves camera_pos and camera_target together)
@@ -1461,28 +1484,28 @@ class Viewer(ViewerBase):
             self.mouse_start_x = x
             self.mouse_start_y = y
 
-            pan_speed = self.camera_speed * 0.5 # Adjust sensitivity as needed
-            
-             # Calculate camera right vector (orthogonal to front and up)
+            pan_speed = self.camera_speed * 0.5  # Adjust sensitivity as needed
+
+            # Calculate camera right vector (orthogonal to front and up)
             try:
                 camera_right = glm.normalize(glm.cross(self.camera_front, self.camera_up))
             except ValueError:
-                 # If front is parallel to up, choose an arbitrary right vector
-                 world_x = glm.vec3(1.0, 0.0, 0.0)
-                 if abs(glm.dot(self.camera_front, world_x)) < 0.99:
-                     camera_right = glm.normalize(glm.cross(self.camera_front, world_x))
-                 else:
-                     world_y = glm.vec3(0.0, 1.0, 0.0)
-                     camera_right = glm.normalize(glm.cross(self.camera_front, world_y))
+                # If front is parallel to up, choose an arbitrary right vector
+                world_x = glm.vec3(1.0, 0.0, 0.0)
+                if abs(glm.dot(self.camera_front, world_x)) < 0.99:
+                    camera_right = glm.normalize(glm.cross(self.camera_front, world_x))
+                else:
+                    world_y = glm.vec3(0.0, 1.0, 0.0)
+                    camera_right = glm.normalize(glm.cross(self.camera_front, world_y))
 
             # Calculate the *actual* up direction for panning (cross product of right and front)
             # This ensures panning moves parallel to the view plane even after trackball rotation.
             pan_up = glm.normalize(glm.cross(camera_right, self.camera_front))
-            
+
             # Note the sign adjustments for typical panning feel (dx moves right, dy moves up SCREEN)
             # Panning up/down the screen should move along the calculated pan_up vector.
             delta = (-camera_right * pan_dx * pan_speed) + (pan_up * pan_dy * pan_speed)
-            
+
             self.camera_pos += delta
             self.camera_target += delta
 
@@ -1491,7 +1514,7 @@ class Viewer(ViewerBase):
 
     def _wheel_callback(self, wheel, direction, x, y):
         """GLUT mouse wheel callback."""
-        if self.projection_mode == 'perspective':
+        if self.projection_mode == "perspective":
             # Zoom in/out by changing camera position along the front vector towards/away from target
             # Calculate distance to target
             dist = glm.length(self.camera_pos - self.camera_target)
@@ -1500,19 +1523,20 @@ class Viewer(ViewerBase):
             # Update position along the front vector relative to the target
             # Use -camera_front because camera_front points *towards* target
             self.camera_pos = self.camera_target - self.camera_front * new_dist
-            
+
             # Alternative: Just move along front vector (simpler, might lose target focus)
             # self.camera_pos += self.camera_front * (direction * self.camera_speed * 10.0)
-        else: # orthographic
+        else:  # orthographic
             # Zoom by changing the ortho scale (adjust sensitivity as needed)
             zoom_factor = 1.1
-            if direction > 0: # Zoom in
+            if direction > 0:  # Zoom in
                 self.ortho_scale /= zoom_factor
-            else: # Zoom out
+            else:  # Zoom out
                 self.ortho_scale *= zoom_factor
             # Prevent scale from becoming too small or negative
             self.ortho_scale = max(0.1, self.ortho_scale)
-            if PYOPENGL_VERBOSE: print(f"Viewer: Ortho scale set to {self.ortho_scale}")
+            if PYOPENGL_VERBOSE:
+                print(f"Viewer: Ortho scale set to {self.ortho_scale}")
 
         glut.glutPostRedisplay()
 
@@ -1528,8 +1552,8 @@ class Viewer(ViewerBase):
         self.model_matrix = np.eye(4, dtype=np.float32)
 
         # Recompute bounds just in case models changed (though unlikely needed here)
-        # self._compute_scene_bounds() 
-        
+        # self._compute_scene_bounds()
+
         # Reset camera position, target, and orientation based on current bounds
         self._setup_camera()
 
@@ -1539,8 +1563,9 @@ class Viewer(ViewerBase):
         # Reset mouse rotation tracking (no longer used for view matrix directly)
         # self.yaw = -90.0
         # self.pitch = 0.0
-        
-        if PYOPENGL_VERBOSE: print("Viewer: View reset.") # Added log
+
+        if PYOPENGL_VERBOSE:
+            print("Viewer: View reset.")  # Added log
 
     def _print_shader_debug(self, program_id):
         """Print detailed debugging information about a shader program.
@@ -1864,7 +1889,7 @@ class Viewer(ViewerBase):
         # We need to adjust based on how GLUT reports coordinates.
         # Assuming GLUT's y=0 is top, we invert y.
         win_x = (2.0 * x / self.width) - 1.0
-        win_y = 1.0 - (2.0 * y / self.height) # Invert y for bottom-left origin
+        win_y = 1.0 - (2.0 * y / self.height)  # Invert y for bottom-left origin
 
         # Calculate squared distance from center
         dist_sq = win_x * win_x + win_y * win_y
@@ -1880,7 +1905,6 @@ class Viewer(ViewerBase):
             win_z = 0.0
 
         return glm.vec3(win_x, win_y, win_z)
-
 
     def _save_numpy_buffer_to_png(self, buffer: np.ndarray, width: int, height: int, filename: str):
         """Saves a numpy pixel buffer (RGB, uint8) to a PNG file."""
@@ -2492,30 +2516,32 @@ def print_help(viewer: Viewer):
     print(Viewer.VIEWER_HELP_TEXT)
 
 
-@keybinding(b'o')
+@keybinding(b"o")
 def toggle_projection(viewer: Viewer):
     """Toggle between perspective and orthographic projection."""
-    if viewer.projection_mode == 'perspective':
-        viewer.projection_mode = 'orthographic'
-        if PYOPENGL_VERBOSE: print("Viewer: Switched to Orthographic projection")
+    if viewer.projection_mode == "perspective":
+        viewer.projection_mode = "orthographic"
+        if PYOPENGL_VERBOSE:
+            print("Viewer: Switched to Orthographic projection")
     else:
-        viewer.projection_mode = 'perspective'
-        if PYOPENGL_VERBOSE: print("Viewer: Switched to Perspective projection")
+        viewer.projection_mode = "perspective"
+        if PYOPENGL_VERBOSE:
+            print("Viewer: Switched to Perspective projection")
     glut.glutPostRedisplay()
-    
-    
+
+
 @datatree
 class TestKeybindings:
     secs: float = dtfield(default=2)
     viewer: Viewer = dtfield(default=None, init=False)
-    _cycle: Iterator = dtfield(default=None, init=False) 
-    skip_keys: Tuple[bytes, ...] = (b'*', b'&', b'\x1b')
-    
+    _cycle: Iterator = dtfield(default=None, init=False)
+    skip_keys: Tuple[bytes, ...] = (b"*", b"&", b"\x1b")
+
     def do_cycle(self, viewer: Viewer):
         if self._cycle is None:
             self._cycle = iter(KEY_BINDINGS.items())
         self.viewer = viewer
-        
+
     def run_next(self, val):
         if self._cycle is None:
             return
@@ -2533,22 +2559,26 @@ class TestKeybindings:
 
     def getGlutTime(self) -> int:
         return int(self.secs * 1000)
-        
+
+
 def run_test_keybindings(viewer: Viewer, secs: float = 2):
     print("Running a test for all the keybindings")
     test_keybindings = TestKeybindings(secs=secs)
     test_keybindings.do_cycle(viewer)
     glut.glutTimerFunc(test_keybindings.getGlutTime(), test_keybindings.run_next, 0)
 
-@keybinding(b'*')
+
+@keybinding(b"*")
 def run_test_keybindings_key_fast(viewer: Viewer):
     run_test_keybindings(viewer, secs=0.1)
 
-@keybinding(b'&')
+
+@keybinding(b"&")
 def run_test_keybindings_key_slow(viewer: Viewer):
     run_test_keybindings(viewer, secs=2)
 
-@keybinding(b'+')
+
+@keybinding(b"+")
 def toggle_axes_visibility(viewer: Viewer):
     """Toggle the visibility of the main axes lines."""
     viewer.show_axes = not viewer.show_axes
@@ -2556,23 +2586,30 @@ def toggle_axes_visibility(viewer: Viewer):
         print(f"Viewer: Axes visibility set to {viewer.show_axes}")
     glut.glutPostRedisplay()
 
-@keybinding(b'g')
+
+@keybinding(b"g")
 def toggle_graduation_ticks(viewer: Viewer):
     """Toggle the visibility of the graduation ticks on the axes."""
     viewer.axes_renderer.show_graduation_ticks = not viewer.axes_renderer.show_graduation_ticks
     if PYOPENGL_VERBOSE:
-        print(f"Viewer: Graduation ticks visibility set to {viewer.axes_renderer.show_graduation_ticks}")
+        print(
+            f"Viewer: Graduation ticks visibility set to {viewer.axes_renderer.show_graduation_ticks}"
+        )
     glut.glutPostRedisplay()
 
-@keybinding(b'v')
+
+@keybinding(b"v")
 def toggle_graduation_values(viewer: Viewer):
     """Toggle the visibility of the graduation values (text) on the axes."""
     viewer.axes_renderer.show_graduation_values = not viewer.axes_renderer.show_graduation_values
     if PYOPENGL_VERBOSE:
-        print(f"Viewer: Graduation values visibility set to {viewer.axes_renderer.show_graduation_values}")
+        print(
+            f"Viewer: Graduation values visibility set to {viewer.axes_renderer.show_graduation_values}"
+        )
     glut.glutPostRedisplay()
-    
-@keybinding(b'e')
+
+
+@keybinding(b"e")
 def toggle_edge_effect_rotations(viewer: Viewer):
     """Toggles behaviour of rotations at the edge of the window."""
     viewer.edge_rotations = not viewer.edge_rotations
@@ -2580,11 +2617,13 @@ def toggle_edge_effect_rotations(viewer: Viewer):
         print(f"Viewer: Edge rotations set or {viewer.edge_rotations}")
     glut.glutPostRedisplay()
 
+
 # Helper function to create a viewer with models
 def create_viewer_with_models(models, width=800, height=600, title="3D Viewer") -> Viewer:
     """Create and return a viewer with the given models."""
     viewer = Viewer(models, width, height, title)
     return viewer
+
 
 def get_opengl_capabilities(gl_ctx: GLContext):
     """Get a dictionary describing the available OpenGL capabilities."""
@@ -2610,8 +2649,6 @@ def get_opengl_capabilities(gl_ctx: GLContext):
 
 # If this module is run directly, show a simple demo
 if __name__ == "__main__":
-
-
     # Enable verbose mode
     PYOPENGL_VERBOSE = True
 
@@ -2629,8 +2666,7 @@ if __name__ == "__main__":
 
     # Create a viewer with both models - using just the color cube for testing colors
     viewer: Viewer = create_viewer_with_models(
-        [color_cube, triangle], title="PyOpenSCAD Viewer Color Test")
-    
+        [color_cube, triangle], title="PyOpenSCAD Viewer Color Test"
+    )
+
     viewer.run()
-
-
