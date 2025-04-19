@@ -26,7 +26,7 @@
 *.tif    binary
 *.webp   binary
 
-*  text eol=lf
+#*  text eol=lf
 
 # Note: .db, .p, and .pkl files are associated
 # with the python modules ``pickle``, ``dbm.*``,
