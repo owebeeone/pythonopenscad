@@ -4,6 +4,7 @@ OpenScad modifiers.
 
 import math
 from dataclasses import dataclass, field
+from typing import Any
 
 
 @dataclass(frozen=True, repr=False)
@@ -40,15 +41,26 @@ class NotParentException(PoscBaseException):
 
 
 class PoscMetadataBase(object):
-    """Provides medatadata properties."""
+    """Provides medatadata properties. i.e. optional application specific 
+    properties. The metabase_name is printed in comments in the output file
+    while the descriptor is used to store application specific data."""
 
-    def getMetadataName(self):
+    def getMetadataName(self) -> str:
         if not hasattr(self, '_metabase_name'):
             return ''
         return self._metabase_name
 
-    def setMetadataName(self, value):
+    def setMetadataName(self, value: str):
         self._metabase_name = value
+        return self
+        
+    def getDescriptor(self) -> Any:
+        if not hasattr(self, '_metabase_descriptor'):
+            return None
+        return self._metabase_descriptor
+
+    def setDescriptor(self, value: Any):
+        self._metabase_descriptor = value
         return self
 
 
