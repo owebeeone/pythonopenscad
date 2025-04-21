@@ -648,20 +648,20 @@ def set_property(manifold: m3d.Manifold, prop: np.ndarray, prop_index: int) -> m
     # number of properties.
     if prop_index == 0:
         if curr_num_props > len(prop):
-            apply_func = lambda pos, curr_props: np.concatenate((prop, curr_props[prop_len:]))
+            apply_func = lambda pos, curr_props: np.concatenate((prop, curr_props[prop_len:]))  # noqa: E731
         else:
-            apply_func = lambda pos, curr_props: prop
+            apply_func = lambda pos, curr_props: prop  # noqa: E731
     elif num_props > curr_num_props:
-        apply_func = lambda pos, curr_props: np.concatenate((curr_props[:prop_index], prop))
+        apply_func = lambda pos, curr_props: np.concatenate((curr_props[:prop_index], prop))  # noqa: E731
     elif curr_num_props < prop_index:
         padding = np.zeros(prop_index - curr_num_props)
-        apply_func = lambda pos, curr_props: np.concatenate((
+        apply_func = lambda pos, curr_props: np.concatenate((  # noqa: E731
             curr_props[:prop_index],
             padding,
             prop,
         ))
     else:
-        apply_func = lambda pos, curr_props: np.concatenate((
+        apply_func = lambda pos, curr_props: np.concatenate((  # noqa: E731
             curr_props[:prop_index],
             prop,
             curr_props[prop_index + prop_len :],
@@ -1675,103 +1675,64 @@ def get_polygon_signed_area(poly_verts: np.ndarray) -> float:
     signed_area = 0.5 * np.sum(x * np.roll(y, -1) - np.roll(x, -1) * y)
     return signed_area
 
-def choose_quad_triangulation(quad_indices, vertices):
-  """
-  Determines the preferred triangulation (A or B) for multiple quads
-  based on the shortest diagonal rule, using indexed vertices.
+def choose_quad_triangulation(quad_indices: np.ndarray, vertices: np.ndarray) -> np.ndarray:
+    """
+    Determines the preferred triangulation (A or B) for multiple quads
+    based on the shortest diagonal rule, using indexed vertices.
 
-  Args:
-    quad_indices: A NumPy array of shape (N, 4) and dtype integer.
-                  Each row contains the 4 indices into the 'vertices'
-                  array that define a quadrilateral (ordered 0, 1, 2, 3
-                  around the perimeter). N is the number of quads.
-    vertices:     A NumPy array of shape (M, 3) and dtype float.
-                  Contains the 3D coordinates of the M unique vertices.
+    Args:
+        quad_indices: A NumPy array of shape (N, 4) and dtype integer.
+                      Each row contains the 4 indices into the 'vertices'
+                      array that define a quadrilateral (ordered 0, 1, 2, 3
+                      around the perimeter). N is the number of quads.
+        vertices:     A NumPy array of shape (M, 3) and dtype float.
+                      Contains the 3D coordinates of the M unique vertices.
 
-  Returns:
-    A NumPy array of shape (N,) and dtype bool.
-    - True:  Indicates diagonal 0-2 is shorter. Use triangulation B:
-             (i0, i1, i2) and (i0, i2, i3).
-    - False: Indicates diagonal 1-3 is shorter or equal. Use triangulation A:
-             (i0, i1, i3) and (i1, i2, i3).
-  """
-  if quad_indices.ndim != 2 or quad_indices.shape[1] != 4:
-    raise ValueError("quad_indices must have shape (N, 4)")
-  if vertices.ndim != 2 or vertices.shape[1] != 3:
-    raise ValueError("vertices must have shape (M, 3)")
-  if not np.issubdtype(quad_indices.dtype, np.integer):
+    Returns:
+        A NumPy array of shape (N,) and dtype bool.
+        - True:  Indicates diagonal 0-2 is shorter. Use triangulation B:
+                 (i0, i1, i2) and (i0, i2, i3).
+        - False: Indicates diagonal 1-3 is shorter or equal. Use triangulation A:
+                 (i0, i1, i3) and (i1, i2, i3).
+    """
+    if quad_indices.ndim != 2 or quad_indices.shape[1] != 4:
+        raise ValueError("quad_indices must have shape (N, 4)")
+    if vertices.ndim != 2 or vertices.shape[1] != 3:
+        raise ValueError("vertices must have shape (M, 3)")
+    if not np.issubdtype(quad_indices.dtype, np.integer):
         raise TypeError("quad_indices must be an integer type array")
 
-  # --- Get vertex indices for all quads ---
-  idx0 = quad_indices[:, 0] # Shape (N,)
-  idx1 = quad_indices[:, 1] # Shape (N,)
-  idx2 = quad_indices[:, 2] # Shape (N,)
-  idx3 = quad_indices[:, 3] # Shape (N,)
+    # --- Get vertex indices for all quads ---
+    idx0 = quad_indices[:, 0] # Shape (N,)
+    idx1 = quad_indices[:, 1] # Shape (N,)
+    idx2 = quad_indices[:, 2] # Shape (N,)
+    idx3 = quad_indices[:, 3] # Shape (N,)
 
-  # --- Use advanced indexing to get coordinates for all points of all quads ---
-  # This fetches the coordinates based on the indices efficiently
-  p0_coords = vertices[idx0] # Shape (N, 3)
-  p1_coords = vertices[idx1] # Shape (N, 3)
-  p2_coords = vertices[idx2] # Shape (N, 3)
-  p3_coords = vertices[idx3] # Shape (N, 3)
+    # --- Use advanced indexing to get coordinates for all points of all quads ---
+    # This fetches the coordinates based on the indices efficiently
+    p0_coords = vertices[idx0] # Shape (N, 3)
+    p1_coords = vertices[idx1] # Shape (N, 3)
+    p2_coords = vertices[idx2] # Shape (N, 3)
+    p3_coords = vertices[idx3] # Shape (N, 3)
 
-  # --- Calculate squared lengths of diagonals (vectorized) ---
-  # ||p2 - p0||^2
-  d02_sq = np.sum((p2_coords - p0_coords)**2, axis=1) # Shape (N,)
-  # ||p3 - p1||^2
-  d13_sq = np.sum((p3_coords - p1_coords)**2, axis=1) # Shape (N,)
+    # --- Calculate squared lengths of diagonals (vectorized) ---
+    # ||p2 - p0||^2
+    d02_sq = np.sum((p2_coords - p0_coords)**2, axis=1) # Shape (N,)
+    # ||p3 - p1||^2
+    d13_sq = np.sum((p3_coords - p1_coords)**2, axis=1) # Shape (N,)
 
-  # --- Compare and return the boolean choice ---
-  # True if diagonal 0-2 is strictly shorter
-  choose_b = d02_sq < d13_sq # Shape (N,)
+    # --- Compare and return the boolean choice ---
+    # True if diagonal 0-2 is strictly shorter
+    choose_b = d02_sq < d13_sq # Shape (N,)
 
-  return choose_b
-
-# # --- Example Usage ---
-
-# # Define some unique vertices (M=6)
-# vertex_coords = np.array([
-#     [0., 0., 0.], # 0
-#     [1., 0., 0.], # 1
-#     [1., 1., 0.], # 2
-#     [0., 1., 0.], # 3
-#     [2., 0., 1.], # 4
-#     [1.5, 1., 1.] # 5
-# ])
-
-# # Define two quads using indices into vertex_coords (N=2)
-# # Quad 1: A unit square using vertices 0, 1, 2, 3
-# # Quad 2: A skewed quad using vertices 0, 4, 5, 3
-# quad_idxs = np.array([
-#     [0, 1, 2, 3], # Quad 1: Diagonals 0-2 and 1-3 have equal length (sqrt(2))
-#     [0, 4, 5, 3]  # Quad 2: Diag 0-5 = ||(1.5,1,1)||^2 = 2.25+1+1=4.25
-#                   #        Diag 4-3 = ||(-2, 1, -1)||^2 = 4+1+1=6. Diag 0-5 shorter
-# ], dtype=int)
-
-# # Get the boolean choice array
-# triangulation_choice = choose_quad_triangulation(quad_idxs, vertex_coords)
-
-# print("Vertex Coordinates (M={}, Shape={}):".format(vertex_coords.shape[0], vertex_coords.shape))
-# # print(vertex_coords)
-# print("\nQuad Indices (N={}, Shape={}):".format(quad_idxs.shape[0], quad_idxs.shape))
-# print(quad_idxs)
-# print("\nTriangulation Choice (Shape={}):".format(triangulation_choice.shape))
-# print(triangulation_choice)
-# print("([False=Use A (Diag 1-3)], [True=Use B (Diag 0-2)])")
-
-# # Expected output: [False, True]
-# # Quad 1: Diagonals equal, so d02 < d13 is False -> Use A
-# # Quad 2: Diagonal 0-5 (indices 0 and 2 in the quad's relative index) is shorter -> Use B
+    return choose_b
 
 
-# # --- How to use the output to generate triangle indices ---
-# # (This part is outside the requested function, but shows the next step)
-
-def generate_triangle_indices(quad_indices, use_rule_b_mask):
+def generate_triangle_indices(quad_indices: np.ndarray, use_rule_b_mask: np.ndarray) -> np.ndarray:
     """Generates the final triangle indices based on the boolean choice mask."""
     N = quad_indices.shape[0]
-    # Initialize as a 2D array (N*2 triangles, 3 vertices each)
-    output_tris = np.zeros((N * 2, 3), dtype=quad_indices.dtype)
+    # Initialize as an empty 2D array (N*2 triangles, 3 vertices each)
+    output_tris = np.empty((N * 2, 3), dtype=quad_indices.dtype)
 
     # Get original indices for all quads
     i0 = quad_indices[:, 0]
@@ -1779,47 +1740,45 @@ def generate_triangle_indices(quad_indices, use_rule_b_mask):
     i2 = quad_indices[:, 2]
     i3 = quad_indices[:, 3]
 
-    # Indices for Rule A (Default - when use_rule_b_mask is False)
-    # Triangles (i0, i1, i3) and (i1, i2, i3)
-    # Fill even rows (0, 2, 4, ...) with the first triangle
-    output_tris[0::2, 0] = i0
-    output_tris[0::2, 1] = i1
-    output_tris[0::2, 2] = i3
-    # Fill odd rows (1, 3, 5, ...) with the second triangle
-    output_tris[1::2, 0] = i1
-    output_tris[1::2, 1] = i2
-    output_tris[1::2, 2] = i3
+    # --- Rule A triangles ---
+    rule_a_mask = ~use_rule_b_mask
+    num_a = np.count_nonzero(rule_a_mask)
 
-    # Indices for Rule B (When use_rule_b_mask is True)
-    # Triangles (i0, i1, i2) and (i0, i2, i3)
-    # Find the indices (quad numbers) where Rule B applies
-    rule_b_indices = np.where(use_rule_b_mask)[0]
+    if num_a > 0:
+        # Get the indices of the quads where Rule A applies
+        rule_a_row_indices = np.flatnonzero(rule_a_mask)
+        # Calculate the corresponding row indices in the output array
+        rows_a1 = rule_a_row_indices * 2
+        rows_a2 = rows_a1 + 1
 
-    if rule_b_indices.size > 0:
-        # Create the indices for rule B only for the relevant quads
-        tris_b1 = np.stack((i0[use_rule_b_mask], i1[use_rule_b_mask], i2[use_rule_b_mask]), axis=-1)
-        tris_b2 = np.stack((i0[use_rule_b_mask], i2[use_rule_b_mask], i3[use_rule_b_mask]), axis=-1)
+        # Assign Rule A triangles directly
+        # Triangle 1 (i0, i1, i3)
+        output_tris[rows_a1, 0] = i0[rule_a_mask]
+        output_tris[rows_a1, 1] = i1[rule_a_mask]
+        output_tris[rows_a1, 2] = i3[rule_a_mask]
+        # Triangle 2 (i1, i2, i3)
+        output_tris[rows_a2, 0] = i1[rule_a_mask]
+        output_tris[rows_a2, 1] = i2[rule_a_mask]
+        output_tris[rows_a2, 2] = i3[rule_a_mask]
 
-        # Determine the row indices in the output array to overwrite
-        rows_to_overwrite_1 = rule_b_indices * 2
-        rows_to_overwrite_2 = rows_to_overwrite_1 + 1
+    # --- Rule B triangles ---
+    num_b = N - num_a
 
-        # Overwrite the default (Rule A) indices where Rule B should be used
-        output_tris[rows_to_overwrite_1, :] = tris_b1
-        output_tris[rows_to_overwrite_2, :] = tris_b2
+    if num_b > 0:
+        # Get the indices of the quads where Rule B applies
+        rule_b_row_indices = np.flatnonzero(use_rule_b_mask)
+        # Calculate the corresponding row indices in the output array
+        rows_b1 = rule_b_row_indices * 2
+        rows_b2 = rows_b1 + 1
+
+        # Assign Rule B triangles directly
+        # Triangle 1 (i0, i1, i2)
+        output_tris[rows_b1, 0] = i0[use_rule_b_mask]
+        output_tris[rows_b1, 1] = i1[use_rule_b_mask]
+        output_tris[rows_b1, 2] = i2[use_rule_b_mask]
+        # Triangle 2 (i0, i2, i3)
+        output_tris[rows_b2, 0] = i0[use_rule_b_mask]
+        output_tris[rows_b2, 1] = i2[use_rule_b_mask]
+        output_tris[rows_b2, 2] = i3[use_rule_b_mask]
 
     return output_tris
-
-# final_triangle_indices = generate_triangle_indices(quad_idxs, triangulation_choice)
-# print("\nGenerated Triangle Indices (Shape={}):".format(final_triangle_indices.shape))
-# print(final_triangle_indices)
-
-# # Expected Output:
-# # Quad 1 (use A -> [0,1,3], [1,2,3]): [[0, 1, 3], [1, 2, 3]]
-# # Quad 2 (use B -> [0,4,5], [0,5,3]): [[0, 4, 5], [0, 5, 3]]
-# # Output:
-# # [[[0 1 3]
-# #   [1 2 3]]
-# #
-# #  [[0 4 5]
-# #   [0 5 3]]]
