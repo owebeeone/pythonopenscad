@@ -1678,7 +1678,8 @@ class Polyhedron(PoscBase):
     )
 
     def renderObj(self, renderer: M3dRenderer) -> RenderContext:
-        return renderer.polyhedron(self, self.points, self.triangles, self.faces)
+        return renderer.polyhedron(
+            self, verts=self.points, faces=self.faces, triangles=self.triangles)
 
 @apply_posc_attributes
 class Union(PoscParentBase):
