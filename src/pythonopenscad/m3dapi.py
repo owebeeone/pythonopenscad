@@ -1675,26 +1675,65 @@ def get_polygon_signed_area(poly_verts: np.ndarray) -> float:
     signed_area = 0.5 * np.sum(x * np.roll(y, -1) - np.roll(x, -1) * y)
     return signed_area
 
-def choose_quad_triangulation(quad_indices: np.ndarray, vertices: np.ndarray) -> np.ndarray:
+import numpy as np
+
+# Helper function (can be defined inside or outside the main function)
+def _cross_norm(v1: np.ndarray, v2: np.ndarray, eps: float = 1e-12) -> np.ndarray:
     """
-    Determines the preferred triangulation (A or B) for multiple quads
-    based on the shortest diagonal rule, using indexed vertices.
+    Calculates normalized cross product robustly, handling zero-length results.
+
+    Args:
+        v1: First batch of vectors (N, 3).
+        v2: Second batch of vectors (N, 3).
+        eps: Tolerance below which norm is considered zero.
+
+    Returns:
+        Normalized cross product vectors (N, 3), or zero vectors where
+        the cross product magnitude is below tolerance.
+    """
+    # Ensure vectors are at least 2D for cross product axis arguments
+    v1 = np.atleast_2d(v1)
+    v2 = np.atleast_2d(v2)
+    cp = np.cross(v1, v2, axisa=1, axisb=1)
+    norm = np.linalg.norm(cp, axis=1, keepdims=True)
+    # Create default zero vector matching the shape of cp
+    default_zero = np.zeros_like(cp)
+    # Perform division, replacing results where norm is near zero with zeros
+    return np.divide(cp, norm, out=default_zero, where=norm > eps)
+
+
+def choose_quad_triangulation(quad_indices: np.ndarray,
+                              vertices: np.ndarray,
+                              epsilon: float = 1e-9) -> np.ndarray:
+    """
+    Determines the preferred triangulation rule (A or B) for multiple quads,
+    using robust checks for non-convex quads and shortest diagonal otherwise.
+
+    Uses a plane-based check to identify internal/external diagonals. If only
+    one diagonal is internal (non-convex case), that diagonal is chosen. If both
+    are internal (convex) or neither is internal (degenerate), the shortest
+    diagonal rule is used.
 
     Args:
         quad_indices: A NumPy array of shape (N, 4) and dtype integer.
                       Each row contains the 4 indices into the 'vertices'
-                      array that define a quadrilateral (ordered 0, 1, 2, 3
-                      around the perimeter). N is the number of quads.
+                      array defining a quad (ordered 0, 1, 2, 3 around perimeter).
+                      N is the number of quads.
         vertices:     A NumPy array of shape (M, 3) and dtype float.
                       Contains the 3D coordinates of the M unique vertices.
+        epsilon:      A small tolerance for floating-point comparisons, used
+                      in the internal diagonal and normal checks.
 
     Returns:
         A NumPy array of shape (N,) and dtype bool.
-        - True:  Indicates diagonal 0-2 is shorter. Use triangulation B:
-                 (i0, i1, i2) and (i0, i2, i3).
-        - False: Indicates diagonal 1-3 is shorter or equal. Use triangulation A:
-                 (i0, i1, i3) and (i1, i2, i3).
+        - True:  Indicates Rule B (diagonal 0-2) should be used.
+                 Chosen if diagonal 0-2 is internal and 1-3 is external, OR
+                 if quad is convex/degenerate and 0-2 is the shorter diagonal.
+        - False: Indicates Rule A (diagonal 1-3) should be used.
+                 Chosen if diagonal 1-3 is internal and 0-2 is external, OR
+                 if quad is convex/degenerate and 1-3 is the shorter or equal diagonal.
     """
+    # --- Input Validation ---
     if quad_indices.ndim != 2 or quad_indices.shape[1] != 4:
         raise ValueError("quad_indices must have shape (N, 4)")
     if vertices.ndim != 2 or vertices.shape[1] != 3:
@@ -1702,37 +1741,93 @@ def choose_quad_triangulation(quad_indices: np.ndarray, vertices: np.ndarray) ->
     if not np.issubdtype(quad_indices.dtype, np.integer):
         raise TypeError("quad_indices must be an integer type array")
 
-    # --- Get vertex indices for all quads ---
-    idx0 = quad_indices[:, 0] # Shape (N,)
-    idx1 = quad_indices[:, 1] # Shape (N,)
-    idx2 = quad_indices[:, 2] # Shape (N,)
-    idx3 = quad_indices[:, 3] # Shape (N,)
+    N = quad_indices.shape[0]
+    if N == 0:
+        return np.array([], dtype=bool)
 
-    # --- Use advanced indexing to get coordinates for all points of all quads ---
-    # This fetches the coordinates based on the indices efficiently
-    p0_coords = vertices[idx0] # Shape (N, 3)
-    p1_coords = vertices[idx1] # Shape (N, 3)
-    p2_coords = vertices[idx2] # Shape (N, 3)
-    p3_coords = vertices[idx3] # Shape (N, 3)
+    # --- Get vertex indices and coordinates ---
+    idx0, idx1, idx2, idx3 = quad_indices.T
+    p0 = vertices[idx0] # Shape (N, 3)
+    p1 = vertices[idx1] # Shape (N, 3)
+    p2 = vertices[idx2] # Shape (N, 3)
+    p3 = vertices[idx3] # Shape (N, 3)
 
-    # --- Calculate squared lengths of diagonals (vectorized) ---
-    # ||p2 - p0||^2
-    d02_sq = np.sum((p2_coords - p0_coords)**2, axis=1) # Shape (N,)
-    # ||p3 - p1||^2
-    d13_sq = np.sum((p3_coords - p1_coords)**2, axis=1) # Shape (N,)
+    # --- Calculate triangle normals (unnormalized is fine for averaging) ---
+    n012 = np.cross(p1 - p0, p2 - p0, axisa=1, axisb=1)
+    n123 = np.cross(p2 - p1, p3 - p1, axisa=1, axisb=1)
+    n230 = np.cross(p3 - p2, p0 - p2, axisa=1, axisb=1)
+    n301 = np.cross(p0 - p3, p1 - p3, axisa=1, axisb=1)
 
-    # --- Compare and return the boolean choice ---
-    # True if diagonal 0-2 is strictly shorter
-    choose_b = d02_sq < d13_sq # Shape (N,)
+    # --- Calculate average quad normal vector (robust normalization) ---
+    avg_N_unnorm = n012 + n123 + n230 + n301
+    avg_N_norm = np.linalg.norm(avg_N_unnorm, axis=1, keepdims=True)
+    default_N = np.array([[0., 0., 1.]]) # Default for degenerate quads
+    avg_N = np.divide(avg_N_unnorm, avg_N_norm,
+                      out=np.zeros_like(avg_N_unnorm), where=avg_N_norm > epsilon)
+    zero_norm_mask = (avg_N_norm <= epsilon).flatten()
+    if np.any(zero_norm_mask):
+         avg_N[zero_norm_mask] = np.tile(default_N, (np.sum(zero_norm_mask), 1))
 
-    return choose_b
+    # --- Check diagonal 0-2 internal validity ---
+    diag02_vec = p2 - p0
+    split_plane_N02 = _cross_norm(diag02_vec, avg_N, eps=epsilon)
+    dist1_plane02 = np.sum((p1 - p0) * split_plane_N02, axis=1)
+    dist3_plane02 = np.sum((p3 - p0) * split_plane_N02, axis=1)
+    # Internal if points on opposite sides (product <= epsilon^2)
+    diag02_internal = (dist1_plane02 * dist3_plane02) <= epsilon**2
+
+    # --- Check diagonal 1-3 internal validity ---
+    diag13_vec = p3 - p1
+    split_plane_N13 = _cross_norm(diag13_vec, avg_N, eps=epsilon)
+    dist0_plane13 = np.sum((p0 - p1) * split_plane_N13, axis=1)
+    dist2_plane13 = np.sum((p2 - p1) * split_plane_N13, axis=1)
+    # Internal if points on opposite sides (product <= epsilon^2)
+    diag13_internal = (dist0_plane13 * dist2_plane13) <= epsilon**2
+
+    # --- Calculate shortest diagonal ---
+    d02_sq = np.sum(diag02_vec**2, axis=1)
+    d13_sq = np.sum(diag13_vec**2, axis=1)
+    # True if B (0-2) is strictly shorter
+    shortest_is_B = d02_sq < d13_sq
+
+    # --- Combine checks into final boolean choice mask ---
+    # Default choice is based on shortest diagonal
+    final_choice_B = shortest_is_B.copy() # True = Use B (0-2)
+
+    # Identify quads where only one diagonal is internal (non-convex cases)
+    only_02_internal = diag02_internal & ~diag13_internal
+    only_13_internal = ~diag02_internal & diag13_internal
+
+    # Force B (True) if only 0-2 is internal
+    final_choice_B[only_02_internal] = True
+    # Force A (False) if only 1-3 is internal
+    final_choice_B[only_13_internal] = False
+    # If both or neither internal, the shortest_is_B choice remains
+
+    return final_choice_B
 
 
 def generate_triangle_indices(quad_indices: np.ndarray, use_rule_b_mask: np.ndarray) -> np.ndarray:
-    """Generates the final triangle indices based on the boolean choice mask."""
+    """
+    Generates the final triangle indices based on the boolean choice mask.
+
+    Args:
+        quad_indices: A NumPy array of shape (N, 4) and dtype integer.
+        use_rule_b_mask: A NumPy array of shape (N,) and dtype bool.
+                         True means use Rule B (diagonal 0-2).
+                         False means use Rule A (diagonal 1-3).
+
+    Returns:
+        A NumPy array of shape (N * 2, 3) and dtype integer, containing
+        the indices for the two triangles per quad.
+    """
     N = quad_indices.shape[0]
+    output_dtype = quad_indices.dtype
+    if N == 0:
+        return np.empty((0, 3), dtype=output_dtype) # Return shape (0, 3) for consistency
+
     # Initialize as an empty 2D array (N*2 triangles, 3 vertices each)
-    output_tris = np.empty((N * 2, 3), dtype=quad_indices.dtype)
+    output_tris = np.empty((N * 2, 3), dtype=output_dtype)
 
     # Get original indices for all quads
     i0 = quad_indices[:, 0]
@@ -1762,7 +1857,7 @@ def generate_triangle_indices(quad_indices: np.ndarray, use_rule_b_mask: np.ndar
         output_tris[rows_a2, 2] = i3[rule_a_mask]
 
     # --- Rule B triangles ---
-    num_b = N - num_a
+    num_b = N - num_a # Faster than counting True mask
 
     if num_b > 0:
         # Get the indices of the quads where Rule B applies
