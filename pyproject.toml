@@ -6,7 +6,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "pythonopenscad"
-version = "2.0.6"
+version = "2.1.0"
 authors = [
     { name = "Gianni Mariani", email = "gianni@mariani.ws" },
 ]
@@ -18,7 +18,6 @@ classifiers = [
     "License :: OSI Approved :: GNU Lesser General Public License v2 or later (LGPLv2+)",
     "Operating System :: OS Independent",
 ]
-
 dependencies = [
     "distributed>=2025.1.0",
     "numpy>=2.2.1",
@@ -31,7 +30,7 @@ dependencies = [
     "uharfbuzz>=0.48.0",
     "datatrees>=0.2.1",
     "numpy-stl>=3.2.0",
-    "pyopengl>=3.1.9", 
+    "pyopengl>=3.1.9",
     "pyglm>=2.8.0",
     "hershey-fonts>=2.1.0",
 ]
