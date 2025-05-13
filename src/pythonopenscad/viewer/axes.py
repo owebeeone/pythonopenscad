@@ -1,5 +1,3 @@
-
-
 from datatrees import datatree, dtfield, Node
 from typing import ClassVar, List, Tuple
 import numpy as np
@@ -72,28 +70,53 @@ class AxesRenderer:
     
     def get_ws_width_per_px(self, viewer: ViewerBase):
         # Get how wide one pixel is in world space.
-        origin = np.array(glu.gluProject(0.0, 0.0, 0.0))
-        x_first_grad = origin + self.AXES[0]
-        
-        model_origin_plus_1x = np.array(glu.gluUnProject(*x_first_grad))
-        # Mapping back origin and x_first_grad to model space because
-        # there might be some floating point precision issues.
-        model_origin = np.array(glu.gluUnProject(*origin))
-        
-        model_1x = model_origin_plus_1x - model_origin
-        model_1x_len = np.sqrt(np.dot(model_1x, model_1x))
-        
-        return model_1x_len 
+
+        if hasattr(viewer, 'custom_glu_project'): # Indicates PoscGLWidget or similar
+            modelview_mat = viewer.get_view_mat()
+            projection_mat = viewer.get_projection_mat()
+            viewport = viewer.get_viewport()
+
+            try:
+                origin_sx, origin_sy, origin_sz = viewer.custom_glu_project(0.0, 0.0, 0.0, modelview_mat, projection_mat, viewport)
+                world_at_origin_screen = np.array(viewer.custom_glu_unproject(origin_sx, origin_sy, origin_sz, modelview_mat, projection_mat, viewport))
+                world_at_origin_plus_1px_x_screen = np.array(viewer.custom_glu_unproject(origin_sx + 1.0, origin_sy, origin_sz, modelview_mat, projection_mat, viewport))
+                
+                delta_world = world_at_origin_plus_1px_x_screen - world_at_origin_screen
+                model_1px_len = np.sqrt(np.dot(delta_world, delta_world))
+
+                if model_1px_len == 0.0: return 0.001
+                return model_1px_len
+            except ValueError as ve:
+                if PYOPENGL_VERBOSE: print(f"AxesRenderer.get_ws_width_per_px (custom path): ValueError: {ve}")
+                return 0.01
+            except Exception as e:
+                if PYOPENGL_VERBOSE: print(f"AxesRenderer.get_ws_width_per_px (custom path): Exception: {e}")
+                return 0.01
+        else: # Fallback for original Viewer (GLUT-based)
+            try:
+                origin_screen_coords = np.array(glu.gluProject(0.0, 0.0, 0.0))
+                world_at_origin_screen = np.array(glu.gluUnProject(origin_screen_coords[0], origin_screen_coords[1], origin_screen_coords[2]))
+                world_at_origin_plus_1px_x_screen = np.array(glu.gluUnProject(origin_screen_coords[0] + 1.0, origin_screen_coords[1], origin_screen_coords[2]))
+                
+                delta_world = world_at_origin_plus_1px_x_screen - world_at_origin_screen
+                model_1px_len = np.sqrt(np.dot(delta_world, delta_world))
+
+                if model_1px_len == 0.0: return 0.001
+                return model_1px_len
+            except ValueError as ve:
+                if PYOPENGL_VERBOSE: print(f"AxesRenderer.get_ws_width_per_px (GLU path): ValueError: {ve}")
+                return 0.01
+            except Exception as e:
+                if PYOPENGL_VERBOSE: print(f"AxesRenderer.get_ws_width_per_px (GLU path): Exception: {e}")
+                return 0.01
 
     
     def get_scene_diagonal_px(self, viewer: ViewerBase):
-        # Get the diagonal of the scene in pixels.
         win_xy = np.asarray(viewer.get_current_window_dims())
         return np.sqrt(np.dot(win_xy, win_xy))
     
     def compute_screen_context(self, viewer: ViewerBase):
         """Compute the screen context."""
-        
         return ScreenContext(
             ws_width_per_px=self.get_ws_width_per_px(viewer),
             scene_diagonal_px=self.get_scene_diagonal_px(viewer),
@@ -101,12 +124,9 @@ class AxesRenderer:
 
     def draw(self, viewer: ViewerBase):
         """Draw the axes lines."""
-        
         screen_context = self.compute_screen_context(viewer)
-
         self.draw_axes(viewer, screen_context)
-        
-        if self.show_graduation_ticks:
+        if self.show_graduation_ticks: 
             self.draw_graduations(viewer, screen_context)
     
     def draw_text(self, text: str, max_allowed_width: float, transform: np.ndarray):
@@ -186,9 +206,6 @@ class AxesRenderer:
         return 0.9
         
     def draw_graduations(self, viewer: ViewerBase, screen_context: ScreenContext):
-        global PYOPENGL_VERBOSE
-        # PYOPENGL_VERBOSE = True # Optional: uncomment for debugging
-
         # Calculate minimum world-space distance required between ticks
         # to maintain grad_size_px_min pixel separation on screen.
         min_size_ws = screen_context.ws_width_per_px * self.grad_size_px_min
@@ -276,51 +293,40 @@ class AxesRenderer:
 
     def draw_axes(self, viewer: ViewerBase, screen_context: ScreenContext):
         try:
-            # Calculate axis length
             length = screen_context.get_scene_diagonal_ws() * self.factor / 2
             
             if length <= 0:
-                length = 1.0  # Default length if diagonal is zero or negative
-                print("Warning: Scene diagonal is zero or negative, using default length of 1.0")
+                length = 1.0
 
-
-            # Store current OpenGL state
-            lighting_enabled = gl.glIsEnabled(gl.GL_LIGHTING)
-            current_line_width = gl.glGetFloatv(gl.GL_LINE_WIDTH)
-
-            # Setup state for axes drawing
-            if lighting_enabled:
+            lighting_was_enabled = gl.glIsEnabled(gl.GL_LIGHTING)
+            if lighting_was_enabled:
                 gl.glDisable(gl.GL_LIGHTING)
-            gl.glLineWidth(self.line_width_px)
 
-            # Set the color for all axes
+            gl.glLineWidth(self.line_width_px)
             gl.glColor3f(*self.color)
 
-            # --- Draw Positive Axes (Solid) ---
             self.draw_half_axes(length)
-            # --- Draw Negative Axes (Dashed) ---
             try:
                 gl.glEnable(gl.GL_LINE_STIPPLE)
                 gl.glLineStipple(self.stipple_factor, self.negative_stipple_pattern)
                 self.draw_half_axes(-length)
             finally:
-                # Ensure stipple is disabled even if errors occur
                 gl.glDisable(gl.GL_LINE_STIPPLE)
 
-            # Restore previous OpenGL state
-            gl.glLineWidth(current_line_width)
-            # Restore depth test if it was disabled (it wasn't)
-            if lighting_enabled:
+            if lighting_was_enabled:
                 gl.glEnable(gl.GL_LIGHTING)
+
         except Exception as e:
             if PYOPENGL_VERBOSE:
                 print(f"AxesRenderer: Error drawing axes: {e}")
 
     def draw_half_axes(self, length: float):
-        gl.glBegin(gl.GL_LINES)  # Start new block for dashed lines
+        gl.glBegin(gl.GL_LINES)
         try:
-            for axis in self.AXES:
-                gl.glVertex3f(0.0, 0.0, 0.0)
-                gl.glVertex3f(*(length * axis))
+            for i, axis_vec in enumerate(self.AXES):
+                p0 = (0.0, 0.0, 0.0)
+                p1 = tuple(length * axis_vec)
+                gl.glVertex3f(*p0)
+                gl.glVertex3f(*p1)
         finally:
-            gl.glEnd()  # End dashed lines block
+            gl.glEnd()

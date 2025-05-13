@@ -102,7 +102,7 @@ class Viewer(ViewerBase):
         """
         Initialize the viewer.
         """
-        PYOPENGL_VERBOSE = True
+        # PYOPENGL_VERBOSE = True
 
         # Initialize projection mode and scale using defaults or passed values
         # The dtfield defaults handle this, no extra code needed here unless
@@ -2650,7 +2650,7 @@ def get_opengl_capabilities(gl_ctx: GLContext):
 # If this module is run directly, show a simple demo
 if __name__ == "__main__":
     # Enable verbose mode
-    PYOPENGL_VERBOSE = True
+    # PYOPENGL_VERBOSE = True
 
     # Initialize the OpenGL context
     gl_ctx = GLContext.get_instance()

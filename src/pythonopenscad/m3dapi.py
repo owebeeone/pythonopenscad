@@ -334,7 +334,7 @@ def _mirror(axis: np.ndarray) -> np.ndarray:
 
 
 TM3d = TypeVar("TM3d", bound=m3d.Manifold | m3d.CrossSection)
-
+DEBUG_MANIFOLD_3D=False
 
 @dataclass(init=False)
 class RenderContext(Generic[TM3d]):
@@ -418,6 +418,12 @@ class RenderContext(Generic[TM3d]):
     def _apply_and_merge(self, get_type_func: Callable[[], tuple[TM3d, ...]]) -> tuple[TM3d, ...]:
         manifs = self._apply_transforms(get_type_func)
         result_manifs = (sum(manifs[1:], start=manifs[0]),) if len(manifs) > 1 else manifs
+        if DEBUG_MANIFOLD_3D:
+            print(f"Merging {len(result_manifs)} manifolds")
+            for i, m in enumerate(result_manifs):
+                if m.num_vert() == 0:
+                    print(f"Manifold {i} has no vertices")
+                    
         return result_manifs
 
     def _apply_and_merge_helper(
