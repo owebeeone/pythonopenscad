@@ -6,7 +6,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "pythonopenscad"
-version = "2.2.1"
+version = "2.2.2"
 authors = [
     { name = "Gianni Mariani", email = "gianni@mariani.ws" },
 ]
@@ -21,7 +21,7 @@ classifiers = [
 dependencies = [
     "distributed>=2025.1.0",
     "numpy>=2.2.1",
-    "manifold3d>=3.0.1",
+    "manifold3d>=3.1.0",
     "mapbox-earcut>=1.0.3",
     "mapbox>=0.18.1",
     "frozendict>=2.3.0",
