@@ -160,6 +160,7 @@ class Viewer(ViewerBase):
         self.first_mouse = True
         self.left_button_pressed = False
         self.right_button_pressed = False
+        self.middle_button_pressed = False
         self.mouse_start_x = 0
         self.mouse_start_y = 0
         self._compute_scene_bounds()  # Needs models
@@ -369,7 +370,11 @@ class Viewer(ViewerBase):
             print(f"Viewer: Registering mouse callbacks for window ID: {self.window_id}")
         glut.glutMouseFunc(self._mouse_callback)
         glut.glutMotionFunc(self._motion_callback)
-        glut.glutMouseWheelFunc(self._wheel_callback)
+        try:
+            glut.glutMouseWheelFunc(self._wheel_callback)
+        except Exception as e:
+            if PYOPENGL_VERBOSE:
+                print(f"Viewer: Error registering mouse wheel callback: {e}")
 
         if PYOPENGL_VERBOSE:
             print(f"Viewer: Registering keyboard callback for window ID: {self.window_id}")
@@ -1411,6 +1416,16 @@ class Viewer(ViewerBase):
                 self.mouse_start_y = y
             elif state == glut.GLUT_UP:
                 self.right_button_pressed = False
+        elif button == glut.GLUT_MIDDLE_BUTTON:
+            if state == glut.GLUT_DOWN:
+                self.middle_button_pressed = True
+                self.mouse_start_x = x
+                self.mouse_start_y = y
+            elif state == glut.GLUT_UP:
+                self.middle_button_pressed = False
+        else:
+            if PYOPENGL_VERBOSE:
+                print(f"Viewer: Unknown mouse button: {button}")
 
     def relative_distance_from_screen_centre(self, x, y) -> tuple[float, float, float]:
         # Get the window dimensions
@@ -1430,8 +1445,19 @@ class Viewer(ViewerBase):
         # We don't reset mouse_start_x/y here for trackball,
         # we always compare current x,y to the initial press point.
         # However, we will update the trackball_start_point for continuous rotation.
+        
+        if self.middle_button_pressed \
+            or (self.right_button_pressed and self.left_button_pressed):
+            # Zooming - middle button or right button and left button pressed
+            pan_dx = x - self.mouse_start_x
+            pan_dy = y - self.mouse_start_y
+            self.mouse_start_x = x
+            self.mouse_start_y = y
+            direction = 1 if pan_dy > 0 else -1
+            direction *= 0.5
+            self._wheel_callback(0, direction, x, y)
 
-        if self.left_button_pressed:
+        elif self.left_button_pressed:
             # Trackball Rotation
             p1 = self.trackball_start_point
             p2 = self._map_to_sphere(x, y)
