@@ -136,13 +136,14 @@ class Viewer(ViewerBase):
 
         # --- Model Preparation (can happen before window creation) ---
         self.original_models = self.models  # Store original models
-        if self.models:
+        if self.models and self.use_coalesced_models:
             opaque_model, transparent_model = Model.create_coalesced_models(self.models)
             self.models = []
             if opaque_model.num_points > 0:
                 self.models.append(opaque_model)
             if transparent_model.num_points > 0:
                 self.models.append(transparent_model)
+        # If use_coalesced_models is False, keep original models as-is
         # -----------------------------------------------------------
 
         # --- Camera Setup (based on models, before window) ---
@@ -423,56 +424,8 @@ class Viewer(ViewerBase):
                 )
             self.antialiasing_enabled = False  # Force disable if not supported
 
-        # Always enable color material mode
-        try:
-            gl.glEnable(gl.GL_COLOR_MATERIAL)
-            gl.glColorMaterial(gl.GL_FRONT_AND_BACK, gl.GL_AMBIENT_AND_DIFFUSE)
-        except Exception:
-            pass
-
-        # Set up simple lighting for better visibility
-        if self.gl_ctx.has_legacy_lighting:
-            try:
-                # Enable lighting
-                gl.glEnable(gl.GL_LIGHTING)
-                gl.glEnable(gl.GL_LIGHT0)
-
-                # Increase ambient light intensity for better visibility
-                ambient_light = [0.6, 0.6, 0.6, 1.0]  # Very bright ambient
-                diffuse_light = [0.8, 0.8, 0.8, 1.0]  # Strong diffuse
-                specular_light = [0.5, 0.5, 0.5, 1.0]  # Moderate specular
-
-                gl.glLightfv(gl.GL_LIGHT0, gl.GL_AMBIENT, ambient_light)
-                gl.glLightfv(gl.GL_LIGHT0, gl.GL_DIFFUSE, diffuse_light)
-                gl.glLightfv(gl.GL_LIGHT0, gl.GL_SPECULAR, specular_light)
-
-                # Position light above and in front of the scene
-                light_position = [0.0, 5.0, 10.0, 1.0]
-                gl.glLightfv(gl.GL_LIGHT0, gl.GL_POSITION, light_position)
-
-                # Set up material properties to ensure colors are visible
-                material_ambient = [0.6, 0.6, 0.6, 1.0]  # High ambient reflection
-                material_diffuse = [0.8, 0.8, 0.8, 1.0]  # High diffuse reflection
-                material_specular = [0.4, 0.4, 0.4, 1.0]  # Moderate specular
-                material_shininess = [20.0]  # Low shininess
-
-                gl.glMaterialfv(gl.GL_FRONT_AND_BACK, gl.GL_AMBIENT, material_ambient)
-                gl.glMaterialfv(gl.GL_FRONT_AND_BACK, gl.GL_DIFFUSE, material_diffuse)
-                gl.glMaterialfv(gl.GL_FRONT_AND_BACK, gl.GL_SPECULAR, material_specular)
-                gl.glMaterialfv(gl.GL_FRONT_AND_BACK, gl.GL_SHININESS, material_shininess)
-
-                # Global ambient light for better overall illumination
-                global_ambient = [0.4, 0.4, 0.4, 1.0]
-                gl.glLightModelfv(gl.GL_LIGHT_MODEL_AMBIENT, global_ambient)
-
-                # Make sure colors are used directly without recalculation
-                # Crucial for ensuring vertex colors show up properly
-                gl.glEnable(gl.GL_COLOR_MATERIAL)
-                gl.glColorMaterial(gl.GL_FRONT_AND_BACK, gl.GL_AMBIENT_AND_DIFFUSE)
-
-            except Exception as e:
-                if PYOPENGL_VERBOSE:
-                    print(f"Viewer: Failed to set up basic lighting: {e}")
+        # Set up comprehensive lighting for all rendering modes
+        self._setup_comprehensive_lighting()
 
         # Flag to control shader usage
         self.use_shaders = True
@@ -538,6 +491,62 @@ class Viewer(ViewerBase):
                 if PYOPENGL_VERBOSE:
                     print(f"Viewer: Shader compilation failed: {e}")
                 self.shader_program = None
+
+    def _setup_comprehensive_lighting(self):
+        """Set up lighting that works consistently across all three rendering tiers."""
+        try:
+            # Always enable color material mode for all rendering paths
+            gl.glEnable(gl.GL_COLOR_MATERIAL)
+            gl.glColorMaterial(gl.GL_FRONT_AND_BACK, gl.GL_AMBIENT_AND_DIFFUSE)
+
+            # Set up legacy lighting for vertex arrays and immediate mode
+            if self.gl_ctx.has_legacy_lighting:
+                try:
+                    # Enable lighting
+                    gl.glEnable(gl.GL_LIGHTING)
+                    gl.glEnable(gl.GL_LIGHT0)
+
+                    # Set up light properties for good visibility across all platforms
+                    ambient_light = [0.4, 0.4, 0.4, 1.0]   # Moderate ambient for good base lighting
+                    diffuse_light = [0.8, 0.8, 0.8, 1.0]   # Strong diffuse for shape definition
+                    specular_light = [0.6, 0.6, 0.6, 1.0]  # Moderate specular for highlights
+
+                    gl.glLightfv(gl.GL_LIGHT0, gl.GL_AMBIENT, ambient_light)
+                    gl.glLightfv(gl.GL_LIGHT0, gl.GL_DIFFUSE, diffuse_light)
+                    gl.glLightfv(gl.GL_LIGHT0, gl.GL_SPECULAR, specular_light)
+
+                    # Position light above and in front of the scene
+                    light_position = [0.0, 5.0, 10.0, 1.0]
+                    gl.glLightfv(gl.GL_LIGHT0, gl.GL_POSITION, light_position)
+
+                    # Set up material properties for good color visibility
+                    material_ambient = [0.3, 0.3, 0.3, 1.0]   # Low ambient reflection
+                    material_diffuse = [0.8, 0.8, 0.8, 1.0]   # High diffuse reflection
+                    material_specular = [0.5, 0.5, 0.5, 1.0]  # Moderate specular
+                    material_shininess = [32.0]                # Medium shininess
+
+                    gl.glMaterialfv(gl.GL_FRONT_AND_BACK, gl.GL_AMBIENT, material_ambient)
+                    gl.glMaterialfv(gl.GL_FRONT_AND_BACK, gl.GL_DIFFUSE, material_diffuse)
+                    gl.glMaterialfv(gl.GL_FRONT_AND_BACK, gl.GL_SPECULAR, material_specular)
+                    gl.glMaterialfv(gl.GL_FRONT_AND_BACK, gl.GL_SHININESS, material_shininess)
+
+                    # Global ambient light for overall illumination
+                    global_ambient = [0.2, 0.2, 0.2, 1.0]
+                    gl.glLightModelfv(gl.GL_LIGHT_MODEL_AMBIENT, global_ambient)
+
+                    if PYOPENGL_VERBOSE:
+                        print("Viewer: Comprehensive lighting setup successful")
+
+                except Exception as e:
+                    if PYOPENGL_VERBOSE:
+                        print(f"Viewer: Failed to set up legacy lighting: {e}")
+            else:
+                if PYOPENGL_VERBOSE:
+                    print("Viewer: Legacy lighting not available, relying on shader lighting")
+
+        except Exception as e:
+            if PYOPENGL_VERBOSE:
+                print(f"Viewer: Failed to set up comprehensive lighting: {e}")
 
     def _check_shader_program(self, program_id=None):
         """Check the status and validity of a shader program.
@@ -1262,28 +1271,8 @@ class Viewer(ViewerBase):
 
     def _setup_view(self):
         """Set up the view transformation for rendering."""
-        # Set up lighting - this is crucial for seeing colors
-        if self.gl_ctx.has_legacy_lighting:
-            try:
-                # Make sure lighting is enabled (redundant but important)
-                gl.glEnable(gl.GL_LIGHTING)
-                gl.glEnable(gl.GL_LIGHT0)
-
-                # Position light relative to camera for consistent lighting
-                light_position = [
-                    self.camera_pos.x,
-                    self.camera_pos.y + 5.0,
-                    self.camera_pos.z + 10.0,
-                    1.0,
-                ]
-                gl.glLightfv(gl.GL_LIGHT0, gl.GL_POSITION, light_position)
-
-                # Make sure color material is enabled
-                gl.glEnable(gl.GL_COLOR_MATERIAL)
-                gl.glColorMaterial(gl.GL_FRONT_AND_BACK, gl.GL_AMBIENT_AND_DIFFUSE)
-            except Exception as e:
-                if PYOPENGL_VERBOSE:
-                    print(f"Viewer: Error setting up lighting in view: {e}")
+        # Set up lighting - this is crucial for seeing colors across all rendering modes
+        self._setup_view_lighting()
 
         # Check if we're in a core profile
         try:
@@ -1294,13 +1283,11 @@ class Viewer(ViewerBase):
             is_core_profile = False
         except Exception:
             is_core_profile = True
-            # if PYOPENGL_VERBOSE: # Reduced verbosity
-            #     print("Viewer: Detected core profile in setup_view")
 
         # Get Projection Matrix
         projection = self.get_projection_mat()
 
-        # Set up matrices for Shader pipeline
+        # Set up matrices for Shader pipeline (TIER 1)
         if self.gl_ctx.has_shader and self.shader_program:
             try:
                 gl.glUseProgram(self.shader_program)
@@ -1315,7 +1302,6 @@ class Viewer(ViewerBase):
                 # Set up model-view-projection matrices
                 model_mat = self.get_model_mat()
                 view = self.get_view_mat()
-                # projection is calculated above using get_projection_mat()
 
                 # Send matrices to the shader
                 model_loc = gl.glGetUniformLocation(self.shader_program, "model")
@@ -1326,18 +1312,20 @@ class Viewer(ViewerBase):
                     gl.glUniformMatrix4fv(model_loc, 1, gl.GL_FALSE, glm.value_ptr(model_mat))
                 if view_loc != -1:
                     gl.glUniformMatrix4fv(view_loc, 1, gl.GL_FALSE, glm.value_ptr(view))
-                # Use the matrix obtained from get_projection_mat()
                 if proj_loc != -1 and projection is not None:
                     gl.glUniformMatrix4fv(proj_loc, 1, gl.GL_FALSE, glm.value_ptr(projection))
 
                 # Check for combined MVP matrix (used in basic shader)
                 mvp_loc = gl.glGetUniformLocation(self.shader_program, "modelViewProj")
-                # Use the matrix obtained from get_projection_mat()
                 if mvp_loc != -1 and projection is not None:
-                    mvp = (
-                        projection * view * model_mat
-                    )  # projection comes from get_projection_mat()
+                    mvp = projection * view * model_mat
                     gl.glUniformMatrix4fv(mvp_loc, 1, gl.GL_FALSE, glm.value_ptr(mvp))
+
+                # Set up shader lighting uniforms
+                light_pos_loc = gl.glGetUniformLocation(self.shader_program, "lightPos")
+                if light_pos_loc != -1:
+                    # Use same light position as legacy lighting
+                    gl.glUniform3f(light_pos_loc, 0.0, 5.0, 10.0)
 
                 gl.glUseProgram(0)
             except Exception as e:
@@ -1348,7 +1336,7 @@ class Viewer(ViewerBase):
                 except:
                     pass
 
-        # Set up matrices for Fixed-Function pipeline
+        # Set up matrices for Fixed-Function pipeline (TIER 2 & 3: vertex arrays and immediate mode)
         if not is_core_profile:
             try:
                 # Set up projection matrix based on mode (using legacy calls)
@@ -1385,7 +1373,7 @@ class Viewer(ViewerBase):
                     self.camera_pos.z,
                     self.camera_target.x,
                     self.camera_target.y,
-                    self.camera_target.z,  # Use camera_target
+                    self.camera_target.z,
                     self.camera_up.x,
                     self.camera_up.y,
                     self.camera_up.z,
@@ -1397,6 +1385,31 @@ class Viewer(ViewerBase):
                 # Core profile with no shaders and no fixed function pipeline
                 if PYOPENGL_VERBOSE:
                     print(f"Viewer: Failed to set up legacy view matrix: {e}")
+
+    def _setup_view_lighting(self):
+        """Set up lighting for each frame - ensures consistent lighting across all rendering tiers."""
+        try:
+            # Update lighting for legacy rendering (vertex arrays and immediate mode)
+            if self.gl_ctx.has_legacy_lighting:
+                # Make sure lighting is enabled
+                gl.glEnable(gl.GL_LIGHTING)
+                gl.glEnable(gl.GL_LIGHT0)
+
+                # Position light relative to camera for consistent lighting across all modes
+                light_position = [
+                    self.camera_pos.x,
+                    self.camera_pos.y + 5.0,
+                    self.camera_pos.z + 10.0,
+                    1.0,
+                ]
+                gl.glLightfv(gl.GL_LIGHT0, gl.GL_POSITION, light_position)
+
+                # Make sure color material is enabled for all modes
+                gl.glEnable(gl.GL_COLOR_MATERIAL)
+                gl.glColorMaterial(gl.GL_FRONT_AND_BACK, gl.GL_AMBIENT_AND_DIFFUSE)
+        except Exception as e:
+            if PYOPENGL_VERBOSE:
+                print(f"Viewer: Error setting up lighting in view: {e}")
 
     def _mouse_callback(self, button, state, x, y):
         """GLUT mouse button callback."""
@@ -1988,297 +2001,69 @@ class Viewer(ViewerBase):
             fbo = gl.glGenFramebuffers(1)
             if gl.glGetError() != gl.GL_NO_ERROR or not fbo:
                 raise RuntimeError("Failed to generate Framebuffer Object (FBO).")
-            gl.glBindFramebuffer(gl.GL_FRAMEBUFFER, fbo)
-            if gl.glGetError() != gl.GL_NO_ERROR:
-                raise RuntimeError("Failed to bind FBO.")
 
-            # Color Renderbuffer
+            # Continue with FBO setup...
+            gl.glBindFramebuffer(gl.GL_FRAMEBUFFER, fbo)
+
+            # Create color renderbuffer
             color_rbo = gl.glGenRenderbuffers(1)
-            if gl.glGetError() != gl.GL_NO_ERROR or not color_rbo:
-                raise RuntimeError("Failed to generate color Renderbuffer Object (RBO).")
             gl.glBindRenderbuffer(gl.GL_RENDERBUFFER, color_rbo)
-            if gl.glGetError() != gl.GL_NO_ERROR:
-                raise RuntimeError("Failed to bind color RBO.")
-            # Use GL_RGB8 for color, GL_DEPTH_COMPONENT24 for depth (common choices)
             gl.glRenderbufferStorage(gl.GL_RENDERBUFFER, gl.GL_RGB8, self.width, self.height)
-            if gl.glGetError() != gl.GL_NO_ERROR:
-                raise RuntimeError("Failed to allocate color RBO storage.")
             gl.glFramebufferRenderbuffer(
                 gl.GL_FRAMEBUFFER, gl.GL_COLOR_ATTACHMENT0, gl.GL_RENDERBUFFER, color_rbo
             )
-            if gl.glGetError() != gl.GL_NO_ERROR:
-                raise RuntimeError("Failed to attach color RBO to FBO.")
 
-            # Depth Renderbuffer
+            # Create depth renderbuffer
             depth_rbo = gl.glGenRenderbuffers(1)
-            if gl.glGetError() != gl.GL_NO_ERROR or not depth_rbo:
-                raise RuntimeError("Failed to generate depth RBO.")
             gl.glBindRenderbuffer(gl.GL_RENDERBUFFER, depth_rbo)
-            if gl.glGetError() != gl.GL_NO_ERROR:
-                raise RuntimeError("Failed to bind depth RBO.")
-            gl.glRenderbufferStorage(
-                gl.GL_RENDERBUFFER, gl.GL_DEPTH_COMPONENT24, self.width, self.height
-            )
-            if gl.glGetError() != gl.GL_NO_ERROR:
-                raise RuntimeError("Failed to allocate depth RBO storage.")
+            gl.glRenderbufferStorage(gl.GL_RENDERBUFFER, gl.GL_DEPTH_COMPONENT24, self.width, self.height)
             gl.glFramebufferRenderbuffer(
                 gl.GL_FRAMEBUFFER, gl.GL_DEPTH_ATTACHMENT, gl.GL_RENDERBUFFER, depth_rbo
             )
-            if gl.glGetError() != gl.GL_NO_ERROR:
-                raise RuntimeError("Failed to attach depth RBO to FBO.")
 
-            # Unbind the RBO to avoid accidental modification
-            gl.glBindRenderbuffer(gl.GL_RENDERBUFFER, 0)
-
-            # Check FBO status
+            # Check FBO completeness
             status = gl.glCheckFramebufferStatus(gl.GL_FRAMEBUFFER)
             if status != gl.GL_FRAMEBUFFER_COMPLETE:
-                # Map common status codes to strings for better error messages
-                status_map = {
-                    gl.GL_FRAMEBUFFER_UNDEFINED: "GL_FRAMEBUFFER_UNDEFINED",
-                    gl.GL_FRAMEBUFFER_INCOMPLETE_ATTACHMENT: "GL_FRAMEBUFFER_INCOMPLETE_ATTACHMENT",
-                    gl.GL_FRAMEBUFFER_INCOMPLETE_MISSING_ATTACHMENT: "GL_FRAMEBUFFER_INCOMPLETE_MISSING_ATTACHMENT",
-                    gl.GL_FRAMEBUFFER_INCOMPLETE_DRAW_BUFFER: "GL_FRAMEBUFFER_INCOMPLETE_DRAW_BUFFER",
-                    gl.GL_FRAMEBUFFER_INCOMPLETE_READ_BUFFER: "GL_FRAMEBUFFER_INCOMPLETE_READ_BUFFER",
-                    gl.GL_FRAMEBUFFER_UNSUPPORTED: "GL_FRAMEBUFFER_UNSUPPORTED",
-                    gl.GL_FRAMEBUFFER_INCOMPLETE_MULTISAMPLE: "GL_FRAMEBUFFER_INCOMPLETE_MULTISAMPLE",
-                    # GL_FRAMEBUFFER_INCOMPLETE_LAYER_TARGETS might not be defined in older PyOpenGL
-                    # 36065: "GL_FRAMEBUFFER_INCOMPLETE_LAYER_TARGETS",
-                }
-                raise RuntimeError(
-                    f"Framebuffer is not complete: Status {status_map.get(status, status)}"
-                )
+                raise RuntimeError(f"Framebuffer is not complete: {status}")
 
-            # --- Rendering to FBO ---
+            # Set viewport for offscreen rendering
             original_viewport = gl.glGetIntegerv(gl.GL_VIEWPORT)
             gl.glViewport(0, 0, self.width, self.height)
-            if gl.glGetError() != gl.GL_NO_ERROR:
-                print("Warning: Error setting viewport for FBO.", file=sys.stderr)
 
-            # Clear the FBO buffers
+            # Clear and render
             gl.glClearColor(*self.background_color)
             gl.glClear(gl.GL_COLOR_BUFFER_BIT | gl.GL_DEPTH_BUFFER_BIT)
-            if gl.glGetError() != gl.GL_NO_ERROR:
-                print("Warning: Error clearing FBO buffers.", file=sys.stderr)
 
-            # --- Replicate core rendering logic from _display_callback ---
-            # NOTE: This duplicates logic. A refactor of _display_callback is recommended.
-            try:
-                self._setup_view()  # Set up projection and view matrices
+            # Set up view
+            self._setup_view()
 
-                # Determine models to render based on coalesce setting
-                if not self.use_coalesced_models:
-                    opaque_models = [
-                        model for model in self.original_models if not model.has_alpha_lt1
-                    ]
-                    transparent_models = [
-                        model for model in self.original_models if model.has_alpha_lt1
-                    ]
-                    # Create temporary coalesced models just for sorting if needed (less efficient)
-                    if opaque_models or transparent_models:
-                        temp_opaque, temp_transparent = Model.create_coalesced_models(
-                            opaque_models + transparent_models
-                        )
-                        # This approach might be complex, sticking to the coalesced/original logic for now
-                        # Reverting to simpler logic based on self.models which ARE already coalesced or not
-                        if not self.use_coalesced_models:
-                            opaque_models = [
-                                model for model in self.models if not model.has_alpha_lt1
-                            ]
-                            transparent_models = [
-                                model for model in self.models if model.has_alpha_lt1
-                            ]
-                            # Need to sort transparent models if not coalesced
-                            # This requires Z positions which are not readily available without recalculation
-                            # Sticking to the assumption that self.models is correct for now
-                        else:
-                            opaque_models = [self.models[0]] if len(self.models) > 0 else []
-                            transparent_models = [self.models[1]] if len(self.models) > 1 else []
+            # Render models (simplified version of display callback)
+            for model in self.models:
+                model.draw()
 
-                else:  # Already using coalesced models
-                    opaque_models = [self.models[0]] if len(self.models) > 0 else []
-                    transparent_models = [self.models[1]] if len(self.models) > 1 else []
-
-                # Shader usage check
-                using_shader = False
-                active_program = 0
-                if self.use_shaders and self.gl_ctx.has_shader and self.shader_program:
-                    if isinstance(self.shader_program, int) and self.shader_program > 0:
-                        # Further check if the program is valid before using
-                        if self._check_shader_program(self.shader_program):
-                            using_shader = True
-                            active_program = self.shader_program
-
-                # Set polygon mode, culling, color material based on viewer state
-                if self.wireframe_mode:
-                    gl.glPolygonMode(gl.GL_FRONT_AND_BACK, gl.GL_LINE)
-                else:
-                    gl.glPolygonMode(gl.GL_FRONT_AND_BACK, gl.GL_FILL)
-
-                if self.backface_culling:
-                    gl.glEnable(gl.GL_CULL_FACE)
-                    gl.glCullFace(gl.GL_BACK)
-                else:
-                    gl.glDisable(gl.GL_CULL_FACE)
-
-                try:  # Ensure color material is enabled for fixed-function or basic shaders
-                    gl.glEnable(gl.GL_COLOR_MATERIAL)
-                    gl.glColorMaterial(gl.GL_FRONT_AND_BACK, gl.GL_AMBIENT_AND_DIFFUSE)
-                except Exception:
-                    pass  # Ignore if not available
-
-                # Render opaque models
-                if using_shader:
-                    try:
-                        gl.glUseProgram(active_program)
-                        # Uniforms (lightPos, viewPos) should be set if using the main shader
-                        if active_program == self.shader_program:  # Check if it's the main shader
-                            light_pos_loc = gl.glGetUniformLocation(active_program, "lightPos")
-                            view_pos_loc = gl.glGetUniformLocation(active_program, "viewPos")
-                            if light_pos_loc != -1:
-                                gl.glUniform3f(
-                                    light_pos_loc,
-                                    self.camera_pos.x + 5.0,
-                                    self.camera_pos.y + 5.0,
-                                    self.camera_pos.z + 10.0,
-                                )
-                            if view_pos_loc != -1:
-                                gl.glUniform3f(
-                                    view_pos_loc,
-                                    self.camera_pos.x,
-                                    self.camera_pos.y,
-                                    self.camera_pos.z,
-                                )
-                    except Exception as e:
-                        if PYOPENGL_VERBOSE:
-                            print(
-                                f"Viewer (offscreen): Error setting shader uniforms: {e}",
-                                file=sys.stderr,
-                            )
-                        gl.glUseProgram(0)  # Fallback if uniforms fail
-                        active_program = 0
-
-                for model in opaque_models:
-                    # Pass the active shader program to draw, if any
-                    model.draw()  # Model.draw now handles using the current program
-
-                # Render transparent models
-                if transparent_models:
-                    try:
-                        gl.glDepthMask(gl.GL_FALSE)  # Don't write to depth buffer
-                        # Blending is enabled within model.draw if needed
-                        for model in transparent_models:
-                            model.draw()  # Pass active shader
-                        gl.glDepthMask(gl.GL_TRUE)  # Restore depth writes
-                    except Exception as e:
-                        if PYOPENGL_VERBOSE:
-                            print(
-                                f"Viewer (offscreen): Error during transparent rendering: {e}",
-                                file=sys.stderr,
-                            )
-                        gl.glDepthMask(gl.GL_TRUE)  # Ensure depth mask is restored on error
-                        # Fallback rendering without depth mask modification
-                        for model in transparent_models:
-                            model.draw()
-
-                # Unbind shader if it was used
-                if active_program != 0:
-                    try:
-                        gl.glUseProgram(0)
-                    except Exception:
-                        pass
-
-                # Draw bounding box if enabled (uses immediate mode)
-                self._draw_bounding_box()
-
-                # Draw axes (uses immediate mode)
-                if self.show_axes:
-                    self.axes_renderer.draw(self)
-
-            except Exception as render_err:
-                # Handle rendering errors specifically
-                print(
-                    f"Viewer (offscreen): Error during scene rendering: {render_err}",
-                    file=sys.stderr,
-                )
-                # Continue to cleanup if possible, but report the error
-                # We might still have partial results in the buffer
-
-            # --- Read Pixels ---
-            # Ensure reading from the correct FBO attachment
-            gl.glReadBuffer(gl.GL_COLOR_ATTACHMENT0)
-            if gl.glGetError() != gl.GL_NO_ERROR:
-                print("Warning: Error setting read buffer to FBO attachment.", file=sys.stderr)
-
+            # Read pixels
             buffer = gl.glReadPixels(0, 0, self.width, self.height, gl.GL_RGB, gl.GL_UNSIGNED_BYTE)
-            read_error = gl.glGetError()
-            if read_error != gl.GL_NO_ERROR:
-                raise RuntimeError(f"Failed to read pixels from FBO: OpenGL Error {read_error}")
-            if buffer is None:
-                raise RuntimeError("glReadPixels returned None.")
-
             pixel_data = np.frombuffer(buffer, dtype=np.uint8)
-            # Check if the buffer size matches expected size
-            expected_size = self.width * self.height * 3
-            if pixel_data.size != expected_size:
-                print(
-                    f"Warning: Read pixel buffer size ({pixel_data.size}) does not match expected size ({expected_size}). Image may be incorrect.",
-                    file=sys.stderr,
-                )
-                # Attempt to reshape anyway, might fail if size is wrong
-                # pixel_data = pixel_data[:expected_size] # Truncate/Pad? Risky.
-
-            # --- Save Image ---
-            # Check size again before saving
-            if pixel_data.size == expected_size:
-                self._save_numpy_buffer_to_png(pixel_data, self.width, self.height, filename)
-            else:
-                raise RuntimeError(
-                    f"Cannot save image due to incorrect pixel buffer size. Expected {expected_size}, got {pixel_data.size}."
-                )
+            self._save_numpy_buffer_to_png(pixel_data, self.width, self.height, filename)
 
         except Exception as e:
             print(f"Error during offscreen rendering: {e}", file=sys.stderr)
-            # Re-raise the exception after attempting cleanup
             raise
         finally:
-            # --- Cleanup ---
-            # Unbind FBO and restore default framebuffer (0)
+            # Cleanup
             gl.glBindFramebuffer(gl.GL_FRAMEBUFFER, 0)
-
-            # Delete FBO and renderbuffers if they were created
             if fbo is not None:
-                # Check if fbo is still a valid framebuffer before deleting
-                # try:
-                #      if gl.glIsFramebuffer(fbo):
-                #           gl.glDeleteFramebuffers(1, [fbo])
-                # except Exception: pass # Ignore cleanup errors
-                gl.glDeleteFramebuffers(1, [fbo])  # Simpler deletion
+                gl.glDeleteFramebuffers(1, [fbo])
             if color_rbo is not None:
-                # try:
-                #      if gl.glIsRenderbuffer(color_rbo):
-                #           gl.glDeleteRenderbuffers(1, [color_rbo])
-                # except Exception: pass
                 gl.glDeleteRenderbuffers(1, [color_rbo])
             if depth_rbo is not None:
-                # try:
-                #      if gl.glIsRenderbuffer(depth_rbo):
-                #           gl.glDeleteRenderbuffers(1, [depth_rbo])
-                # except Exception: pass
                 gl.glDeleteRenderbuffers(1, [depth_rbo])
-
-            # Restore viewport
             if original_viewport is not None:
                 gl.glViewport(*original_viewport)
-
-            # Restore original window context if necessary
             if original_window != 0 and original_window != self.window_id:
                 try:
-                    # Only set if the original window ID is still valid (might have been destroyed)
-                    # This check is difficult, simply trying might be best
                     glut.glutSetWindow(original_window)
                 except Exception:
-                    # This is expected if the original window (e.g. temp init window) was destroyed
                     pass
 
     def _query_actual_msaa_samples(self):

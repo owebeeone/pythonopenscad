@@ -376,17 +376,10 @@ class Model:
             self.bounding_box.max_point = np.array([0.5, 0.5, 0.5])
 
     def draw(self):
-        """Draw the model using OpenGL."""
-        if PYOPENGL_VERBOSE: print(f"Model.draw: Entered for model with VBO {self.vbo}, VAO {self.vao}. Shader program ID on model (if any): {getattr(self, 'shader_program_id', 'N/A')}")
+        """Draw the model using OpenGL with three-tier fallback system."""
+        if PYOPENGL_VERBOSE: print(f"Model.draw: Entered for model with VBO {self.vbo}, VAO {self.vao}")
 
         gl_ctx: GLContext = self.gl_ctx
-        # current_window = glut.glutGetWindow() # REMOVED: This is GLUT-specific
-
-        # Ensure we're drawing in a valid window context
-        # if current_window == 0: # REMOVED: Context should be managed by caller (PoscGLWidget or GLUT Viewer)
-        #     if PYOPENGL_VERBOSE:
-        #         print("Model.draw: No valid window context")
-        #     return
 
         # Setup blending for transparent models
         blend_enabled = False
@@ -401,10 +394,8 @@ class Model:
                     print(f"Model.draw: Failed to enable blending: {e}")
 
         try:
-            # First try to render using shaders if available
-            if PYOPENGL_VERBOSE: print(f"Model.draw: Checking shader/VBO support. gl_ctx.has_shader={gl_ctx.has_shader}, gl_ctx.has_vbo={gl_ctx.has_vbo}")
+            # TIER 1: Modern VAO + Shaders (original working path)
             if gl_ctx.has_shader and gl_ctx.has_vbo:
-                # If shader program is available from the viewer, use it
                 current_program = gl.glGetIntegerv(gl.GL_CURRENT_PROGRAM)
                 if PYOPENGL_VERBOSE: print(f"Model.draw: Current active shader program: {current_program}")
                 if current_program and current_program != 0:
@@ -419,20 +410,28 @@ class Model:
                                 pass
                         return
                     elif PYOPENGL_VERBOSE:
-                        print("Model.draw: _draw_with_shader returned False. Falling back.")
+                        print("Model.draw: _draw_with_shader returned False. Falling back to vertex arrays.")
                 elif PYOPENGL_VERBOSE:
-                    print("Model.draw: No active shader program (or program is 0). Falling back.")
+                    print("Model.draw: No active shader program. Falling back to vertex arrays.")
             elif PYOPENGL_VERBOSE:
-                print("Model.draw: Shader or VBO support not available. Falling back.")
+                print("Model.draw: Shader or VBO support not available. Falling back to vertex arrays.")
 
-            # Make sure colors are visible
-            try:
-                gl.glEnable(gl.GL_COLOR_MATERIAL)
-                gl.glColorMaterial(gl.GL_FRONT_AND_BACK, gl.GL_AMBIENT_AND_DIFFUSE)
-            except Exception:
-                pass
+            # TIER 2: Vertex Arrays + Custom Shader (reload arrays each time)
+            if gl_ctx.has_legacy_vertex_arrays and self.vbo:
+                if PYOPENGL_VERBOSE: print("Model.draw: Attempting _draw_with_vertex_arrays.")
+                if self._draw_with_vertex_arrays():
+                    if PYOPENGL_VERBOSE: print("Model.draw: _draw_with_vertex_arrays succeeded.")
+                    # Vertex array rendering was successful
+                    if self.has_alpha_lt1 and not blend_enabled:
+                        try:
+                            gl.glDisable(gl.GL_BLEND)
+                        except Exception:
+                            pass
+                    return
+                elif PYOPENGL_VERBOSE:
+                    print("Model.draw: _draw_with_vertex_arrays returned False. Falling back to immediate mode.")
 
-            # Fallback to immediate mode if shader rendering failed or isn't available
+            # TIER 3: Immediate Mode (final fallback, original working path)
             if PYOPENGL_VERBOSE: print("Model.draw: Attempting _draw_immediate_mode.")
             if not self._draw_immediate_mode():
                 if PYOPENGL_VERBOSE: print("Model.draw: _draw_immediate_mode returned False. Falling back to wireframe.")
@@ -1028,3 +1027,81 @@ class Model:
         )
 
         return opaque_model, transparent_model
+
+    def _draw_with_vertex_arrays(self) -> bool:
+        """Draw the model using legacy vertex arrays with VBO (reload arrays each time).
+
+        Returns:
+            bool: True if drawing succeeded, False otherwise.
+        """
+        if not self.vbo or self.num_points == 0:
+            return False
+
+        try:
+            # Ensure VBO is bound for drawing
+            gl.glBindBuffer(gl.GL_ARRAY_BUFFER, self.vbo)
+            
+            # Set up vertex arrays for THIS model (don't rely on global state from initialization)
+            # Enable and set up vertex array
+            gl.glEnableClientState(gl.GL_VERTEX_ARRAY)
+            gl.glVertexPointer(3,                                   # size (3 components for vertex)
+                            gl.GL_FLOAT,                         # type
+                            self.stride * 4,                     # stride (in bytes)
+                            ctypes.c_void_p(self.position_offset * 4)) # pointer (offset into VBO)
+
+            # Enable and set up color array
+            gl.glEnableClientState(gl.GL_COLOR_ARRAY)
+            gl.glColorPointer(4,                                  # size (4 components for color RGBA)
+                            gl.GL_FLOAT,                        # type
+                            self.stride * 4,                    # stride (in bytes)
+                            ctypes.c_void_p(self.color_offset * 4)) # pointer (offset into VBO)
+
+            # Enable and set up normal array
+            gl.glEnableClientState(gl.GL_NORMAL_ARRAY)
+            gl.glNormalPointer(gl.GL_FLOAT,                       # type (no size parameter for normals)
+                            self.stride * 4,                   # stride (in bytes)
+                            ctypes.c_void_p(self.normal_offset * 4)) # pointer (offset into VBO)
+            
+            # Setup blending if needed
+            blend_enabled_before_draw = False
+            if self.has_alpha_lt1:
+                blend_was_enabled_globally = gl.glIsEnabled(gl.GL_BLEND)
+                if not blend_was_enabled_globally:
+                    gl.glEnable(gl.GL_BLEND)
+                    blend_enabled_before_draw = True
+                gl.glBlendFunc(gl.GL_SRC_ALPHA, gl.GL_ONE_MINUS_SRC_ALPHA)
+
+            # Draw using vertex arrays
+            gl.glDrawArrays(gl.GL_TRIANGLES, 0, self.num_points)
+            
+            draw_error = gl.glGetError()
+            if draw_error != gl.GL_NO_ERROR:
+                return False
+
+            # Restore blend state if we changed it
+            if self.has_alpha_lt1 and blend_enabled_before_draw:
+                gl.glDisable(gl.GL_BLEND)
+
+            # Clean up vertex array state
+            gl.glDisableClientState(gl.GL_VERTEX_ARRAY)
+            gl.glDisableClientState(gl.GL_COLOR_ARRAY)
+            gl.glDisableClientState(gl.GL_NORMAL_ARRAY)
+            
+            # Unbind VBO
+            gl.glBindBuffer(gl.GL_ARRAY_BUFFER, 0)
+            
+            return True
+
+        except Exception as e:
+            # Cleanup on error
+            try:
+                gl.glDisableClientState(gl.GL_VERTEX_ARRAY)
+                gl.glDisableClientState(gl.GL_COLOR_ARRAY)
+                gl.glDisableClientState(gl.GL_NORMAL_ARRAY)
+                gl.glBindBuffer(gl.GL_ARRAY_BUFFER, 0)
+                if self.has_alpha_lt1 and blend_enabled_before_draw:
+                    gl.glDisable(gl.GL_BLEND)
+            except:
+                pass
+            
+            return False
