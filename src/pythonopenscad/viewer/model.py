@@ -463,8 +463,10 @@ class Model:
             bool: True if drawing succeeded, False otherwise.
         """
         if PYOPENGL_VERBOSE: print(f"Model._draw_with_shader: Entered for VAO {self.vao}, program {active_program}. num_points={self.num_points}")
-        if not self.vao or self.num_points == 0: # Added num_points check
-            if PYOPENGL_VERBOSE: print(f"Model._draw_with_shader: Aborting - No VAO ({self.vao}) or num_points is 0 ({self.num_points}).")
+        
+        # Check if we have either VAO or VBO (for non-VAO fallback)
+        if (not self.vao and not self.vbo) or self.num_points == 0:
+            if PYOPENGL_VERBOSE: print(f"Model._draw_with_shader: Aborting - No VAO ({self.vao}) and no VBO ({self.vbo}), or num_points is 0 ({self.num_points}).")
             return False
 
         is_prog_valid = False
@@ -478,24 +480,60 @@ class Model:
             return False
 
         try:
-            gl.glBindVertexArray(self.vao)
-            if PYOPENGL_VERBOSE: print(f"Model._draw_with_shader: VAO {self.vao} bound.")
-            # gl.glEnableVertexAttribArray(0)  # Position - These are part of VAO state, should not be needed here IF VAO is correctly set up and bound
-            # gl.glEnableVertexAttribArray(1)  # Color
-            # gl.glEnableVertexAttribArray(2)  # Normal
-
-            blend_enabled_before_draw = False # To track if GL_BLEND was enabled by this function specifically
+            # Setup blending if needed
+            blend_enabled_before_draw = False
             if self.has_alpha_lt1:
-                # Store current blend state
                 blend_was_enabled_globally = gl.glIsEnabled(gl.GL_BLEND)
                 if not blend_was_enabled_globally:
                     gl.glEnable(gl.GL_BLEND)
-                    blend_enabled_before_draw = True # We turned it on
-                # Ensure blend func is correct (might be changed elsewhere)
+                    blend_enabled_before_draw = True
                 gl.glBlendFunc(gl.GL_SRC_ALPHA, gl.GL_ONE_MINUS_SRC_ALPHA)
                 if PYOPENGL_VERBOSE: print(f"Model._draw_with_shader: Blend enabled (was globally {blend_was_enabled_globally}, we set to {blend_enabled_before_draw}).")
-            # else:
-                # blend_enabled = False  # Keep track even if we don't enable it here
+
+            if self.vao:
+                # Modern path: Use VAO (OpenGL 3.3+)
+                if PYOPENGL_VERBOSE: print(f"Model._draw_with_shader: Using VAO {self.vao}.")
+                gl.glBindVertexArray(self.vao)
+            else:
+                # Fallback path: Manually set up vertex attributes without VAO (OpenGL 2.1)
+                if PYOPENGL_VERBOSE: print(f"Model._draw_with_shader: No VAO available, setting up vertex attributes manually with VBO {self.vbo}.")
+                
+                # Bind VBO
+                gl.glBindBuffer(gl.GL_ARRAY_BUFFER, self.vbo)
+                
+                # Set up vertex attributes manually (same as VAO setup but without VAO)
+                # Position attribute - location 0 (aPos)
+                gl.glVertexAttribPointer(
+                    0,  # attribute location
+                    3,  # size (3 components for position)
+                    gl.GL_FLOAT,  # type
+                    gl.GL_FALSE,  # normalized
+                    self.stride * 4,  # stride (in bytes)
+                    ctypes.c_void_p(self.position_offset * 4)  # pointer (offset into VBO)
+                )
+                gl.glEnableVertexAttribArray(0)
+                
+                # Color attribute - location 1 (aColor)
+                gl.glVertexAttribPointer(
+                    1,  # attribute location
+                    4,  # size (4 components for color RGBA)
+                    gl.GL_FLOAT,  # type
+                    gl.GL_FALSE,  # normalized
+                    self.stride * 4,  # stride (in bytes)
+                    ctypes.c_void_p(self.color_offset * 4)  # pointer (offset into VBO)
+                )
+                gl.glEnableVertexAttribArray(1)
+                
+                # Normal attribute - location 2 (aNormal)
+                gl.glVertexAttribPointer(
+                    2,  # attribute location
+                    3,  # size (3 components for normal)
+                    gl.GL_FLOAT,  # type
+                    gl.GL_FALSE,  # normalized
+                    self.stride * 4,  # stride (in bytes)
+                    ctypes.c_void_p(self.normal_offset * 4)  # pointer (offset into VBO)
+                )
+                gl.glEnableVertexAttribArray(2)
 
             if PYOPENGL_VERBOSE: print(f"Model._draw_with_shader: Calling glDrawArrays(GL_TRIANGLES, 0, {self.num_points}).")
             gl.glDrawArrays(gl.GL_TRIANGLES, 0, self.num_points)
@@ -503,29 +541,42 @@ class Model:
             if draw_error != gl.GL_NO_ERROR and PYOPENGL_VERBOSE:
                 print(f"Model._draw_with_shader: GL error after glDrawArrays: {draw_error}")
 
+            # Cleanup
+            if self.vao:
+                # VAO path cleanup
+                gl.glBindVertexArray(0)
+                if PYOPENGL_VERBOSE: print(f"Model._draw_with_shader: VAO {self.vao} unbound.")
+            else:
+                # Manual vertex attributes cleanup
+                gl.glDisableVertexAttribArray(0)
+                gl.glDisableVertexAttribArray(1)
+                gl.glDisableVertexAttribArray(2)
+                gl.glBindBuffer(gl.GL_ARRAY_BUFFER, 0)
+                if PYOPENGL_VERBOSE: print(f"Model._draw_with_shader: Manual vertex attributes disabled and VBO unbound.")
+
             # Restore blend state ONLY if we changed it
             if self.has_alpha_lt1 and blend_enabled_before_draw:
                 gl.glDisable(gl.GL_BLEND)
                 if PYOPENGL_VERBOSE: print(f"Model._draw_with_shader: Blend disabled (was set by this function).")
 
-            gl.glBindVertexArray(0)
-            if PYOPENGL_VERBOSE: print(f"Model._draw_with_shader: VAO {self.vao} unbound.")
-            # gl.glDisableVertexAttribArray(0) # Should not be needed if VAO is managed correctly
-            # gl.glDisableVertexAttribArray(1)
-            # gl.glDisableVertexAttribArray(2)
-
             return True  # Indicate success
 
         except Exception as e:
             if PYOPENGL_VERBOSE:
-                print(
-                    f"Model._draw_with_shader: Error drawing VAO {self.vao} with program {active_program}: {e}"
-                )
+                print(f"Model._draw_with_shader: Error drawing with program {active_program}: {e}")
+            
             # Attempt to cleanup context state on error
             try:
-                gl.glBindVertexArray(0)
+                if self.vao:
+                    gl.glBindVertexArray(0)
+                else:
+                    gl.glDisableVertexAttribArray(0)
+                    gl.glDisableVertexAttribArray(1)
+                    gl.glDisableVertexAttribArray(2)
+                    gl.glBindBuffer(gl.GL_ARRAY_BUFFER, 0)
+                
                 # Restore blend state if it might have been left enabled
-                if self.has_alpha_lt1 and not blend_enabled_before_draw:
+                if self.has_alpha_lt1 and blend_enabled_before_draw:
                     try:
                         gl.glDisable(gl.GL_BLEND)
                     except:
