@@ -1,5 +1,6 @@
 """OpenGL 3D viewer for PyOpenSCAD models."""
 
+import time
 import numpy as np
 import ctypes
 from typing import Any, Iterable, Iterator, List, Optional, Tuple, Union, Dict, Callable, ClassVar
@@ -180,28 +181,9 @@ class Viewer(ViewerBase):
         if self.window_id and self.window_id == glut.glutGetWindow():
             # Only initialize if not already done (e.g., by another Viewer instance)
             if not self.gl_ctx.is_initialized:
-                if PYOPENGL_VERBOSE:
-                    print(
-                        f"Viewer: Initializing GLContext using main window ({self.window_id}) context."
-                    )
                 self.gl_ctx.initialize()
-            elif PYOPENGL_VERBOSE:
-                print("GLContext already initialized.")
-        elif PYOPENGL_VERBOSE:
-            # Only initialize if not already done (e.g., by another Viewer instance)
-            if not self.gl_ctx.is_initialized:
-                if PYOPENGL_VERBOSE:
-                    print(
-                        f"Viewer: Initializing GLContext using main window ({self.window_id}) context."
-                    )
-                self.gl_ctx.initialize()
-            elif PYOPENGL_VERBOSE:
-                print("GLContext already initialized.")
-        elif PYOPENGL_VERBOSE:
-            warnings.warn(
-                "Viewer: Cannot initialize GLContext, main window creation failed or context mismatch."
-            )
-        # --------------------------------------------------------------------------
+        elif not self.gl_ctx.is_initialized:
+            self.gl_ctx.initialize()
 
         # --- Setup GL state (lighting, shaders, MSAA query etc.) AFTER context is initialized ---
         self._setup_gl()
@@ -210,16 +192,12 @@ class Viewer(ViewerBase):
         # --- Initialize GL resources for models LAST ---
         # Now that the context and shaders are ready, initialize VBOs/VAOs for each model
         if self.window_id and self.window_id == glut.glutGetWindow() and self.gl_ctx.is_initialized:
-            if PYOPENGL_VERBOSE:
-                print("Viewer: Initializing GL resources for models...")
             for model in self.models:
                 try:
                     model.initialize_gl_resources()
                 except Exception as e:
                     if PYOPENGL_VERBOSE:
                         print(f"Viewer: Error initializing GL resources for model: {e}")
-            if PYOPENGL_VERBOSE:
-                print("Viewer: Finished initializing GL resources for models.")
         elif PYOPENGL_VERBOSE:
             warnings.warn(
                 "Viewer: Skipping model GL resource initialization due to missing window or context."
@@ -262,11 +240,19 @@ class Viewer(ViewerBase):
         # Avoid calling glut functions if the window doesn't exist or GLUT isn't initialized
         if self.window_id is not None and Viewer._initialized:
             try:
+                if PYOPENGL_VERBOSE:
+                    print(f"Viewer: Closing window {self.window_id} for instance {self.instance_id}")
                 glut.glutDestroyWindow(self.window_id)
             except Exception as e:
                 if PYOPENGL_VERBOSE:
                     print(f"Viewer: Error destroying window {self.window_id}: {e}")
         self.window_id = None
+        
+        # Remove this instance from the registry
+        if hasattr(self, 'instance_id') and self.instance_id in Viewer._instances:
+            if PYOPENGL_VERBOSE:
+                print(f"Viewer: Removing instance {self.instance_id} from registry")
+            del Viewer._instances[self.instance_id]
 
     @classmethod
     def _init_glut(cls):
@@ -351,24 +337,13 @@ class Viewer(ViewerBase):
         # Create window
         glut.glutInitWindowSize(self.width, self.height)
         self.window_id = glut.glutCreateWindow(self.title.encode())
-        if PYOPENGL_VERBOSE:
-            print(f"Viewer: Created main window with ID: {self.window_id}")
 
         # Make sure we're operating on the correct window
         glut.glutSetWindow(self.window_id)
 
         # Register callbacks
         glut.glutDisplayFunc(self._display_callback)
-        if PYOPENGL_VERBOSE:
-            print(f"Viewer: Registered display callback for window ID: {self.window_id}")
-
-        # Register other callbacks with logging
-        if PYOPENGL_VERBOSE:
-            print(f"Viewer: Registering reshape callback for window ID: {self.window_id}")
         glut.glutReshapeFunc(self._reshape_callback)
-
-        if PYOPENGL_VERBOSE:
-            print(f"Viewer: Registering mouse callbacks for window ID: {self.window_id}")
         glut.glutMouseFunc(self._mouse_callback)
         glut.glutMotionFunc(self._motion_callback)
         try:
@@ -377,13 +352,9 @@ class Viewer(ViewerBase):
             if PYOPENGL_VERBOSE:
                 print(f"Viewer: Error registering mouse wheel callback: {e}")
 
-        if PYOPENGL_VERBOSE:
-            print(f"Viewer: Registering keyboard callback for window ID: {self.window_id}")
         glut.glutKeyboardFunc(self._keyboard_callback)
 
         # Immediate redisplay to ensure display callback is triggered
-        if PYOPENGL_VERBOSE:
-            print(f"Viewer: Forcing redisplay for window ID: {self.window_id}")
         glut.glutPostRedisplay()
 
     def _setup_gl(self):
@@ -434,40 +405,21 @@ class Viewer(ViewerBase):
         if self.gl_ctx.has_shader:
             try:
                 # First try the more advanced shader
-                if PYOPENGL_VERBOSE:
-                    print("Viewer._setup_gl: Attempting to compile main shader...")
                 self.shader_program = self._compile_shaders()
-                if PYOPENGL_VERBOSE:
-                    print(f"Viewer._setup_gl: _compile_shaders returned: {self.shader_program}")
 
                 if not self.shader_program:
                     # If the main shader fails, try the basic shader
-                    if PYOPENGL_VERBOSE:
-                        print("Viewer._setup_gl: Main shader failed, trying basic shader...")
                     self.shader_program = self._compile_basic_shader()
-                    if PYOPENGL_VERBOSE:
-                        print(
-                            f"Viewer._setup_gl: _compile_basic_shader returned: {self.shader_program}"
-                        )
 
-                # Add verification logging here:
+                # Verify the shader program is valid
                 if self.shader_program:
-                    # Verify the shader program is valid
                     if isinstance(self.shader_program, int) and self.shader_program > 0:
                         # Test the shader program by trying to use it
                         try:
                             gl.glUseProgram(self.shader_program)
                             # If no error, it's a valid program
                             gl.glUseProgram(0)
-                            if PYOPENGL_VERBOSE:
-                                print(
-                                    f"Viewer: Successfully verified shader program: {self.shader_program}"
-                                )
-                        except Exception as e:
-                            if PYOPENGL_VERBOSE:
-                                print(
-                                    f"Viewer: Shader program {self.shader_program} failed validation test: {e}"
-                                )
+                        except Exception:
                             # Delete the invalid program and set to None
                             try:
                                 gl.glDeleteProgram(self.shader_program)
@@ -475,21 +427,9 @@ class Viewer(ViewerBase):
                                 pass
                             self.shader_program = None
                     else:
-                        if PYOPENGL_VERBOSE:
-                            print(f"Viewer: Invalid shader program value: {self.shader_program}")
                         self.shader_program = None
 
-                if self.shader_program:
-                    if PYOPENGL_VERBOSE:
-                        print(
-                            f"Viewer: Successfully compiled and verified shader program: {self.shader_program}"
-                        )
-                else:
-                    if PYOPENGL_VERBOSE:
-                        print("Viewer: All shader compilation attempts failed")
-            except Exception as e:
-                if PYOPENGL_VERBOSE:
-                    print(f"Viewer: Shader compilation failed: {e}")
+            except Exception:
                 self.shader_program = None
 
     def _setup_comprehensive_lighting(self):
@@ -533,9 +473,6 @@ class Viewer(ViewerBase):
                     # Global ambient light for overall illumination
                     global_ambient = [0.2, 0.2, 0.2, 1.0]
                     gl.glLightModelfv(gl.GL_LIGHT_MODEL_AMBIENT, global_ambient)
-
-                    if PYOPENGL_VERBOSE:
-                        print("Viewer: Comprehensive lighting setup successful")
 
                 except Exception as e:
                     if PYOPENGL_VERBOSE:
@@ -626,17 +563,13 @@ class Viewer(ViewerBase):
         # Toggle shader state
         self.use_shaders = not self.use_shaders
 
-        if PYOPENGL_VERBOSE:
-            if self.use_shaders:
-                print("Viewer: Shader-based rendering enabled")
-            else:
-                print("Viewer: Shader-based rendering disabled")
+        # Print clean status update
+        print(self._get_rendering_status())
 
         # Diagnose shader status if enabled
         if self.use_shaders and self.shader_program:
             if not self._check_shader_program(self.shader_program):
-                if PYOPENGL_VERBOSE:
-                    print("Viewer: Using immediate mode rendering due to shader issues")
+                print("Rendering: Legacy Mode (Shader Validation Failed)")
                 self.use_shaders = False
 
         # Request redisplay
@@ -704,12 +637,26 @@ class Viewer(ViewerBase):
 
         Call this method to properly exit the application and clean up all resources.
         """
+        if PYOPENGL_VERBOSE:
+            print(f"Viewer.terminate(): Starting termination. Found {len(Viewer._instances)} instances.")
+        
         # Make a copy of the instances dictionary to avoid modification during iteration
         instances = list(Viewer._instances.values())
 
         # Close all viewer instances
-        for viewer in instances:
-            viewer.close()
+        for i, viewer in enumerate(instances):
+            if PYOPENGL_VERBOSE:
+                print(f"Viewer.terminate(): Closing instance {i+1}/{len(instances)} (ID: {getattr(viewer, 'instance_id', 'unknown')})")
+            try:
+                viewer.close()
+            except Exception as e:
+                if PYOPENGL_VERBOSE:
+                    print(f"Viewer.terminate(): Error closing viewer instance: {e}")
+
+        # Clear the instances dictionary in case any weren't properly removed
+        if PYOPENGL_VERBOSE and Viewer._instances:
+            print(f"Viewer.terminate(): Clearing remaining {len(Viewer._instances)} instances from registry")
+        Viewer._instances.clear()
 
         # Check if GLContext still has a temp window to clean up
         gl_ctx = GLContext.get_instance()
@@ -742,6 +689,23 @@ class Viewer(ViewerBase):
                 glut.glutExit()
             except Exception:
                 pass
+
+        # Force process termination if GLUT doesn't exit properly
+        # This is especially important on macOS where glutLeaveMainLoop() may not work
+        try:
+            # Give GLUT a moment to clean up
+            time.sleep(0.1)
+            
+            # If we're still here, GLUT didn't terminate the process
+            if PYOPENGL_VERBOSE:
+                print("Viewer: GLUT main loop didn't terminate process, forcing exit")
+            sys.exit(0)
+        except Exception as e:
+            if PYOPENGL_VERBOSE:
+                print(f"Viewer: Error during forced exit: {e}")
+            # Last resort - use os._exit to bypass any cleanup
+            import os
+            os._exit(0)
 
     def _render_absolute_fallback(self):
         """An absolute fallback rendering mode that should work on any OpenGL version.
@@ -1000,12 +964,34 @@ class Viewer(ViewerBase):
                 except Exception:
                     pass
 
+    def _get_rendering_status(self) -> str:
+        """Get a clean status string describing the current rendering mode."""
+        if not self.use_shaders:
+            return "Rendering: Legacy Mode (Immediate/Vertex Arrays)"
+        
+        if not self.shader_program:
+            return "Rendering: Legacy Mode (No Shader Available)"
+        
+        # Determine shader type
+        if self.gl_ctx.has_vao:
+            shader_type = "Modern VAO+Shaders"
+        else:
+            shader_type = "VBO+Shaders (No VAO)"
+        
+        return f"Rendering: {shader_type} (Program {self.shader_program})"
+
+    def _print_status_once(self):
+        """Print the rendering status once when the viewer starts."""
+        if not hasattr(self, '_status_printed'):
+            print(f"OpenGL {self.gl_ctx.opengl_version} | {self._get_rendering_status()}")
+            self._status_printed = True
+
     def _display_callback(self):
         """GLUT display callback."""
         try:
-            if PYOPENGL_VERBOSE and False:
-                print(f"Viewer: Display callback executed for window ID: {self.window_id}")
-
+            # Print status once when rendering starts
+            self._print_status_once()
+            
             # Clear the color and depth buffers
             gl.glClearColor(
                 *self.background_color
@@ -1014,8 +1000,6 @@ class Viewer(ViewerBase):
 
             # Check if we're in a core profile
             is_core = self._is_core_profile()
-            if is_core and PYOPENGL_VERBOSE:
-                print("Detected OpenGL core profile - immediate mode not available")
 
             # Track whether any models rendered successfully
             rendering_success = False
@@ -1049,10 +1033,6 @@ class Viewer(ViewerBase):
                     # Verify shader program is valid
                     if isinstance(self.shader_program, int) and self.shader_program > 0:
                         using_shader = True
-                    else:
-                        if PYOPENGL_VERBOSE:
-                            print(f"Viewer: Invalid shader program value: {self.shader_program}")
-                        self.shader_program = None
 
                 # Check if we should use Z-buffer occlusion
                 if self.zbuffer_occlusion and self.wireframe_mode and self.backface_culling:
@@ -1069,13 +1049,9 @@ class Viewer(ViewerBase):
                             # Check for errors
                             error = gl.glGetError()
                             if error != gl.GL_NO_ERROR:
-                                if PYOPENGL_VERBOSE:
-                                    print(f"Viewer: Error using shader program: {error}")
                                 using_shader = False
                                 gl.glUseProgram(0)
-                        except Exception as e:
-                            if PYOPENGL_VERBOSE:
-                                print(f"Viewer: Failed to use shader program: {e}")
+                        except Exception:
                             using_shader = False
 
                     # Draw all models to fill the Z-buffer
@@ -1120,9 +1096,8 @@ class Viewer(ViewerBase):
                     if using_shader:
                         try:
                             gl.glUseProgram(0)
-                        except Exception as e:
-                            if PYOPENGL_VERBOSE:
-                                print(f"Viewer: Error disabling shader program: {e}")
+                        except Exception:
+                            pass
                 else:
                     # Regular rendering: Draw opaque models first
                     # Use shader if available
@@ -1134,8 +1109,6 @@ class Viewer(ViewerBase):
                             # Check for errors
                             error = gl.glGetError()
                             if error != gl.GL_NO_ERROR:
-                                if PYOPENGL_VERBOSE:
-                                    print(f"Viewer: Error using shader program: {error}")
                                 using_shader = False
                                 gl.glUseProgram(0)
                             else:
@@ -1152,12 +1125,9 @@ class Viewer(ViewerBase):
                                             self.camera_pos.y + 5.0,
                                             self.camera_pos.z + 10.0,
                                         )
-                                except Exception as e:
-                                    if PYOPENGL_VERBOSE:
-                                        print(f"Viewer: Error setting shader uniforms: {e}")
-                        except Exception as e:
-                            if PYOPENGL_VERBOSE:
-                                print(f"Viewer: Failed to use shader program: {e}")
+                                except Exception:
+                                    pass
+                        except Exception:
                             using_shader = False
 
                     # Draw all opaque models
@@ -1178,9 +1148,7 @@ class Viewer(ViewerBase):
 
                             # Restore depth mask
                             gl.glDepthMask(gl.GL_TRUE)
-                        except Exception as e:
-                            if PYOPENGL_VERBOSE:
-                                print(f"Viewer: Error during transparent rendering: {e}")
+                        except Exception:
                             # Fallback - just render transparent models normally
                             for model in transparent_models:
                                 model.draw()
@@ -1190,23 +1158,17 @@ class Viewer(ViewerBase):
                     if using_shader:
                         try:
                             gl.glUseProgram(0)
-                        except Exception as e:
-                            if PYOPENGL_VERBOSE:
-                                print(f"Viewer: Error disabling shader program: {e}")
+                        except Exception:
+                            pass
 
                 # Draw bounding box if enabled (always use immediate mode)
                 self._draw_bounding_box()
 
-            except Exception as e:
-                if PYOPENGL_VERBOSE:
-                    print(f"Viewer: Error during normal rendering: {str(e)}")
+            except Exception:
                 rendering_success = False
 
             # If normal rendering failed, use appropriate fallback
             if not rendering_success:
-                if PYOPENGL_VERBOSE:
-                    print("Viewer: Normal rendering failed, using fallback")
-
                 if is_core:
                     # Use special core profile fallback
                     self._render_core_profile_fallback()
@@ -1221,9 +1183,7 @@ class Viewer(ViewerBase):
             # Swap buffers
             glut.glutSwapBuffers()
 
-        except Exception as e:
-            if PYOPENGL_VERBOSE:
-                print(f"Viewer: Critical error in display callback: {str(e)}")
+        except Exception:
             # Try a final fallback
             try:
                 gl.glClear(gl.GL_COLOR_BUFFER_BIT | gl.GL_DEPTH_BUFFER_BIT)
@@ -2178,7 +2138,48 @@ def terminate(viewer: Viewer):
     """Terminate the application."""
     if PYOPENGL_VERBOSE:
         print("Viewer: ESC key pressed, terminating application")
-    viewer.terminate()
+    
+    # Close the window immediately to stop the display loop
+    try:
+        if viewer.window_id is not None:
+            if PYOPENGL_VERBOSE:
+                print(f"Viewer: Destroying window {viewer.window_id}")
+            glut.glutDestroyWindow(viewer.window_id)
+            viewer.window_id = None
+    except Exception as e:
+        if PYOPENGL_VERBOSE:
+            print(f"Viewer: Error destroying window: {e}")
+    
+    # Try normal GLUT termination
+    try:
+        if PYOPENGL_VERBOSE:
+            print("Viewer: Attempting glutLeaveMainLoop")
+        glut.glutLeaveMainLoop()
+    except Exception as e:
+        if PYOPENGL_VERBOSE:
+            print(f"Viewer: glutLeaveMainLoop failed: {e}")
+    
+    # Force immediate termination - this should always work
+    if PYOPENGL_VERBOSE:
+        print("Viewer: Forcing immediate process termination")
+    
+    import sys
+    import os
+    
+    # Try sys.exit first (cleaner)
+    try:
+        sys.exit(0)
+    except SystemExit:
+        # sys.exit raises SystemExit, which might be caught somewhere
+        # Use os._exit as a more forceful alternative
+        if PYOPENGL_VERBOSE:
+            print("Viewer: sys.exit() was caught, using os._exit()")
+        os._exit(0)
+    except Exception as e:
+        if PYOPENGL_VERBOSE:
+            print(f"Viewer: sys.exit() failed: {e}, using os._exit()")
+        # Last resort - this bypasses all cleanup but guarantees termination
+        os._exit(0)
 
 
 @keybinding(b"r")
@@ -2186,8 +2187,6 @@ def reset_view(viewer: Viewer):
     """Reset the view."""
     viewer._reset_view()
     glut.glutPostRedisplay()
-    if PYOPENGL_VERBOSE:
-        print("Viewer: R key pressed, resetting view")
 
 
 @keybinding(b"a")
@@ -2198,15 +2197,13 @@ def toggle_antialiasing(viewer: Viewer):
         viewer.antialiasing_enabled = not viewer.antialiasing_enabled
         if viewer.antialiasing_enabled:
             gl.glEnable(gl.GL_MULTISAMPLE)
-            if PYOPENGL_VERBOSE:
-                print("Viewer: Antialiasing enabled")
+            print("Antialiasing enabled")
         else:
             gl.glDisable(gl.GL_MULTISAMPLE)
-            if PYOPENGL_VERBOSE:
-                print("Viewer: Antialiasing disabled")
+            print("Antialiasing disabled")
         glut.glutPostRedisplay()
-    elif PYOPENGL_VERBOSE:
-        print("Viewer: Antialiasing (GL_MULTISAMPLE) not supported on this system.")
+    else:
+        print("Antialiasing not supported on this system")
 
 
 @keybinding(b"b")
@@ -2216,12 +2213,10 @@ def toggle_backface_culling(viewer: Viewer):
     if viewer.backface_culling:
         gl.glEnable(gl.GL_CULL_FACE)
         gl.glCullFace(gl.GL_BACK)
-        if PYOPENGL_VERBOSE:
-            print("Viewer: Backface culling enabled")
+        print("Backface culling enabled")
     else:
         gl.glDisable(gl.GL_CULL_FACE)
-        if PYOPENGL_VERBOSE:
-            print("Viewer: Backface culling disabled")
+        print("Backface culling disabled")
     glut.glutPostRedisplay()
 
 
@@ -2232,12 +2227,10 @@ def toggle_wireframe_mode(viewer: Viewer):
     viewer.wireframe_mode = not viewer.wireframe_mode
     if viewer.wireframe_mode:
         gl.glPolygonMode(gl.GL_FRONT_AND_BACK, gl.GL_LINE)
-        if PYOPENGL_VERBOSE:
-            print("Viewer: Wireframe mode enabled")
+        print("Wireframe mode enabled")
     else:
         gl.glPolygonMode(gl.GL_FRONT_AND_BACK, gl.GL_FILL)
-        if PYOPENGL_VERBOSE:
-            print("Viewer: Wireframe mode disabled")
+        print("Wireframe mode disabled")
     glut.glutPostRedisplay()
 
 
@@ -2245,11 +2238,10 @@ def toggle_wireframe_mode(viewer: Viewer):
 def toggle_zbuffer_occlusion(viewer: Viewer):
     # Toggle Z-buffer occlusion for wireframes
     viewer.zbuffer_occlusion = not viewer.zbuffer_occlusion
-    if PYOPENGL_VERBOSE:
-        if viewer.zbuffer_occlusion:
-            print("Viewer: Z-buffer occlusion enabled for wireframes")
-        else:
-            print("Viewer: Z-buffer occlusion disabled for wireframes")
+    if viewer.zbuffer_occlusion:
+        print("Z-buffer occlusion enabled for wireframes")
+    else:
+        print("Z-buffer occlusion disabled for wireframes")
     glut.glutPostRedisplay()
 
 
@@ -2257,8 +2249,8 @@ def toggle_zbuffer_occlusion(viewer: Viewer):
 def toggle_bounding_box_mode(viewer: Viewer):
     # Toggle bounding box mode
     viewer.bounding_box_mode = (viewer.bounding_box_mode + 1) % 3
-    if PYOPENGL_VERBOSE:
-        print(f"Viewer: Bounding box mode set to {viewer.bounding_box_mode}")
+    modes = ["off", "wireframe", "solid"]
+    print(f"Bounding box mode: {modes[viewer.bounding_box_mode]}")
     glut.glutPostRedisplay()
 
 
@@ -2314,12 +2306,9 @@ def save_screenshot(viewer: Viewer):
         filename = f"screenshot_{timestamp}.png"
         # Save screenshot
         viewer.save_screenshot(filename)
-        if PYOPENGL_VERBOSE:
-            print(f"Viewer: Screenshot saved to {filename}")
+        print(f"Screenshot saved to {filename}")
     except Exception as e:
-        print(f"Error during screenshot saving: {e}")
-        if PYOPENGL_VERBOSE:
-            print(f"Viewer: Failed to save screenshot: {str(e)}")
+        print(f"Error saving screenshot: {e}")
 
 
 @keybinding(b"?")
@@ -2332,12 +2321,10 @@ def toggle_projection(viewer: Viewer):
     """Toggle between perspective and orthographic projection."""
     if viewer.projection_mode == "perspective":
         viewer.projection_mode = "orthographic"
-        if PYOPENGL_VERBOSE:
-            print("Viewer: Switched to Orthographic projection")
+        print("Switched to Orthographic projection")
     else:
         viewer.projection_mode = "perspective"
-        if PYOPENGL_VERBOSE:
-            print("Viewer: Switched to Perspective projection")
+        print("Switched to Perspective projection")
     glut.glutPostRedisplay()
 
 

@@ -88,245 +88,143 @@ class Model:
         return len(self.data) // (3 * self.stride)
 
     def initialize_gl_resources(self):
-        """Initialize OpenGL vertex buffer and array objects.
-
-        This must be called when the correct OpenGL context is active.
-        """
+        """Initialize OpenGL resources (VBO and VAO) for this model."""
+        # Early return if resources already exist
         if self.vbo is not None or self.vao is not None:
-            if PYOPENGL_VERBOSE: print(f"MODEL_DEBUG: initialize_gl_resources returning early: VBO ({self.vbo}) or VAO ({self.vao}) already exists.")
             return
 
-        gl_ctx: GLContext = self.gl_ctx
-        try:
-            # This print is unconditional to check has_vbo
-            if PYOPENGL_VERBOSE: print(f"MODEL_DEBUG: gl_ctx.has_vbo = {gl_ctx.has_vbo}")
-        except AttributeError:
-            if PYOPENGL_VERBOSE: print(f"MODEL_DEBUG: gl_ctx has no attribute 'has_vbo' or gl_ctx is None.")
-        # --- End Unconditional Debug Prints ---
+        gl_ctx = GLContext.get_instance()
         
-        if PYOPENGL_VERBOSE: print(f"Model.initialize_gl_resources: Starting. Model has_alpha_lt1={self.has_alpha_lt1}")
-
-        # Skip VBO/VAO initialization if not supported
-        if not gl_ctx.has_vbo:
-            if PYOPENGL_VERBOSE: print("Model.initialize_gl_resources: GLContext reports no VBO support. Aborting.")
+        # Check if VBO support is available
+        if not hasattr(gl_ctx, 'has_vbo') or not gl_ctx.has_vbo:
             return
 
-        # Store current error state to check if operations succeed
-        # prev_error = gl.glGetError() # Clear errors at the start
-        while gl.glGetError() != gl.GL_NO_ERROR: pass # Clear any pre-existing errors
-
         try:
-            if PYOPENGL_VERBOSE: print("Model.initialize_gl_resources: Attempting VBO creation.")
-            # --- Create VBO ---
+            # Create VBO
             self.vbo = gl.glGenBuffers(1)
-            if PYOPENGL_VERBOSE: print(f"Model.initialize_gl_resources: glGenBuffers(1) returned VBO ID: {self.vbo}")
-            # Handle numpy array return if necessary (older PyOpenGL versions?)
             if isinstance(self.vbo, np.ndarray):
                 self.vbo = int(self.vbo[0])
-                if PYOPENGL_VERBOSE: print(f"Model.initialize_gl_resources: Converted VBO ID to int: {self.vbo}")
 
-            # Check for immediate error after glGenBuffers
+            # Check for errors after VBO creation
             error = gl.glGetError()
-            if error != gl.GL_NO_ERROR:
-                if PYOPENGL_VERBOSE: print(f"Model.initialize_gl_resources: Error after glGenBuffers: {error}. Cleaning up VBO.")
+            if error != gl.GL_NO_ERROR or not self.vbo or self.vbo <= 0:
                 self.vbo = None
                 return
 
-            if self.vbo is None or (isinstance(self.vbo, int) and self.vbo <= 0):
-                if PYOPENGL_VERBOSE: print(f"Model.initialize_gl_resources: VBO ID is invalid ({self.vbo}). Aborting.")
-                self.vbo = None
-                return
-
-            if PYOPENGL_VERBOSE: print(f"Model.initialize_gl_resources: Binding VBO {self.vbo}.")
-            # Bind and Buffer Data
+            # Bind VBO and upload data
             gl.glBindBuffer(gl.GL_ARRAY_BUFFER, self.vbo)
             error = gl.glGetError()
             if error != gl.GL_NO_ERROR:
-                if PYOPENGL_VERBOSE: print(f"Model.initialize_gl_resources: Error after glBindBuffer (VBO {self.vbo}): {error}. Cleaning up VBO.")
-                gl.glDeleteBuffers(1, [self.vbo])  # Attempt cleanup
+                gl.glDeleteBuffers(1, [self.vbo])
                 self.vbo = None
                 return
 
-            if PYOPENGL_VERBOSE: print(f"Model.initialize_gl_resources: Buffering data to VBO {self.vbo} ({self.data.nbytes} bytes).")
             gl.glBufferData(gl.GL_ARRAY_BUFFER, self.data.nbytes, self.data, gl.GL_STATIC_DRAW)
             error = gl.glGetError()
             if error != gl.GL_NO_ERROR:
-                if PYOPENGL_VERBOSE: print(f"Model.initialize_gl_resources: Error after glBufferData (VBO {self.vbo}): {error}. Cleaning up VBO.")
-                gl.glBindBuffer(gl.GL_ARRAY_BUFFER, 0)  # Unbind before deleting
-                gl.glDeleteBuffers(1, [self.vbo])  # Attempt cleanup
+                gl.glDeleteBuffers(1, [self.vbo])
                 self.vbo = None
                 return
-            if PYOPENGL_VERBOSE: print(f"Model.initialize_gl_resources: VBO {self.vbo} created and buffered successfully.")
 
-            # --- Use VAO if supported (OpenGL 3.3+) ---
-            if PYOPENGL_VERBOSE: print(f"Model.initialize_gl_resources: Checking for VAO support (gl_ctx.has_3_3: {gl_ctx.has_3_3}).")
+            # Try to create VAO if supported
             if gl_ctx.has_3_3:
                 try:
-                    if PYOPENGL_VERBOSE: print("Model.initialize_gl_resources: Attempting VAO creation.")
-                    # Create VAO
                     self.vao = gl.glGenVertexArrays(1)
-                    if PYOPENGL_VERBOSE: print(f"Model.initialize_gl_resources: glGenVertexArrays(1) returned VAO ID: {self.vao}")
                     if isinstance(self.vao, np.ndarray):
-                        self.vao = int(self.vao[0])  # Convert from numpy array to int
-                        if PYOPENGL_VERBOSE: print(f"Model.initialize_gl_resources: Converted VAO ID to int: {self.vao}")
+                        self.vao = int(self.vao[0])
 
-                    # Check for immediate error after glGenVertexArrays
                     error = gl.glGetError()
-                    if error != gl.GL_NO_ERROR:
-                        if PYOPENGL_VERBOSE: print(f"Model.initialize_gl_resources: Error after glGenVertexArrays: {error}. VAO set to None.")
+                    if error != gl.GL_NO_ERROR or not self.vao or self.vao <= 0:
                         self.vao = None
-                        gl.glBindBuffer(gl.GL_ARRAY_BUFFER, 0)  # Unbind VBO before returning
-                        return
+                    else:
+                        # Set up VAO
+                        gl.glBindVertexArray(self.vao)
+                        error = gl.glGetError()
+                        if error != gl.GL_NO_ERROR:
+                            gl.glDeleteVertexArrays(1, [self.vao])
+                            self.vao = None
+                        else:
+                            # Bind VBO to VAO and set up attributes
+                            gl.glBindBuffer(gl.GL_ARRAY_BUFFER, self.vbo)
+                            error = gl.glGetError()
+                            if error != gl.GL_NO_ERROR:
+                                gl.glDeleteVertexArrays(1, [self.vao])
+                                self.vao = None
+                            else:
+                                # Set up vertex attributes
+                                self._setup_vao_attributes()
+                                
+                                # Unbind VAO
+                                gl.glBindVertexArray(0)
+                                error = gl.glGetError()
+                                if error != gl.GL_NO_ERROR and PYOPENGL_VERBOSE:
+                                    print(f"Model: Warning - Error unbinding VAO: {error}")
 
-                    if self.vao is None or (isinstance(self.vao, int) and self.vao <= 0):
-                        if PYOPENGL_VERBOSE: print(f"Model.initialize_gl_resources: VAO ID is invalid ({self.vao}). Aborting VAO setup.")
-                        self.vao = None
-                        gl.glBindBuffer(gl.GL_ARRAY_BUFFER, 0)  # Unbind VBO before returning
-                        return
-
-                    if PYOPENGL_VERBOSE: print(f"Model.initialize_gl_resources: Binding VAO {self.vao}.")
-                    # Bind the VAO and set up vertex attributes
-                    gl.glBindVertexArray(self.vao)
-                    error = gl.glGetError()
-                    if error != gl.GL_NO_ERROR:
-                        if PYOPENGL_VERBOSE: print(f"Model.initialize_gl_resources: Error after glBindVertexArray (VAO {self.vao}): {error}. Cleaning up VAO.")
+                except Exception as e:
+                    if PYOPENGL_VERBOSE:
+                        print(f"Model: VAO creation failed: {e}")
+                    # Clean up VAO if it was partially created
+                    if self.vao:
                         try:
                             gl.glDeleteVertexArrays(1, [self.vao])
                         except Exception:
                             pass
                         self.vao = None
-                        gl.glBindBuffer(gl.GL_ARRAY_BUFFER, 0)  # Unbind VBO before returning
-                        return
 
-                    if PYOPENGL_VERBOSE: print(f"Model.initialize_gl_resources: Binding VBO {self.vbo} to VAO {self.vao}.")
-                    # Now set up vertex attributes (with VAO bound)
-                    gl.glBindBuffer(
-                        gl.GL_ARRAY_BUFFER, self.vbo
-                    )  # Ensure VBO is bound *while* VAO is bound
-                    error = gl.glGetError()
-                    if error != gl.GL_NO_ERROR:
-                        if PYOPENGL_VERBOSE: print(f"Model.initialize_gl_resources: Error binding VBO {self.vbo} to VAO {self.vao}: {error}. Cleaning up VAO.")
-                        gl.glBindVertexArray(0)  # Unbind VAO
-                        try:
-                            gl.glDeleteVertexArrays(1, [self.vao])
-                        except:
-                            pass
-                        self.vao = None
-                        gl.glBindBuffer(gl.GL_ARRAY_BUFFER, 0)  # Unbind VBO
-                        return
-
-                    if PYOPENGL_VERBOSE: print(f"Model.initialize_gl_resources: Setting up VAO attributes for VAO {self.vao}.")
-                    # Position attribute - always in location 0
-                    gl.glVertexAttribPointer(
-                        0,
-                        3,
-                        gl.GL_FLOAT,
-                        gl.GL_FALSE,
-                        self.stride * 4,
-                        ctypes.c_void_p(self.position_offset * 4),
-                    )
-                    error = gl.glGetError() # Check error immediately after
-                    if error != gl.GL_NO_ERROR and PYOPENGL_VERBOSE: print(f"Model.initialize_gl_resources: Error after Pos glVertexAttribPointer: {error}") # VAO cleanup handled by outer try/except
-                    gl.glEnableVertexAttribArray(0)
-                    error = gl.glGetError() # Check error immediately after
-                    if error != gl.GL_NO_ERROR and PYOPENGL_VERBOSE: print(f"Model.initialize_gl_resources: Error after Pos glEnableVertexAttribArray: {error}")
-
-                    # Color attribute - always in location 1
-                    gl.glVertexAttribPointer(
-                        1,
-                        4,
-                        gl.GL_FLOAT,
-                        gl.GL_FALSE,
-                        self.stride * 4,
-                        ctypes.c_void_p(self.color_offset * 4),
-                    )
-                    error = gl.glGetError()
-                    if error != gl.GL_NO_ERROR and PYOPENGL_VERBOSE: print(f"Model.initialize_gl_resources: Error after Color glVertexAttribPointer: {error}")
-                    gl.glEnableVertexAttribArray(1)
-                    error = gl.glGetError()
-                    if error != gl.GL_NO_ERROR and PYOPENGL_VERBOSE: print(f"Model.initialize_gl_resources: Error after Color glEnableVertexAttribArray: {error}")
-
-                    # Normal attribute - always in location 2
-                    gl.glVertexAttribPointer(
-                        2,
-                        3,
-                        gl.GL_FLOAT,
-                        gl.GL_FALSE,
-                        self.stride * 4,
-                        ctypes.c_void_p(self.normal_offset * 4),
-                    )
-                    error = gl.glGetError()
-                    if error != gl.GL_NO_ERROR and PYOPENGL_VERBOSE: print(f"Model.initialize_gl_resources: Error after Normal glVertexAttribPointer: {error}")
-                    gl.glEnableVertexAttribArray(2)
-                    error = gl.glGetError()
-                    if error != gl.GL_NO_ERROR and PYOPENGL_VERBOSE: print(f"Model.initialize_gl_resources: Error after Normal glEnableVertexAttribArray: {error}")
-
-                    if PYOPENGL_VERBOSE: print(f"Model.initialize_gl_resources: VAO {self.vao} attributes set. Unbinding VAO.")
-                    # Unbind VAO first, then VBO to avoid state leaks
-                    gl.glBindVertexArray(0)
-                    error = gl.glGetError()
-                    if error != gl.GL_NO_ERROR:
-                        if PYOPENGL_VERBOSE: print(f"Model.initialize_gl_resources: Error unbinding VAO {self.vao}: {error}")
-                        pass  # Just note the error internally if needed
-                    if PYOPENGL_VERBOSE: print(f"Model.initialize_gl_resources: VAO {self.vao} setup successful.")
-
-                except Exception as e:
-                    if PYOPENGL_VERBOSE:
-                        print(
-                            f"Model.initialize_gl_resources: VAO setup failed with exception: {e}"
-                        )
-                    if self.vao:
-                        try:
-                            # Ensure VAO isn't bound before deleting
-                            if gl.glGetIntegerv(gl.GL_VERTEX_ARRAY_BINDING) == self.vao:
-                                gl.glBindVertexArray(0)
-                            gl.glDeleteVertexArrays(1, [self.vao])
-                        except Exception as del_e:
-                            if PYOPENGL_VERBOSE:
-                                print(
-                                    f"Model.initialize_gl_resources: Error during VAO cleanup: {del_e}"
-                                )
-                    self.vao = None
-            else:
-                if PYOPENGL_VERBOSE: print("Model.initialize_gl_resources: GLContext reports no VAO (GL 3.3) support. VAO not created.")
-                pass
-
-            # Unbind VBO (happens whether VAO was used or not)
-            if PYOPENGL_VERBOSE: print(f"Model.initialize_gl_resources: Unbinding GL_ARRAY_BUFFER (VBO {self.vbo}).")
+            # Unbind VBO
             gl.glBindBuffer(gl.GL_ARRAY_BUFFER, 0)
-            error = gl.glGetError()
-            if error != gl.GL_NO_ERROR:
-                if PYOPENGL_VERBOSE: print(f"Model.initialize_gl_resources: Error unbinding VBO {self.vbo}: {error}")
-                pass  # Just note the error internally if needed
-            if PYOPENGL_VERBOSE: print(f"Model.initialize_gl_resources: Resource initialization completed. VAO: {self.vao}, VBO: {self.vbo}")
 
         except Exception as e:
             if PYOPENGL_VERBOSE:
-                print(
-                    f"Model.initialize_gl_resources: General failure initializing OpenGL resources: {e}"
-                )
-            # Clean up any resources that might have been partially created
+                print(f"Model: GL resource initialization failed: {e}")
+            # Clean up on error
             if self.vao:
                 try:
-                    if gl.glGetIntegerv(gl.GL_VERTEX_ARRAY_BINDING) == self.vao:
-                        gl.glBindVertexArray(0)
                     gl.glDeleteVertexArrays(1, [self.vao])
-                except Exception as del_e:
-                    if PYOPENGL_VERBOSE: print(f"Model.initialize_gl_resources: Error during VAO cleanup: {del_e}")
+                except Exception:
+                    pass
                 self.vao = None
-
             if self.vbo:
                 try:
-                    # No need to check binding for buffers like VAOs
                     gl.glDeleteBuffers(1, [self.vbo])
-                except Exception as del_e:
-                    if PYOPENGL_VERBOSE: print(f"Model.initialize_gl_resources: Error during VBO cleanup: {del_e}")
+                except Exception:
+                    pass
                 self.vbo = None
-        finally:
-            # Final check
-            final_error = gl.glGetError()
-            if final_error != gl.GL_NO_ERROR and PYOPENGL_VERBOSE:
-                print(f"Model.initialize_gl_resources: Exiting with uncleared GL error: {final_error}")
+
+    def _setup_vao_attributes(self):
+        """Set up vertex attribute pointers for the VAO."""
+        # Position attribute - always in location 0
+        gl.glVertexAttribPointer(
+            0,
+            3,
+            gl.GL_FLOAT,
+            gl.GL_FALSE,
+            self.stride * 4,
+            ctypes.c_void_p(self.position_offset * 4),
+        )
+        gl.glEnableVertexAttribArray(0)
+
+        # Color attribute - always in location 1
+        gl.glVertexAttribPointer(
+            1,
+            4,
+            gl.GL_FLOAT,
+            gl.GL_FALSE,
+            self.stride * 4,
+            ctypes.c_void_p(self.color_offset * 4),
+        )
+        gl.glEnableVertexAttribArray(1)
+
+        # Normal attribute - always in location 2
+        gl.glVertexAttribPointer(
+            2,
+            3,
+            gl.GL_FLOAT,
+            gl.GL_FALSE,
+            self.stride * 4,
+            ctypes.c_void_p(self.normal_offset * 4),
+        )
+        gl.glEnableVertexAttribArray(2)
 
     def column_data_generator(self, column_index_start: int, column_index_end: int):
         """Generator that yields slices of the data array without copying."""
@@ -376,85 +274,29 @@ class Model:
             self.bounding_box.max_point = np.array([0.5, 0.5, 0.5])
 
     def draw(self):
-        """Draw the model using OpenGL with three-tier fallback system."""
-        if PYOPENGL_VERBOSE: print(f"Model.draw: Entered for model with VBO {self.vbo}, VAO {self.vao}")
+        """Draw the model using the best available rendering method."""
+        if self.num_points == 0:
+            return True
 
-        gl_ctx: GLContext = self.gl_ctx
+        # Try three rendering tiers in order of preference
+        # TIER 1: Modern VAO + Shaders (highest preference)
+        if self.gl_ctx.has_shader:
+            current_program = gl.glGetIntegerv(gl.GL_CURRENT_PROGRAM)
+            if current_program and current_program > 0:
+                if self._draw_with_shader(current_program):
+                    return True
 
-        # Setup blending for transparent models
-        blend_enabled = False
-        if self.has_alpha_lt1:
-            try:
-                # Enable blending for transparent models
-                blend_enabled = gl.glIsEnabled(gl.GL_BLEND)
-                gl.glEnable(gl.GL_BLEND)
-                gl.glBlendFunc(gl.GL_SRC_ALPHA, gl.GL_ONE_MINUS_SRC_ALPHA)
-            except Exception as e:
-                if PYOPENGL_VERBOSE:
-                    print(f"Model.draw: Failed to enable blending: {e}")
+        # TIER 2: Vertex Arrays + VBOs (middle fallback)
+        if self.gl_ctx.has_legacy_vertex_arrays and self.vbo:
+            if self._draw_with_vertex_arrays():
+                return True
 
-        try:
-            # TIER 1: Modern VAO + Shaders (original working path)
-            if gl_ctx.has_shader and gl_ctx.has_vbo:
-                current_program = gl.glGetIntegerv(gl.GL_CURRENT_PROGRAM)
-                if PYOPENGL_VERBOSE: print(f"Model.draw: Current active shader program: {current_program}")
-                if current_program and current_program != 0:
-                    if PYOPENGL_VERBOSE: print(f"Model.draw: Attempting _draw_with_shader with program {current_program}.")
-                    if self._draw_with_shader(current_program):
-                        if PYOPENGL_VERBOSE: print("Model.draw: _draw_with_shader succeeded.")
-                        # Shader-based rendering was successful
-                        if self.has_alpha_lt1 and not blend_enabled:
-                            try:
-                                gl.glDisable(gl.GL_BLEND)
-                            except Exception:
-                                pass
-                        return
-                    elif PYOPENGL_VERBOSE:
-                        print("Model.draw: _draw_with_shader returned False. Falling back to vertex arrays.")
-                elif PYOPENGL_VERBOSE:
-                    print("Model.draw: No active shader program. Falling back to vertex arrays.")
-            elif PYOPENGL_VERBOSE:
-                print("Model.draw: Shader or VBO support not available. Falling back to vertex arrays.")
-
-            # TIER 2: Vertex Arrays + Custom Shader (reload arrays each time)
-            if gl_ctx.has_legacy_vertex_arrays and self.vbo:
-                if PYOPENGL_VERBOSE: print("Model.draw: Attempting _draw_with_vertex_arrays.")
-                if self._draw_with_vertex_arrays():
-                    if PYOPENGL_VERBOSE: print("Model.draw: _draw_with_vertex_arrays succeeded.")
-                    # Vertex array rendering was successful
-                    if self.has_alpha_lt1 and not blend_enabled:
-                        try:
-                            gl.glDisable(gl.GL_BLEND)
-                        except Exception:
-                            pass
-                    return
-                elif PYOPENGL_VERBOSE:
-                    print("Model.draw: _draw_with_vertex_arrays returned False. Falling back to immediate mode.")
-
-            # TIER 3: Immediate Mode (final fallback, original working path)
-            if PYOPENGL_VERBOSE: print("Model.draw: Attempting _draw_immediate_mode.")
-            if not self._draw_immediate_mode():
-                if PYOPENGL_VERBOSE: print("Model.draw: _draw_immediate_mode returned False. Falling back to wireframe.")
-                # If immediate mode fails, try the wireframe fallback
-                self._draw_fallback_wireframe()
-            elif PYOPENGL_VERBOSE:
-                print("Model.draw: _draw_immediate_mode succeeded.")
-
-        except Exception as e:
-            if PYOPENGL_VERBOSE:
-                print(f"Model.draw: All rendering methods failed: {str(e)}")
-            # Last resort - try simple bounding box
-            try:
-                self._draw_bounding_box()
-            except Exception:
-                pass
-
-        # Restore blending state if we changed it
-        if self.has_alpha_lt1 and not blend_enabled:
-            try:
-                gl.glDisable(gl.GL_BLEND)
-            except Exception:
-                pass
+        # TIER 3: Immediate Mode (final fallback)
+        if self._draw_immediate_mode():
+            return True
+        else:
+            # Last resort: wireframe fallback
+            return self._draw_fallback_wireframe()
 
     def _draw_with_shader(self, active_program: int) -> bool:
         """Draw the model using the provided shader program.
@@ -462,128 +304,118 @@ class Model:
         Returns:
             bool: True if drawing succeeded, False otherwise.
         """
-        if PYOPENGL_VERBOSE: print(f"Model._draw_with_shader: Entered for VAO {self.vao}, program {active_program}. num_points={self.num_points}")
-        
         # Check if we have either VAO or VBO (for non-VAO fallback)
         if (not self.vao and not self.vbo) or self.num_points == 0:
-            if PYOPENGL_VERBOSE: print(f"Model._draw_with_shader: Aborting - No VAO ({self.vao}) and no VBO ({self.vbo}), or num_points is 0 ({self.num_points}).")
-            return False
-
-        is_prog_valid = False
-        try:
-            is_prog_valid = gl.glIsProgram(active_program)
-        except Exception as e:
-            if PYOPENGL_VERBOSE: print(f"Model._draw_with_shader: glIsProgram check failed: {e}")
-
-        if not is_prog_valid:
-            if PYOPENGL_VERBOSE: print(f"Model._draw_with_shader: Program {active_program} is not valid.")
             return False
 
         try:
-            # Setup blending if needed
-            blend_enabled_before_draw = False
-            if self.has_alpha_lt1:
-                blend_was_enabled_globally = gl.glIsEnabled(gl.GL_BLEND)
-                if not blend_was_enabled_globally:
-                    gl.glEnable(gl.GL_BLEND)
-                    blend_enabled_before_draw = True
-                gl.glBlendFunc(gl.GL_SRC_ALPHA, gl.GL_ONE_MINUS_SRC_ALPHA)
-                if PYOPENGL_VERBOSE: print(f"Model._draw_with_shader: Blend enabled (was globally {blend_was_enabled_globally}, we set to {blend_enabled_before_draw}).")
+            is_program = gl.glIsProgram(active_program)
+        except Exception:
+            return False
 
+        if not is_program:
+            return False
+
+        # Setup blending for transparent models
+        blend_was_enabled_globally = gl.glIsEnabled(gl.GL_BLEND)
+        blend_enabled_before_draw = blend_was_enabled_globally
+        if self.has_alpha_lt1 and not blend_was_enabled_globally:
+            gl.glEnable(gl.GL_BLEND)
+            gl.glBlendFunc(gl.GL_SRC_ALPHA, gl.GL_ONE_MINUS_SRC_ALPHA)
+            blend_enabled_before_draw = True
+
+        try:
             if self.vao:
-                # Modern path: Use VAO (OpenGL 3.3+)
-                if PYOPENGL_VERBOSE: print(f"Model._draw_with_shader: Using VAO {self.vao}.")
+                # Use VAO (modern path)
                 gl.glBindVertexArray(self.vao)
             else:
-                # Fallback path: Manually set up vertex attributes without VAO (OpenGL 2.1)
-                if PYOPENGL_VERBOSE: print(f"Model._draw_with_shader: No VAO available, setting up vertex attributes manually with VBO {self.vbo}.")
-                
-                # Bind VBO
+                # Manual vertex attribute setup (OpenGL 2.1 fallback)
                 gl.glBindBuffer(gl.GL_ARRAY_BUFFER, self.vbo)
-                
-                # Set up vertex attributes manually (same as VAO setup but without VAO)
-                # Position attribute - location 0 (aPos)
-                gl.glVertexAttribPointer(
-                    0,  # attribute location
-                    3,  # size (3 components for position)
-                    gl.GL_FLOAT,  # type
-                    gl.GL_FALSE,  # normalized
-                    self.stride * 4,  # stride (in bytes)
-                    ctypes.c_void_p(self.position_offset * 4)  # pointer (offset into VBO)
-                )
-                gl.glEnableVertexAttribArray(0)
-                
-                # Color attribute - location 1 (aColor)
-                gl.glVertexAttribPointer(
-                    1,  # attribute location
-                    4,  # size (4 components for color RGBA)
-                    gl.GL_FLOAT,  # type
-                    gl.GL_FALSE,  # normalized
-                    self.stride * 4,  # stride (in bytes)
-                    ctypes.c_void_p(self.color_offset * 4)  # pointer (offset into VBO)
-                )
-                gl.glEnableVertexAttribArray(1)
-                
-                # Normal attribute - location 2 (aNormal)
-                gl.glVertexAttribPointer(
-                    2,  # attribute location
-                    3,  # size (3 components for normal)
-                    gl.GL_FLOAT,  # type
-                    gl.GL_FALSE,  # normalized
-                    self.stride * 4,  # stride (in bytes)
-                    ctypes.c_void_p(self.normal_offset * 4)  # pointer (offset into VBO)
-                )
-                gl.glEnableVertexAttribArray(2)
 
-            if PYOPENGL_VERBOSE: print(f"Model._draw_with_shader: Calling glDrawArrays(GL_TRIANGLES, 0, {self.num_points}).")
+                # Position attribute (location 0)
+                position_loc = gl.glGetAttribLocation(active_program, "position")
+                if position_loc == -1:
+                    position_loc = 0
+                gl.glVertexAttribPointer(
+                    position_loc,
+                    3,
+                    gl.GL_FLOAT,
+                    gl.GL_FALSE,
+                    self.stride * 4,
+                    ctypes.c_void_p(self.position_offset * 4),
+                )
+                gl.glEnableVertexAttribArray(position_loc)
+
+                # Color attribute (location 1)
+                color_loc = gl.glGetAttribLocation(active_program, "color")
+                if color_loc == -1:
+                    color_loc = 1
+                gl.glVertexAttribPointer(
+                    color_loc,
+                    4,
+                    gl.GL_FLOAT,
+                    gl.GL_FALSE,
+                    self.stride * 4,
+                    ctypes.c_void_p(self.color_offset * 4),
+                )
+                gl.glEnableVertexAttribArray(color_loc)
+
+                # Normal attribute (location 2)
+                normal_loc = gl.glGetAttribLocation(active_program, "normal")
+                if normal_loc == -1:
+                    normal_loc = 2
+                gl.glVertexAttribPointer(
+                    normal_loc,
+                    3,
+                    gl.GL_FLOAT,
+                    gl.GL_FALSE,
+                    self.stride * 4,
+                    ctypes.c_void_p(self.normal_offset * 4),
+                )
+                gl.glEnableVertexAttribArray(normal_loc)
+
+            # Draw the triangles
             gl.glDrawArrays(gl.GL_TRIANGLES, 0, self.num_points)
             draw_error = gl.glGetError()
             if draw_error != gl.GL_NO_ERROR and PYOPENGL_VERBOSE:
-                print(f"Model._draw_with_shader: GL error after glDrawArrays: {draw_error}")
+                print(f"Model: Warning - Error during glDrawArrays: {draw_error}")
 
-            # Cleanup
+            # Clean up
             if self.vao:
-                # VAO path cleanup
                 gl.glBindVertexArray(0)
-                if PYOPENGL_VERBOSE: print(f"Model._draw_with_shader: VAO {self.vao} unbound.")
             else:
-                # Manual vertex attributes cleanup
-                gl.glDisableVertexAttribArray(0)
-                gl.glDisableVertexAttribArray(1)
-                gl.glDisableVertexAttribArray(2)
+                # Disable vertex attributes and unbind VBO
+                position_loc = gl.glGetAttribLocation(active_program, "position")
+                if position_loc == -1:
+                    position_loc = 0
+                color_loc = gl.glGetAttribLocation(active_program, "color")
+                if color_loc == -1:
+                    color_loc = 1
+                normal_loc = gl.glGetAttribLocation(active_program, "normal")
+                if normal_loc == -1:
+                    normal_loc = 2
+
+                gl.glDisableVertexAttribArray(position_loc)
+                gl.glDisableVertexAttribArray(color_loc)
+                gl.glDisableVertexAttribArray(normal_loc)
                 gl.glBindBuffer(gl.GL_ARRAY_BUFFER, 0)
-                if PYOPENGL_VERBOSE: print(f"Model._draw_with_shader: Manual vertex attributes disabled and VBO unbound.")
 
-            # Restore blend state ONLY if we changed it
-            if self.has_alpha_lt1 and blend_enabled_before_draw:
+            # Restore blending state
+            if self.has_alpha_lt1 and not blend_was_enabled_globally:
                 gl.glDisable(gl.GL_BLEND)
-                if PYOPENGL_VERBOSE: print(f"Model._draw_with_shader: Blend disabled (was set by this function).")
 
-            return True  # Indicate success
+            return True
 
         except Exception as e:
             if PYOPENGL_VERBOSE:
-                print(f"Model._draw_with_shader: Error drawing with program {active_program}: {e}")
-            
-            # Attempt to cleanup context state on error
-            try:
-                if self.vao:
-                    gl.glBindVertexArray(0)
-                else:
-                    gl.glDisableVertexAttribArray(0)
-                    gl.glDisableVertexAttribArray(1)
-                    gl.glDisableVertexAttribArray(2)
-                    gl.glBindBuffer(gl.GL_ARRAY_BUFFER, 0)
-                
-                # Restore blend state if it might have been left enabled
-                if self.has_alpha_lt1 and blend_enabled_before_draw:
-                    try:
-                        gl.glDisable(gl.GL_BLEND)
-                    except:
-                        pass
-            except Exception:
-                pass  # Avoid errors during error handling
-            return False  # Indicate failure
+                print(f"Model: Shader rendering failed: {e}")
+            # Restore blending state on error
+            if self.has_alpha_lt1 and not blend_was_enabled_globally:
+                try:
+                    gl.glDisable(gl.GL_BLEND)
+                except Exception:
+                    pass
+            return False
 
     def _draw_bounding_box(self):
         """Draw a simple bounding box for the model as a last resort."""
