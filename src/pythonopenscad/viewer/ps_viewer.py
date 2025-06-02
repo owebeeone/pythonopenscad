@@ -574,7 +574,7 @@ class PoscGLWidget(QOpenGLWidget):
 
                 for model in opaque_models + transparent_models:
                      if model: 
-                         model.draw()
+                         model.draw(use_shaders=self.use_shaders)
 
                 gl.glDisable(gl.GL_POLYGON_OFFSET_LINE)
                 gl.glDepthFunc(gl.GL_LESS)
@@ -584,13 +584,13 @@ class PoscGLWidget(QOpenGLWidget):
                 # Regular rendering
                 for model in opaque_models:
                     if model: 
-                        model.draw()
+                        model.draw(use_shaders=self.use_shaders)
                 
                 if transparent_models:
                     gl.glDepthMask(gl.GL_FALSE)
                     for model in transparent_models:
                         if model: 
-                            model.draw()
+                            model.draw(use_shaders=self.use_shaders)
                     gl.glDepthMask(gl.GL_TRUE)
 
             # Unbind shader program if it was used, and unbind VAO to clean state for 
@@ -1196,7 +1196,7 @@ class Viewer():
         main_window = QMainWindow()
         self._main_window = main_window
         main_window.setWindowTitle(self.title)
-        main_window.setBaseSize(self.width, self.height)
+        main_window.resize(self.width, self.height)  # Use resize() instead of setBaseSize()
         
         central_widget = QWidget()
         main_window.setCentralWidget(central_widget)
