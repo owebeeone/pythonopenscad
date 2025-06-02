@@ -255,8 +255,9 @@ class PoscMainRunner:
                 )
                 
                 if self.args.png:
-                    
-                    viewer.offscreen_render(f"{self.args.output_base}.png")
+                    filename = f"{self.args.output_base}.png"
+                    viewer.offscreen_render(filename)
+                    print(f"Saved PNG: {filename}")
                     
                 if self.args.view:
                     print(Viewer.VIEWER_HELP_TEXT)

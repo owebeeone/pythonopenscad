@@ -273,23 +273,24 @@ class Model:
             self.bounding_box.min_point = np.array([-0.5, -0.5, -0.5])
             self.bounding_box.max_point = np.array([0.5, 0.5, 0.5])
 
-    def draw(self):
+    def draw(self, use_shaders: bool = True):
         """Draw the model using the best available rendering method."""
         if self.num_points == 0:
             return True
 
-        # Try three rendering tiers in order of preference
-        # TIER 1: Modern VAO + Shaders (highest preference)
-        if self.gl_ctx.has_shader:
-            current_program = gl.glGetIntegerv(gl.GL_CURRENT_PROGRAM)
-            if current_program and current_program > 0:
-                if self._draw_with_shader(current_program):
-                    return True
+        if use_shaders:
+            # Try three rendering tiers in order of preference
+            # TIER 1: Modern VAO + Shaders (highest preference)
+            if self.gl_ctx.has_shader:
+                current_program = gl.glGetIntegerv(gl.GL_CURRENT_PROGRAM)
+                if current_program and current_program > 0:
+                    if self._draw_with_shader(current_program):
+                        return True
 
-        # TIER 2: Vertex Arrays + VBOs (middle fallback)
-        if self.gl_ctx.has_legacy_vertex_arrays and self.vbo:
-            if self._draw_with_vertex_arrays():
-                return True
+            # TIER 2: Vertex Arrays + VBOs (middle fallback)
+            if self.gl_ctx.has_legacy_vertex_arrays and self.vbo:
+                if self._draw_with_vertex_arrays():
+                    return True
 
         # TIER 3: Immediate Mode (final fallback)
         if self._draw_immediate_mode():

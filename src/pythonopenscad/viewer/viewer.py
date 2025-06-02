@@ -1132,7 +1132,7 @@ class Viewer(ViewerBase):
 
                     # Draw all opaque models
                     for model in opaque_models:
-                        model.draw()
+                        model.draw(using_shader)
                         rendering_success = True
 
                     # For transparent models, we need proper depth testing but shouldn't update the z-buffer
