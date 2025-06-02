@@ -1,15 +1,26 @@
-"""OpenGL 3D viewer for PyOpenSCAD models."""
+"""OpenGL 3D viewer for PyOpenSCAD models.
+
+macOS GLUT Close Button Issue:
+=============================
+On macOS, the red close button in GLUT windows is greyed out by default. This is a 
+limitation of the standard GLUT framework, not a bug in this code.
+
+Solution:
+Use the ESC key to close the viewer (already implemented)
+"""
 
 import time
 import numpy as np
 import ctypes
+import os
+import sys
 from typing import Any, Iterable, Iterator, List, Optional, Tuple, Union, Dict, Callable, ClassVar
 from datatrees import datatree, dtfield, Node
 import warnings
-import sys
 import signal
 from datetime import datetime
 import manifold3d as m3d
+
 from pythonopenscad.viewer.basic_models import (
     create_colored_test_cube,
     create_triangle_model,
@@ -41,7 +52,7 @@ class Viewer(ViewerBase):
     models: list[Model]
     width: int = 800
     height: int = 600
-    title: str = "3D Viewer"
+    title: str = "PythonOpenSCAD"
     use_coalesced_models: bool = True
 
     # Rendering state
@@ -52,6 +63,7 @@ class Viewer(ViewerBase):
     antialiasing_enabled: bool = True  # Added antialiasing state
     show_axes: bool = True
     edge_rotations: bool = False
+    use_polygon_offset: bool = True  # Enable polygon offset by default for proper wireframe rendering
 
     background_color: Tuple[float, float, float, float] = (0.98, 0.98, 0.85, 1.0)
 
@@ -67,9 +79,11 @@ class Viewer(ViewerBase):
     Mouse Controls:
      Left button drag: Rotate camera
      Right button drag: Pan camera
-     Wheel: Zoom in/out (Perspective) / Change scale (Orthographic)
+     Left+Right drag or Middle drag or Wheel (not on mac):
+         Perspective: zoom / Orthographic: scale
     
     Keyboard Controls:
+     A - Toggle multisampling antialiasing (MSAA)
      B - Toggle backface culling
      W - Toggle wireframe mode
      Z - Toggle Z-buffer occlusion for wireframes
@@ -85,7 +99,11 @@ class Viewer(ViewerBase):
      G - Toggle axes graduation ticks
      V - Toggle axes graduation values
      E - Toggle edge effect rotation interaction
+     T - Toggle axes stipple (dashed negative axes)
+     F - Toggle polygon offset for wireframes
      ESC - Close viewer
+     = - Zoom in (keyboard alternative to mouse wheel)
+     - - Zoom out (keyboard alternative to mouse wheel)
     """
 
     # Static window registry to handle GLUT callbacks
@@ -1066,11 +1084,12 @@ class Viewer(ViewerBase):
                     # This allows fragments with the same depth value as those already in the buffer
                     gl.glDepthFunc(gl.GL_LEQUAL)
 
-                    # Enable polygon offset for lines
-                    gl.glEnable(gl.GL_POLYGON_OFFSET_LINE)
-                    gl.glPolygonOffset(
-                        -1.0, -1.0
-                    )  # This helps to pull the wireframe slightly forward
+                    # Enable polygon offset for lines (only if enabled to avoid GPU fallbacks)
+                    if self.use_polygon_offset:
+                        gl.glEnable(gl.GL_POLYGON_OFFSET_LINE)
+                        gl.glPolygonOffset(
+                            -1.0, -1.0
+                        )  # This helps to pull the wireframe slightly forward
 
                     # Apply a tiny Z offset by adjusting the projection matrix
                     # This is done in projection/view space so it's camera-relative, not model-relative
@@ -1089,15 +1108,9 @@ class Viewer(ViewerBase):
                     # Restore original depth function
                     gl.glDepthFunc(gl.GL_LESS)
 
-                    # Disable polygon offset
-                    gl.glDisable(gl.GL_POLYGON_OFFSET_LINE)
-
-                    # Clear shader program if we were using it
-                    if using_shader:
-                        try:
-                            gl.glUseProgram(0)
-                        except Exception:
-                            pass
+                    # Disable polygon offset (only if it was enabled)
+                    if self.use_polygon_offset:
+                        gl.glDisable(gl.GL_POLYGON_OFFSET_LINE)
                 else:
                     # Regular rendering: Draw opaque models first
                     # Use shader if available
@@ -2414,6 +2427,38 @@ def toggle_edge_effect_rotations(viewer: Viewer):
     if PYOPENGL_VERBOSE:
         print(f"Viewer: Edge rotations set or {viewer.edge_rotations}")
     glut.glutPostRedisplay()
+
+
+@keybinding(b"t")
+def toggle_axes_stipple(viewer: Viewer):
+    """Toggle stippled (dashed) lines for negative axes."""
+    viewer.axes_renderer.use_stipple = not viewer.axes_renderer.use_stipple
+    status = "enabled" if viewer.axes_renderer.use_stipple else "disabled"
+    print(f"Axes stipple (dashed negative axes): {status}")
+    glut.glutPostRedisplay()
+
+
+@keybinding(b"f")
+def toggle_polygon_offset(viewer: Viewer):
+    """Toggle polygon offset for wireframe Z-buffer occlusion."""
+    viewer.use_polygon_offset = not viewer.use_polygon_offset
+    status = "enabled" if viewer.use_polygon_offset else "disabled"
+    print(f"Polygon offset for wireframes: {status}")
+    glut.glutPostRedisplay()
+
+
+@keybinding(b"=")
+def zoom_in(viewer: Viewer):
+    """Zoom in (keyboard alternative to mouse wheel)."""
+    viewer._wheel_callback(0, 1, 0, 0)  # Simulate wheel up
+    print("Zoomed in")
+
+
+@keybinding(b"-")
+def zoom_out(viewer: Viewer):
+    """Zoom out (keyboard alternative to mouse wheel)."""
+    viewer._wheel_callback(0, -1, 0, 0)  # Simulate wheel down
+    print("Zoomed out")
 
 
 # Helper function to create a viewer with models

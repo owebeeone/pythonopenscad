@@ -39,6 +39,7 @@ class AxesRenderer:
     grad_line_width_px: float = 1.3  # Line width for the graduations
     stipple_factor: int = 4  # Scaling factor for the dash pattern negtive of axes.
     negative_stipple_pattern: int = 0xAAAA  # For negative side of axes.
+    use_stipple: bool = True  # Enable stipple by default for visual distinction of negative axes
     
     grad_tick_size_px: list[float] = (10, 20, 25) # Size of the graduations in pixels
     grad_size_px_min: float = 9 # Min space between graduations
@@ -307,11 +308,13 @@ class AxesRenderer:
 
             self.draw_half_axes(length)
             try:
-                gl.glEnable(gl.GL_LINE_STIPPLE)
-                gl.glLineStipple(self.stipple_factor, self.negative_stipple_pattern)
+                if self.use_stipple:
+                    gl.glEnable(gl.GL_LINE_STIPPLE)
+                    gl.glLineStipple(self.stipple_factor, self.negative_stipple_pattern)
                 self.draw_half_axes(-length)
             finally:
-                gl.glDisable(gl.GL_LINE_STIPPLE)
+                if self.use_stipple:
+                    gl.glDisable(gl.GL_LINE_STIPPLE)
 
             if lighting_was_enabled:
                 gl.glEnable(gl.GL_LIGHTING)
