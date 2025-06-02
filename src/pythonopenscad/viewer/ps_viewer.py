@@ -126,7 +126,6 @@ from pyglm import glm # Retaining pyglm as per original code
 
 PS_SHADER_PROGRAM = SHADER_PROGRAM
 
-@datatree # Keep datatree if it's fundamental to your class structure
 class PoscGLWidget(QOpenGLWidget):
     """
     PySide6 QOpenGLWidget to replace the GLUT-based Viewer.
@@ -135,56 +134,100 @@ class PoscGLWidget(QOpenGLWidget):
     # Signals for UI updates if needed (e.g., status bar messages)
     message_signal = Signal(str)
 
-    # --- State variables from your Viewer class ---
-    models: List[Model] = dtfield(default_factory=list)
-    # width, height are managed by QOpenGLWidget
-    # title will be set on the QMainWindow
+    def __init__(self,
+        models: List[Model] = None,
+        use_coalesced_models: bool = True,
+        backface_culling: bool = True,
+        wireframe_mode: bool = False,
+        bounding_box_mode: int = 0,  # 0: off, 1: wireframe, 2: solid
+        zbuffer_occlusion: bool = True,
+        antialiasing_enabled: bool = True, # Managed by QSurfaceFormat initially
+        show_axes: bool = True,
+        edge_rotations: bool = False, # From original viewer
 
-    use_coalesced_models: bool = True
-    backface_culling: bool = True
-    wireframe_mode: bool = False
-    bounding_box_mode: int = 0  # 0: off, 1: wireframe, 2: solid
-    zbuffer_occlusion: bool = True
-    antialiasing_enabled: bool = True # Managed by QSurfaceFormat initially
-    show_axes: bool = True
-    edge_rotations: bool = False # From original viewer
+        background_color: Tuple[float, float, float, float] = (0.98, 0.98, 0.85, 1.0),
+        axes_renderer: AxesRenderer = None,
 
-    background_color: Tuple[float, float, float, float] = (0.98, 0.98, 0.85, 1.0)
+        projection_mode: str = "perspective",  # 'perspective' or 'orthographic'
+        ortho_scale: float = 20.0,  # World-space width for ortho view
+
+        # Camera parameters (from your viewer)
+        camera_pos: glm.vec3 = glm.vec3(10.0, -10.0, 10.0),
+        camera_front: glm.vec3 = glm.vec3(0.0, 0.0, 1.0),
+        camera_up: glm.vec3 = glm.vec3(0.0, 0.0, 1.0),
+        camera_target: glm.vec3 = glm.vec3(0.0, 0.0, 0.0),
+        camera_speed: float = 0.05, # Will be adjusted based on scene bounds
+        model_matrix_np: np.ndarray = np.eye(4, dtype=np.float32),
+        
+        # Mouse interaction state
+        last_mouse_pos: QPoint = None,
+        left_button_pressed: bool = False,
+        right_button_pressed: bool = False,
+        trackball_start_point: glm.vec3 = None, # For trackball rotation
+
+        # Scene bounds
+        bounding_box: BoundingBox = None,
+
+        # Shader program (will be initialized in initializeGL)
+        active_shader_program_id: Any = None, # ID of the compiled shader program
+        use_shaders: bool = True, # To toggle shader usage
+
+        # GLContext (for capability querying mainly)
+        gl_ctx: GLContext = None,
+        _multisample_supported_by_context: bool = False, # Queried from QSurfaceFormat
+        axes_depth_test: bool = True,
+        parent: QWidget = None,
+    ):
+        self.models = models if models else []
+        self.use_coalesced_models = use_coalesced_models
+        self.backface_culling = backface_culling
+        self.wireframe_mode = wireframe_mode
+        self.bounding_box_mode = bounding_box_mode
+        self.zbuffer_occlusion = zbuffer_occlusion
+        self.antialiasing_enabled = antialiasing_enabled
+        self.show_axes = show_axes
+        self.edge_rotations = edge_rotations
+        self.background_color = background_color
+        self.axes_renderer = axes_renderer if axes_renderer else AxesRenderer()
+        self.projection_mode = projection_mode
+        self.ortho_scale = ortho_scale
+        self.camera_pos = camera_pos
+        self.camera_front = camera_front
+        self.camera_up = camera_up
+        self.camera_target = camera_target
+        self.camera_speed = camera_speed
+        self.model_matrix_np = model_matrix_np
+        self.last_mouse_pos = last_mouse_pos
+        self.left_button_pressed = left_button_pressed
+        self.right_button_pressed = right_button_pressed
+        self.trackball_start_point = trackball_start_point
+        self.bounding_box = bounding_box
+        self.active_shader_program_id = active_shader_program_id
+        self.use_shaders = use_shaders
+        self.gl_ctx = gl_ctx
+        self._multisample_supported_by_context = _multisample_supported_by_context
+        self.axes_depth_test = axes_depth_test
     
-    axes_renderer_node: Node[AxesRenderer] = Node(AxesRenderer, prefix="axes_") # dtfield if using datatree init
-    axes_renderer: AxesRenderer = dtfield(self_default=lambda self: self.axes_renderer_node())
+        # Mouse interaction state
+        self.last_mouse_pos = last_mouse_pos
+        self.left_button_pressed = left_button_pressed
+        self.right_button_pressed = right_button_pressed
+        self.trackball_start_point = trackball_start_point
 
-    projection_mode: str = "perspective"  # 'perspective' or 'orthographic'
-    ortho_scale: float = 20.0  # World-space width for ortho view
+        # Scene bounds
+        self.bounding_box = bounding_box
 
-    # Camera parameters (from your viewer)
-    camera_pos: glm.vec3 = dtfield(default_factory=lambda: glm.vec3(10.0, -10.0, 10.0))
-    camera_front: glm.vec3 = dtfield(default_factory=lambda: glm.vec3(0.0, 0.0, 1.0))
-    camera_up: glm.vec3 = dtfield(default_factory=lambda: glm.vec3(0.0, 0.0, 1.0))
-    camera_target: glm.vec3 = dtfield(default_factory=lambda: glm.vec3(0.0, 0.0, 0.0))
-    camera_speed: float = 0.05 # Will be adjusted based on scene bounds
-    model_matrix_np: np.ndarray = dtfield(default_factory=lambda: np.eye(4, dtype=np.float32))
-    
-    # Mouse interaction state
-    last_mouse_pos: QPoint = None
-    left_button_pressed: bool = False
-    right_button_pressed: bool = False
-    trackball_start_point: glm.vec3 = None # For trackball rotation
+        # Shader program (will be initialized in initializeGL)
+        self.active_shader_program_id = active_shader_program_id
+        self.use_shaders = use_shaders
 
-    # Scene bounds
-    bounding_box: BoundingBox = None
+        # GLContext (for capability querying mainly)
+        self.gl_ctx = gl_ctx
+        self._multisample_supported_by_context = _multisample_supported_by_context
+        self.axes_depth_test = axes_depth_test
+        
+        self.__post_init__(parent)
 
-    # Shader program (will be initialized in initializeGL)
-    active_shader_program_id: Any = None # ID of the compiled shader program
-    use_shaders: bool = True # To toggle shader usage
-
-    # GLContext (for capability querying mainly)
-    gl_ctx: GLContext = None
-    _multisample_supported_by_context: bool = False # Queried from QSurfaceFormat
-    
-    parent: InitVar[QWidget] = None
-    
-    axes_depth_test: bool = True
 
     def __post_init__(self, parent: QWidget =None):
         super().__init__(parent)
@@ -224,6 +267,9 @@ class PoscGLWidget(QOpenGLWidget):
         self.keep_alive_timer = QTimer(self)
         self.keep_alive_timer.timeout.connect(lambda: None) # Dummy slot
         self.keep_alive_timer.start(200) # ms
+        
+    def num_triangles(self) -> int:
+        return sum((m.num_triangles() for m in self.models))
 
     def _apply_coalescing(self):
         if self.use_coalesced_models and self.original_models:
@@ -300,7 +346,7 @@ class PoscGLWidget(QOpenGLWidget):
                     QSurfaceFormat.CoreProfile: "CoreProfile",
                     QSurfaceFormat.CompatibilityProfile: "CompatibilityProfile"
                 }
-                print(f"PoscGLWidget: Actual surface format - Profile: {profile_map.get(actual_fmt.profile(), "Unknown")}, Samples: {actual_fmt.samples()}, Version: {actual_fmt.majorVersion()}.{actual_fmt.minorVersion()}")
+#                print(f"PoscGLWidget: Actual surface format - Profile: {profile_map.get(actual_fmt.profile(), "Unknown")}, Samples: {actual_fmt.samples()}, Version: {actual_fmt.majorVersion()}.{actual_fmt.minorVersion()}")
                 
             functions = self.context().functions() # Get functions from QOpenGLWidget's context
             if PYOPENGL_VERBOSE: print(f"PoscGLWidget: Functions object from context: {functions}")
@@ -518,7 +564,7 @@ class PoscGLWidget(QOpenGLWidget):
                 gl.glPolygonMode(gl.GL_FRONT_AND_BACK, gl.GL_FILL)
                 for model in opaque_models + transparent_models:
                     if model:
-                        model.draw()
+                        model.draw(use_shaders=self.use_shaders)
                 
                 gl.glColorMask(gl.GL_TRUE, gl.GL_TRUE, gl.GL_TRUE, gl.GL_TRUE)
                 gl.glPolygonMode(gl.GL_FRONT_AND_BACK, gl.GL_LINE)
@@ -1032,45 +1078,184 @@ class MainWindow(QMainWindow):
         # save_action.triggered.connect(lambda: self.gl_widget.save_screenshot_pyside_key(self.gl_widget)) # Bit awkward
         # reset_view_action = self.menuBar().addAction("&Reset View")
         # reset_view_action.triggered.connect(self.gl_widget.reset_view_pyside)
-
-
-if __name__ == '__main__':
-    app = QApplication(sys.argv)
-
-    # --- Setup OpenGL Surface Format ---
-    # Request a Compatibility Profile to maximize chances for existing GL calls
-    # (especially immediate mode in AxesRenderer and GLSL 1.10/1.20 shaders)
-    fmt = QSurfaceFormat()
-    fmt.setDepthBufferSize(24)
-    fmt.setStencilBufferSize(8)
-    # fmt.setVersion(3, 3) # Request specific modern version
-    # Instead, request CompatibilityProfile for broader support of older GL features
-    fmt.setProfile(QSurfaceFormat.CompatibilityProfile)
-    # Enable multisampling for antialiasing if desired
-    fmt.setSamples(4) # Or more, check system capabilities. 0 to disable.
-    QSurfaceFormat.setDefaultFormat(fmt)
-
-    # --- Set PYOPENGL_VERBOSE in the glctxt module ---
-    try:
-        from pythonopenscad.viewer import glctxt as glctxt_module
-        glctxt_module.PYOPENGL_VERBOSE = False
-    except ImportError:
-        print("Main: Could not import glctxt to set PYOPENGL_VERBOSE.")
-        # Fallback if direct import fails, though modules should see their own PYOPENGL_VERBOSE import
-        # This line below is less effective for other modules if they import glctxt directly.
-        # PYOPENGL_VERBOSE = True 
-
-    # --- Create Models (Example from your original __main__) ---
-    # PYOPENGL_VERBOSE = True # This sets it locally, prefer setting in glctxt module
+        
+        
+@datatree
+class Viewer():
+    """
+    PySide6 QOpenGLWidget to replace the GLUT-based Viewer.
+    It incorporates most of the logic from your original Viewer class.
+    """
     
-    # The GLContext initialization needs to be careful not to invoke GLUT.
-    # For PySide6, the QOpenGLWidget creates and manages the context.
-    # We use GLContext primarily for capability querying.
-    # gl_ctx_main = GLContext.get_instance()
-    # If GLContext.initialize() tries to create a GLUT window, it will fail or conflict.
-    # Let's assume it can be used in a 'query-only' mode or adapted.
-    # For now, capabilities are checked within PoscGLWidget.initializeGL() using glGetString.
+    VIEWER_HELP_TEXT = """
+    Mouse Controls:
+     Left button drag: Rotate camera
+     Right button drag: Pan camera
+     Left+Right drag or Middle drag or Wheel (not on mac):
+         Perspective: zoom / Orthographic: scale
+    
+    Keyboard Controls:
+     A - Toggle multisampling antialiasing (MSAA)
+     B - Toggle backface culling
+     W - Toggle wireframe mode
+     Z - Toggle Z-buffer occlusion for wireframes
+     C - Toggle coalesced model mode (improves transparency rendering)
+     H - Toggle shader-based rendering (modern vs. legacy mode)
+     O - Toggle Orthographic/Perspective projection
+     D - Print diagnostic information about OpenGL capabilities
+     P - Print detailed shader program diagnostics
+     R - Reset view
+     X - Toggle bounding box (off/wireframe/solid)
+     S - Save screenshot
+     + - Toggle axes visibility
+     G - Toggle axes graduation ticks
+     V - Toggle axes graduation values
+     E - Toggle edge effect rotation interaction
+     T - Toggle axes stipple (dashed negative axes)
+     F - Toggle polygon offset for wireframes
+     ESC - Close viewer
+     = - Zoom in (keyboard alternative to mouse wheel)
+     - - Zoom out (keyboard alternative to mouse wheel)
+    """
 
+    # --- State variables from your Viewer class ---
+    models: List[Model] = dtfield(default_factory=list)
+    width: int = 800
+    height: int = 600
+    title: str = "PythonOpenSCAD PySide6 Viewer"
+
+    use_coalesced_models: bool = True
+    backface_culling: bool = True
+    wireframe_mode: bool = False
+    bounding_box_mode: int = 0  # 0: off, 1: wireframe, 2: solid
+    zbuffer_occlusion: bool = True
+    antialiasing_enabled: bool = True # Managed by QSurfaceFormat initially
+    show_axes: bool = True
+    edge_rotations: bool = False # From original viewer
+
+    background_color: Tuple[float, float, float, float] = (0.98, 0.98, 0.85, 1.0)
+    
+    axes_renderer_node: Node[AxesRenderer] = Node(AxesRenderer, prefix="axes_") # dtfield if using datatree init
+    axes_renderer: AxesRenderer = dtfield(self_default=lambda self: self.axes_renderer_node())
+
+    projection_mode: str = "perspective"  # 'perspective' or 'orthographic'
+    ortho_scale: float = 20.0  # World-space width for ortho view
+
+    # Camera parameters (from your viewer)
+    camera_pos: glm.vec3 = dtfield(default_factory=lambda: glm.vec3(10.0, -10.0, 10.0))
+    camera_front: glm.vec3 = dtfield(default_factory=lambda: glm.vec3(0.0, 0.0, 1.0))
+    camera_up: glm.vec3 = dtfield(default_factory=lambda: glm.vec3(0.0, 0.0, 1.0))
+    camera_target: glm.vec3 = dtfield(default_factory=lambda: glm.vec3(0.0, 0.0, 0.0))
+    camera_speed: float = 0.05 # Will be adjusted based on scene bounds
+    model_matrix_np: np.ndarray = dtfield(default_factory=lambda: np.eye(4, dtype=np.float32))
+    
+    # Mouse interaction state
+    last_mouse_pos: QPoint = None
+    left_button_pressed: bool = False
+    right_button_pressed: bool = False
+    trackball_start_point: glm.vec3 = None # For trackball rotation
+
+    # Scene bounds
+    bounding_box: BoundingBox = None
+
+    # Shader program (will be initialized in initializeGL)
+    active_shader_program_id: Any = None # ID of the compiled shader program
+    use_shaders: bool = True # To toggle shader usage
+
+    # GLContext (for capability querying mainly)
+    gl_ctx: GLContext = None
+    _multisample_supported_by_context: bool = False # Queried from QSurfaceFormat
+    
+    parent: InitVar[QWidget] = None
+    
+    axes_depth_test: bool = True    
+
+    _app: QApplication = dtfield(default=None, init=False)
+    _main_window: QMainWindow = dtfield(default=None, init=False)
+    
+    def __post_init__(self, parent: QWidget =None):
+
+        app = QApplication(sys.argv)
+        self._app = app
+
+        # --- Setup OpenGL Surface Format ---
+        # Request a Compatibility Profile to maximize chances for existing GL calls
+        # (especially immediate mode in AxesRenderer and GLSL 1.10/1.20 shaders)
+        fmt = QSurfaceFormat()
+        fmt.setDepthBufferSize(24)
+        fmt.setStencilBufferSize(8)
+        # fmt.setVersion(3, 3) # Request specific modern version
+        # Instead, request CompatibilityProfile for broader support of older GL features
+        fmt.setProfile(QSurfaceFormat.CompatibilityProfile)
+        # Enable multisampling for antialiasing if desired
+        fmt.setSamples(4) # Or more, check system capabilities. 0 to disable.
+        QSurfaceFormat.setDefaultFormat(fmt)
+        
+
+        if PYOPENGL_VERBOSE: print("Main: Creating MainWindow...")
+        main_window = QMainWindow()
+        self._main_window = main_window
+        main_window.setWindowTitle(self.title)
+        main_window.setBaseSize(self.width, self.height)
+        
+        central_widget = QWidget()
+        main_window.setCentralWidget(central_widget)
+        self.main_window = main_window
+        
+        layout = QVBoxLayout(central_widget)
+
+        self.gl_widget = PoscGLWidget(
+            models=self.models,
+            use_coalesced_models=self.use_coalesced_models,
+            backface_culling=self.backface_culling,
+            wireframe_mode=self.wireframe_mode,
+            bounding_box_mode=self.bounding_box_mode,
+            zbuffer_occlusion=self.zbuffer_occlusion,
+            antialiasing_enabled=self.antialiasing_enabled,
+            show_axes=self.show_axes,
+            edge_rotations=self.edge_rotations,
+            background_color=self.background_color,
+            axes_renderer=self.axes_renderer,
+            projection_mode=self.projection_mode,
+            ortho_scale=self.ortho_scale,
+            camera_pos=self.camera_pos,
+            camera_front=self.camera_front,
+            camera_up=self.camera_up,
+            camera_target=self.camera_target,
+            camera_speed=self.camera_speed,
+            model_matrix_np=self.model_matrix_np,
+            last_mouse_pos=self.last_mouse_pos,
+            left_button_pressed=self.left_button_pressed,
+            right_button_pressed=self.right_button_pressed,
+            trackball_start_point=self.trackball_start_point,
+            bounding_box=self.bounding_box,
+            active_shader_program_id=self.active_shader_program_id,
+            use_shaders=self.use_shaders,
+            gl_ctx=self.gl_ctx,
+            axes_depth_test=self.axes_depth_test,
+            parent=main_window)
+        
+        layout.addWidget(self.gl_widget)
+        
+        self.gl_widget.message_signal.connect(main_window.statusBar().showMessage)
+        main_window.statusBar().showMessage(
+            "Viewer Ready. Press '?' for help (if implemented).", 2000)
+        
+    def offscreen_render(self, filename: str):
+        self.gl_widget.save_screenshot_pyside(filename)
+        
+    def num_triangles(self) -> int:
+        return self.gl_widget.num_triangles()
+
+    def run(self):
+        self._main_window.show()
+
+        if PYOPENGL_VERBOSE: print("Main: Starting PySide6 event loop...")
+        result = self._app.exec()
+        sys.exit(result)
+    
+    
+if __name__ == '__main__':
     if PYOPENGL_VERBOSE: print("Main: Creating test models...")
     try:
         triangle = create_triangle_model()
@@ -1081,13 +1266,6 @@ if __name__ == '__main__':
         initial_models = []
         QMessageBox.critical(None, "Model Error", f"Failed to create initial models: {e}")
         sys.exit(1)
-
-
-    if PYOPENGL_VERBOSE: print("Main: Creating MainWindow...")
-    main_window = MainWindow(initial_models)
-    main_window.show()
-
-    if PYOPENGL_VERBOSE: print("Main: Starting PySide6 event loop...")
-    result = app.exec()
-    sys.exit(result)
-    
+            
+    viewer = Viewer(models=initial_models)
+    viewer.run()
