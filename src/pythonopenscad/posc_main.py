@@ -9,7 +9,7 @@ import manifold3d as m3d
 from datatrees import datatree, Node, dtfield
 import pythonopenscad as posc
 from pythonopenscad.m3dapi import M3dRenderer, RenderContextManifold, manifold_to_stl
-from pythonopenscad.viewer.ps_viewer import Viewer, Model
+from pythonopenscad.viewer.viewer import Viewer, Model
 from pythonopenscad.modifier import PoscRendererBase
 
 

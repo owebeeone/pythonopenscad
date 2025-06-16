@@ -165,7 +165,36 @@ The best things come for free. You're free to use your favorite Python IDE and g
 
 * POSC PyDoc strings have URLs to all the implemented primitives. 
 
+* **Global OpenSCAD Parameters:** Set global `$fn`, `$fa`, and `$fs` parameters using `POSC_GLOBALS` that will be automatically included in generated script headers.
+
 * Best of all, it does nothing else. Consider it a communication layer to OpenScad. Other functionality should be built as separate libraries.
+
+## Global Parameters
+
+PythonOpenScad supports setting global OpenSCAD parameters (`$fn`, `$fa`, `$fs`) that control mesh resolution and fragment generation. These can be set using the `POSC_GLOBALS` object:
+
+```python
+from pythonopenscad import POSC_GLOBALS, Sphere
+
+# Set global parameters
+POSC_GLOBALS._fn = 50  # Use 50 fragments for all circular shapes
+POSC_GLOBALS._fa = 6   # Minimum angle of 6 degrees
+POSC_GLOBALS._fs = 0.5 # Minimum segment length of 0.5
+
+# These will be included in the generated script header
+sphere = Sphere(r=10)
+print(sphere)  # Will include "$fn = 50;" etc. at the top
+```
+
+You can also override these per-object or per-operation:
+
+```python
+# Override global settings for specific objects
+sphere_high_res = Sphere(r=10, _fn=100)  # This sphere uses 100 fragments
+
+# Override when writing/dumping
+sphere.write('output.scad', _fn=200)  # Override global _fn when writing
+```
 
 ## POSC Compatibility with the [OpenPyScad](https://github.com/taxpon/openpyscad) and [SolidPython](https://github.com/SolidCode/SolidPython) APIs
 

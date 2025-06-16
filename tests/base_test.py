@@ -165,6 +165,19 @@ class Test(unittest.TestCase):
     def testRotateA3(self):
         obj = base.Rotate([10])
         self.assertEqual(str(obj), 'rotate(a=[10.0, 0.0, 0.0]);\n')
+        
+    def test_globals(self):
+        base.POSC_GLOBALS._fn = 10
+        self.assertEqual(str(base.Cylinder(10, 11)), '$fn = 10;\n\ncylinder(h=10.0, r=11.0, center=false);\n')
+        base.POSC_GLOBALS._fn = None
+        self.assertEqual(str(base.Cylinder(10, 11)), 'cylinder(h=10.0, r=11.0, center=false);\n')
+        base.POSC_GLOBALS._fs = 2.0
+        self.assertEqual(str(base.Cylinder(10, 11)), '$fs = 2.0;\n\ncylinder(h=10.0, r=11.0, center=false);\n')
+        base.POSC_GLOBALS._fa = 1.0
+        self.assertEqual(str(base.Cylinder(10, 11)), '$fa = 1.0;\n$fs = 2.0;\n\ncylinder(h=10.0, r=11.0, center=false);\n')
+        base.POSC_GLOBALS._fa = None
+        self.assertEqual(str(base.Cylinder(10, 11)), '$fs = 2.0;\n\ncylinder(h=10.0, r=11.0, center=false);\n')
+        base.POSC_GLOBALS._fs = None
 
     def test_List_of(self):
         converter = base.list_of(int, len_min_max=(None, None))

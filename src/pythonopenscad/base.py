@@ -104,6 +104,25 @@ class NameCollissionFieldNameReserved(PoscBaseException):
 
 class AttemptingToAddNonPoscBaseNode(PoscBaseException):
     """Attempted to add ad invalid object to child nodes."""
+    
+@dataclass
+class PoscGlobals:
+    """Global OpenSCAD parameters. Modifies the global parameters for the generated script."""
+    _fn: int | None = None
+    _fa: float | None = None
+    _fs: float | None = None
+    
+    def overrides(self, _fn: int | None, _fa: float | None, _fs: float | None) -> \
+        tuple[tuple[str, int | float | None], ...]:
+        return (
+            ('$fn', self._fn if _fn is None else _fn),
+            ('$fa', self._fa if _fa is None else _fa),
+            ('$fs', self._fs if _fs is None else _fs)
+        )
+
+# Setting the _fn, _fs and _fa variables will result in the header to
+# the generated script to include the global parameters.
+POSC_GLOBALS = PoscGlobals()
 
 
 class Arg(object):
@@ -784,8 +803,12 @@ class PoscBase(PoscRendererBase):
     def get_modules(self):
         return ()
 
-    def dump_with_code_dumper(self, code_dumper: CodeDumper):
+    def dump_with_code_dumper(self, code_dumper: CodeDumper, _fn: int = None, _fa: float = None, _fs: float = None):
         """Returns the OpenScad equivalent code for this node."""
+        if code_dumper.DUMPS_OPENSCAD:
+            header = self._header(_fn, _fa, _fs)
+            if header:
+                code_dumper.add_line(header)
         code_dumper.add_modules(self.get_modules())
         self.code_dump(code_dumper)
         code_dumper.dump_modules()
@@ -815,26 +838,33 @@ class PoscBase(PoscRendererBase):
             if getattr(self, arg.attr_name) != getattr(other, arg.attr_name):
                 return False
         return self.children() == other.children()
+    
+    def _header(self, _fn: int = None, _fa: float = None, _fs: float = None) -> str:
+        header = ""
+        for name, val in POSC_GLOBALS.overrides(_fn, _fa, _fs):
+            if val is not None:
+                header += f"{name} = {val};\n"
+        return header
 
     # OpenPyScad compat functions.
-    def dumps(self):
+    def dumps(self, _fn: int = None, _fa: float = None, _fs: float = None) -> str:
         """Returns a string of this object's OpenScad script."""
-        return self.dump_with_code_dumper(CodeDumper()).writer.get()
+        return self.dump_with_code_dumper(CodeDumper(), _fn, _fa, _fs).writer.get()
 
-    def dump(self, fp):
+    def dump(self, fp, _fn: int = None, _fa: float = None, _fs: float = None):
         """Writes this object's OpenScad script to the given file.
         Args:
             fp: The python file object to use.
         """
-        self.dump_with_code_dumper(CodeDumper(writer=FileWriter(fp))).writer.finish()
+        self.dump_with_code_dumper(CodeDumper(writer=FileWriter(fp)), _fn, _fa, _fs).writer.finish()
 
-    def write(self, filename, encoding='utf-8'):
+    def write(self, filename, encoding='utf-8', _fn: int = None, _fa: float = None, _fs: float = None):
         """Writes the OpenScad script to the given file name.
         Args:
             filename: The filename to create.
         """
         with open(filename, 'w', encoding=encoding) as fp:
-            self.dump(fp)
+            self.dump(fp, _fn, _fa, _fs)
             
     def renderObj(self, renderer: M3dRenderer) -> RenderContext:
         assert False, "Not implemented"

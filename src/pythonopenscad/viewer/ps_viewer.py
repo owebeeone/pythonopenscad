@@ -231,6 +231,250 @@ class PoscGLWidget(QOpenGLWidget):
 
     def __post_init__(self, parent: QWidget =None):
         super().__init__(parent)
+        
+        # Initialize GLContext BEFORE anything else that might need it
+        self.gl_ctx = GLContext.get_instance()
+
+        self.original_models = self.models # Store for coalescing logic
+        self.models = [] # Initialize as empty list
+
+        self._apply_coalescing()
+        self._compute_scene_bounds()
+        self._setup_camera_from_bounds()
+
+from dataclasses import InitVar
+import sys
+import numpy as np
+import ctypes # For VAO/VBO offsets if needed by Model class
+from typing import Any, List, Tuple, Dict, Callable
+
+from PySide6.QtWidgets import QApplication, QMainWindow, QVBoxLayout, QWidget, QMessageBox
+from PySide6.QtOpenGLWidgets import QOpenGLWidget
+from PySide6.QtCore import Slot, Qt, QPoint, Signal, QTimer
+from PySide6.QtGui import QSurfaceFormat, QKeyEvent, QMouseEvent, QWheelEvent
+# QOpenGLFunctions provides cross-platform access to GL functions
+# but since you're using PyOpenGL's gl, GLU, we'll initialize it but mostly use your imports
+# from PySide6.QtGui import QOpenGLFunctions # No longer needed as base class
+# from PySide6.QtGui import QOpenGLFunctions_3_3_Compatibility # Trying a more common version
+
+# Your existing imports (slightly modified)
+from datatrees import datatree, dtfield, Node # Assuming this is available
+import manifold3d as m3d # Assuming this is available
+
+# pythonopenscad.viewer specific imports
+# Assuming these paths are correct or your modules are in PYTHONPATH
+from pythonopenscad.viewer.bbox import BoundingBox
+from pythonopenscad.viewer.bbox_render import BBoxRender
+from pythonopenscad.viewer.glctxt import GLContext, PYOPENGL_VERBOSE # PYOPENGL_VERBOSE will be used
+from pythonopenscad.viewer.model import Model # CRITICAL: This class definition is not provided but essential
+from pythonopenscad.viewer.axes import AxesRenderer, ScreenContext # From axes.py
+from pythonopenscad.viewer.shader import Shader, ShaderProgram, SHADER_PROGRAM, BASIC_SHADER_PROGRAM # From shader.py
+from pythonopenscad.viewer.basic_models import (
+    create_colored_test_cube,
+    create_triangle_model,
+)
+
+
+import OpenGL.GL as gl
+import OpenGL.GLU as glu
+# OpenGL.GLUT will be replaced by PySide6
+from pyglm import glm # Retaining pyglm as per original code
+
+
+
+# PS_VERTEX_SHADER = Shader(
+#     name="vertex_shader",
+#     shader_type=gl.GL_VERTEX_SHADER,
+#     binding=("aPos", "aColor", "aNormal"),
+#     shader_source="""
+# #version 120
+
+# attribute vec3 aPos;
+# attribute vec4 aColor;
+# attribute vec3 aNormal;
+
+# uniform mat4 model;
+# uniform mat4 view;
+# uniform mat4 projection;
+
+# varying vec3 FragPos;
+# varying vec4 VertexColor;
+# varying vec3 Normal;
+# // varying float dbg_viewZ;
+
+# void main() {
+#     vec4 pos_model_space = vec4(aPos, 1.0);
+#     vec4 pos_world_space = model * pos_model_space;
+#     vec4 pos_view_space  = view * pos_world_space;
+#     vec4 pos_clip_space  = projection * pos_view_space;
+
+#     FragPos = vec3(pos_world_space); 
+#     Normal = normalize(mat3(model) * aNormal);
+#     VertexColor = aColor; 
+
+#     gl_Position = pos_clip_space; // Standard perspective - ACTIVE
+#     // gl_Position = vec4(pos_clip_space.xyz, 1.0); // Force W=1.0 - COMMENTED OUT
+
+# }
+# """,
+# )
+
+# PS_FRAGMENT_SHADER = Shader(
+#     name="fragment_shader",
+#     shader_type=gl.GL_FRAGMENT_SHADER,
+#     shader_source="""
+# #version 120
+
+# varying vec3 FragPos;
+# varying vec4 VertexColor;
+# varying vec3 Normal;
+
+# uniform vec3 lightPos;
+# uniform vec3 viewPos;
+
+# void main() {
+#     // Ambient - increase to make colors more visible
+#     float ambientStrength = 0.5;  // Increased from 0.3
+#     vec3 ambient = ambientStrength * VertexColor.rgb;
+    
+#     // Diffuse - increase strength
+#     vec3 norm = normalize(Normal);
+#     vec3 lightDir = normalize(lightPos - FragPos);
+#     float diff = max(dot(norm, lightDir), 0.0);
+#     vec3 diffuse = diff * VertexColor.rgb * 0.8;  // More diffuse influence
+    
+#     // Specular - keep the same
+#     float specularStrength = 0.5;
+#     vec3 viewDir = normalize(viewPos - FragPos);
+#     vec3 reflectDir = reflect(-lightDir, norm);
+#     float spec = pow(max(dot(viewDir, reflectDir), 0.0), 32.0);
+#     vec3 specular = specularStrength * spec * vec3(1.0, 1.0, 1.0);
+    
+#     // Result - ensure colors are visible regardless of lighting
+#     vec3 result = ambient + diffuse + specular;
+    
+#     // Add a minimum brightness to ensure visibility
+#     result = max(result, VertexColor.rgb * 0.4);
+    
+#     // Preserve alpha from vertex color for transparent objects
+#     gl_FragColor = vec4(result, VertexColor.a);
+# }
+# """,
+# )
+
+# PS_SHADER_PROGRAM = ShaderProgram(
+#     name="shader_program",
+#     vertex_shader=PS_VERTEX_SHADER,
+#     fragment_shader=PS_FRAGMENT_SHADER,
+# )
+
+PS_SHADER_PROGRAM = SHADER_PROGRAM
+
+class PoscGLWidget(QOpenGLWidget):
+    """
+    PySide6 QOpenGLWidget to replace the GLUT-based Viewer.
+    It incorporates most of the logic from your original Viewer class.
+    """
+    # Signals for UI updates if needed (e.g., status bar messages)
+    message_signal = Signal(str)
+
+    def __init__(self,
+        models: List[Model] = None,
+        use_coalesced_models: bool = True,
+        backface_culling: bool = True,
+        wireframe_mode: bool = False,
+        bounding_box_mode: int = 0,  # 0: off, 1: wireframe, 2: solid
+        zbuffer_occlusion: bool = True,
+        antialiasing_enabled: bool = True, # Managed by QSurfaceFormat initially
+        show_axes: bool = True,
+        edge_rotations: bool = False, # From original viewer
+
+        background_color: Tuple[float, float, float, float] = (0.98, 0.98, 0.85, 1.0),
+        axes_renderer: AxesRenderer = None,
+
+        projection_mode: str = "perspective",  # 'perspective' or 'orthographic'
+        ortho_scale: float = 20.0,  # World-space width for ortho view
+
+        # Camera parameters (from your viewer)
+        camera_pos: glm.vec3 = glm.vec3(10.0, -10.0, 10.0),
+        camera_front: glm.vec3 = glm.vec3(0.0, 0.0, 1.0),
+        camera_up: glm.vec3 = glm.vec3(0.0, 0.0, 1.0),
+        camera_target: glm.vec3 = glm.vec3(0.0, 0.0, 0.0),
+        camera_speed: float = 0.05, # Will be adjusted based on scene bounds
+        model_matrix_np: np.ndarray = np.eye(4, dtype=np.float32),
+        
+        # Mouse interaction state
+        last_mouse_pos: QPoint = None,
+        left_button_pressed: bool = False,
+        right_button_pressed: bool = False,
+        trackball_start_point: glm.vec3 = None, # For trackball rotation
+
+        # Scene bounds
+        bounding_box: BoundingBox = None,
+
+        # Shader program (will be initialized in initializeGL)
+        active_shader_program_id: Any = None, # ID of the compiled shader program
+        use_shaders: bool = True, # To toggle shader usage
+
+        # GLContext (for capability querying mainly)
+        gl_ctx: GLContext = None,
+        _multisample_supported_by_context: bool = False, # Queried from QSurfaceFormat
+        axes_depth_test: bool = True,
+        parent: QWidget = None,
+    ):
+        self.models = models if models else []
+        self.use_coalesced_models = use_coalesced_models
+        self.backface_culling = backface_culling
+        self.wireframe_mode = wireframe_mode
+        self.bounding_box_mode = bounding_box_mode
+        self.zbuffer_occlusion = zbuffer_occlusion
+        self.antialiasing_enabled = antialiasing_enabled
+        self.show_axes = show_axes
+        self.edge_rotations = edge_rotations
+        self.background_color = background_color
+        self.axes_renderer = axes_renderer if axes_renderer else AxesRenderer()
+        self.projection_mode = projection_mode
+        self.ortho_scale = ortho_scale
+        self.camera_pos = camera_pos
+        self.camera_front = camera_front
+        self.camera_up = camera_up
+        self.camera_target = camera_target
+        self.camera_speed = camera_speed
+        self.model_matrix_np = model_matrix_np
+        self.last_mouse_pos = last_mouse_pos
+        self.left_button_pressed = left_button_pressed
+        self.right_button_pressed = right_button_pressed
+        self.trackball_start_point = trackball_start_point
+        self.bounding_box = bounding_box
+        self.active_shader_program_id = active_shader_program_id
+        self.use_shaders = use_shaders
+        self.gl_ctx = gl_ctx
+        self._multisample_supported_by_context = _multisample_supported_by_context
+        self.axes_depth_test = axes_depth_test
+    
+        # Mouse interaction state
+        self.last_mouse_pos = last_mouse_pos
+        self.left_button_pressed = left_button_pressed
+        self.right_button_pressed = right_button_pressed
+        self.trackball_start_point = trackball_start_point
+
+        # Scene bounds
+        self.bounding_box = bounding_box
+
+        # Shader program (will be initialized in initializeGL)
+        self.active_shader_program_id = active_shader_program_id
+        self.use_shaders = use_shaders
+
+        # GLContext (for capability querying mainly)
+        self.gl_ctx = gl_ctx
+        self._multisample_supported_by_context = _multisample_supported_by_context
+        self.axes_depth_test = axes_depth_test
+        
+        self.__post_init__(parent)
+
+
+    def __post_init__(self, parent: QWidget =None):
+        super().__init__(parent)
         # It's good practice to initialize QOpenGLFunctions within initializeGL,
         # but we make it available if methods outside paintGL need it.
         # self.initializeOpenGLFunctions() # Call this in initializeGL
@@ -888,18 +1132,112 @@ class PoscGLWidget(QOpenGLWidget):
         self.update()
         
     def _apply_gl_state_changes(self):
-        """Apply GL state changes that are normally set during initialization or paint."""
-        self.makeCurrent()
-        if self.backface_culling: gl.glEnable(gl.GL_CULL_FACE)
-        else: gl.glDisable(gl.GL_CULL_FACE)
+        """Apply any pending GL state changes (wireframe, culling, etc.)."""
+        # Configure backface culling
+        if self.backface_culling:
+            gl.glEnable(gl.GL_CULL_FACE)
+            gl.glCullFace(gl.GL_BACK)
+        else:
+            gl.glDisable(gl.GL_CULL_FACE)
+
+        # Configure polygon mode (wireframe or fill)
+        if self.wireframe_mode:
+            gl.glPolygonMode(gl.GL_FRONT_AND_BACK, gl.GL_LINE)
+        else:
+            gl.glPolygonMode(gl.GL_FRONT_AND_BACK, gl.GL_FILL)
+
+    def _render_scene_offscreen(self):
+        """Core rendering logic for offscreen rendering.
         
-        if self.wireframe_mode: gl.glPolygonMode(gl.GL_FRONT_AND_BACK, gl.GL_LINE)
-        else: gl.glPolygonMode(gl.GL_FRONT_AND_BACK, gl.GL_FILL)
+        This method contains the essential rendering steps without Qt-specific
+        paintGL overhead, allowing it to be used for FBO-based offscreen rendering.
+        """
+        # Apply current GL state
+        self._apply_gl_state_changes()
         
-        if hasattr(gl, "GL_MULTISAMPLE") and self._multisample_supported_by_context:
-            if self.antialiasing_enabled: gl.glEnable(gl.GL_MULTISAMPLE)
-            else: gl.glDisable(gl.GL_MULTISAMPLE)
-        self.doneCurrent()
+        # Enable depth testing
+        gl.glEnable(gl.GL_DEPTH_TEST)
+        
+        # Set up view matrices and lighting similar to paintGL
+        projection_matrix = self._get_projection_matrix_glm()
+        view_matrix = self._get_view_matrix_glm()
+        model_matrix = glm.mat4(1.0)  # Identity for now
+        
+        # Use shader if available
+        using_shader = False
+        if self.use_shaders and self.gl_ctx and self.gl_ctx.has_shader and self.active_shader_program_id:
+            try:
+                gl.glUseProgram(self.active_shader_program_id)
+                using_shader = True
+                
+                # Set up shader uniforms
+                model_loc = gl.glGetUniformLocation(self.active_shader_program_id, "model")
+                view_loc = gl.glGetUniformLocation(self.active_shader_program_id, "view")
+                proj_loc = gl.glGetUniformLocation(self.active_shader_program_id, "projection")
+                
+                if model_loc != -1:
+                    gl.glUniformMatrix4fv(model_loc, 1, gl.GL_FALSE, glm.value_ptr(model_matrix))
+                if view_loc != -1:
+                    gl.glUniformMatrix4fv(view_loc, 1, gl.GL_FALSE, glm.value_ptr(view_matrix))
+                if proj_loc != -1:
+                    gl.glUniformMatrix4fv(proj_loc, 1, gl.GL_FALSE, glm.value_ptr(projection_matrix))
+                
+                # Set lighting uniforms
+                light_pos_loc = gl.glGetUniformLocation(self.active_shader_program_id, "lightPos")
+                if light_pos_loc != -1:
+                    gl.glUniform3f(light_pos_loc, 
+                                 self.camera_pos.x + 5.0, 
+                                 self.camera_pos.y + 5.0, 
+                                 self.camera_pos.z + 10.0)
+                
+                view_pos_loc = gl.glGetUniformLocation(self.active_shader_program_id, "viewPos")
+                if view_pos_loc != -1:
+                    gl.glUniform3f(view_pos_loc, self.camera_pos.x, self.camera_pos.y, self.camera_pos.z)
+                    
+            except Exception as e:
+                if PYOPENGL_VERBOSE:
+                    print(f"PoscGLWidget: Shader setup failed for offscreen render: {e}")
+                using_shader = False
+                gl.glUseProgram(0)
+        
+        # Set up legacy fixed-function pipeline if not using shaders
+        if not using_shader:
+            # Set up matrices for legacy rendering
+            gl.glMatrixMode(gl.GL_PROJECTION)
+            gl.glLoadMatrixf(glm.value_ptr(projection_matrix))
+            
+            gl.glMatrixMode(gl.GL_MODELVIEW)
+            view_model = view_matrix * model_matrix
+            gl.glLoadMatrixf(glm.value_ptr(view_model))
+            
+            # Set up legacy lighting
+            if self.gl_ctx and self.gl_ctx.has_legacy_lighting:
+                gl.glEnable(gl.GL_LIGHTING)
+                gl.glEnable(gl.GL_LIGHT0)
+                gl.glEnable(gl.GL_COLOR_MATERIAL)
+                gl.glColorMaterial(gl.GL_FRONT_AND_BACK, gl.GL_AMBIENT_AND_DIFFUSE)
+        
+        # Render models
+        for model in self.models:
+            try:
+                model.draw(use_shaders=using_shader)
+            except Exception as e:
+                if PYOPENGL_VERBOSE:
+                    print(f"PoscGLWidget: Error rendering model in offscreen mode: {e}")
+        
+        # Render axes if enabled
+        if self.show_axes and self.axes_renderer:
+            try:
+                # For axes rendering, we need to provide the viewer-like interface
+                # The AxesRenderer expects certain methods to be available
+                self.axes_renderer.draw(self)
+            except Exception as e:
+                if PYOPENGL_VERBOSE:
+                    print(f"PoscGLWidget: Error rendering axes in offscreen mode: {e}")
+        
+        # Clean up shader state
+        if using_shader:
+            gl.glUseProgram(0)
 
     @staticmethod
     def custom_glu_project(obj_x: float, obj_y: float, obj_z: float,
@@ -941,7 +1279,6 @@ class PoscGLWidget(QOpenGLWidget):
             # print(f"  win_coords: ({win_x},{win_y},{win_z})")
             pass
 
-
         return win_x, win_y, win_z
 
     @staticmethod
@@ -969,7 +1306,7 @@ class PoscGLWidget(QOpenGLWidget):
         ndc_z = (2.0 * win_z) - 1.0  # win_z is in [0, 1]
 
         ndc_vec4 = glm.vec4(ndc_x, ndc_y, ndc_z, 1.0)
-
+        
         # Transform NDC to object coordinates (or eye coordinates if only P^-1 was used)
         obj_coords_homogeneous = inv_transform_mat * ndc_vec4
 
@@ -1242,8 +1579,211 @@ class Viewer():
             "Viewer Ready. Press '?' for help (if implemented).", 2000)
         
     def offscreen_render(self, filename: str):
-        self.gl_widget.save_screenshot_pyside(filename)
+        """Renders the model to an offscreen buffer and saves as PNG image.
         
+        This method attempts to use OpenGL Framebuffer Objects (FBOs) for true offscreen
+        rendering, but falls back to other methods when FBOs are not available.
+        """
+        # Ensure we have an OpenGL context
+        if not self.gl_widget:
+            raise RuntimeError("No OpenGL widget available for offscreen rendering")
+            
+        # Make sure the OpenGL context is current
+        self.gl_widget.makeCurrent()
+        
+        try:
+            # Check if FBO functions are available
+            fbo_available = (
+                hasattr(gl, 'glGenFramebuffers') and 
+                hasattr(gl, 'glBindFramebuffer') and
+                hasattr(gl, 'glFramebufferRenderbuffer') and
+                bool(gl.glGenFramebuffers) and
+                bool(gl.glBindFramebuffer) and
+                bool(gl.glFramebufferRenderbuffer)
+            )
+            
+            if fbo_available:
+                if PYOPENGL_VERBOSE:
+                    print("PySide Viewer: Using FBO-based offscreen rendering")
+                self._offscreen_render_fbo(filename)
+            else:
+                if PYOPENGL_VERBOSE:
+                    print("PySide Viewer: FBOs not available, using fallback method")
+                self._offscreen_render_fallback(filename)
+                
+        except Exception as e:
+            if PYOPENGL_VERBOSE:
+                print(f"PySide Viewer: FBO rendering failed, trying fallback: {e}")
+            # If FBO method fails, try fallback
+            try:
+                self._offscreen_render_fallback(filename)
+            except Exception as fallback_error:
+                print(f"All offscreen rendering methods failed: {fallback_error}", file=sys.stderr)
+                raise
+        finally:
+            # Make context available for widget again
+            self.gl_widget.doneCurrent()
+
+    def _offscreen_render_fbo(self, filename: str):
+        """FBO-based offscreen rendering implementation."""
+        fbo = None
+        color_rbo = None
+        depth_rbo = None
+        original_viewport = None
+        
+        try:
+            # Clear any existing OpenGL errors
+            gl.glGetError()
+            
+            # Generate FBO and renderbuffers
+            fbo = gl.glGenFramebuffers(1)
+            if gl.glGetError() != gl.GL_NO_ERROR or not fbo:
+                raise RuntimeError("Failed to generate Framebuffer Object (FBO)")
+                
+            gl.glBindFramebuffer(gl.GL_FRAMEBUFFER, fbo)
+            
+            # Create color renderbuffer
+            color_rbo = gl.glGenRenderbuffers(1)
+            gl.glBindRenderbuffer(gl.GL_RENDERBUFFER, color_rbo)
+            gl.glRenderbufferStorage(gl.GL_RENDERBUFFER, gl.GL_RGB8, self.width, self.height)
+            gl.glFramebufferRenderbuffer(
+                gl.GL_FRAMEBUFFER, gl.GL_COLOR_ATTACHMENT0, gl.GL_RENDERBUFFER, color_rbo
+            )
+            
+            # Create depth renderbuffer  
+            depth_rbo = gl.glGenRenderbuffers(1)
+            gl.glBindRenderbuffer(gl.GL_RENDERBUFFER, depth_rbo)
+            gl.glRenderbufferStorage(gl.GL_RENDERBUFFER, gl.GL_DEPTH_COMPONENT24, self.width, self.height)
+            gl.glFramebufferRenderbuffer(
+                gl.GL_FRAMEBUFFER, gl.GL_DEPTH_ATTACHMENT, gl.GL_RENDERBUFFER, depth_rbo
+            )
+            
+            # Check FBO completeness
+            status = gl.glCheckFramebufferStatus(gl.GL_FRAMEBUFFER)
+            if status != gl.GL_FRAMEBUFFER_COMPLETE:
+                raise RuntimeError(f"Framebuffer is not complete: {status}")
+                
+            # Set viewport for offscreen rendering
+            original_viewport = gl.glGetIntegerv(gl.GL_VIEWPORT)
+            gl.glViewport(0, 0, self.width, self.height)
+            
+            # Clear and render using the same methods as the widget's paintGL
+            gl.glClearColor(*self.background_color)
+            gl.glClear(gl.GL_COLOR_BUFFER_BIT | gl.GL_DEPTH_BUFFER_BIT)
+            
+            # Use the widget's rendering logic
+            self.gl_widget._render_scene_offscreen()
+            
+            # Read pixels from the offscreen buffer
+            buffer = gl.glReadPixels(0, 0, self.width, self.height, gl.GL_RGB, gl.GL_UNSIGNED_BYTE)
+            pixel_data = np.frombuffer(buffer, dtype=np.uint8)
+            
+            # Save the image (flip vertically since OpenGL reads bottom-up)
+            image = pixel_data.reshape((self.height, self.width, 3))
+            image = np.flipud(image)
+            
+            from PIL import Image
+            img = Image.fromarray(image)
+            img.save(filename, "PNG")
+            
+            if PYOPENGL_VERBOSE:
+                print(f"PySide Viewer: FBO offscreen render saved to {filename}")
+                
+        finally:
+            # Cleanup FBO resources
+            if fbo is not None:
+                gl.glBindFramebuffer(gl.GL_FRAMEBUFFER, 0)
+                gl.glDeleteFramebuffers(1, [fbo])
+            if color_rbo is not None:
+                gl.glDeleteRenderbuffers(1, [color_rbo])
+            if depth_rbo is not None:
+                gl.glDeleteRenderbuffers(1, [depth_rbo])
+            if original_viewport is not None:
+                gl.glViewport(*original_viewport)
+
+    def _offscreen_render_fallback(self, filename: str):
+        """Fallback offscreen rendering using Qt's grabFramebuffer or back buffer reading."""
+        try:
+            # Method 1: Try Qt's grabFramebuffer if widget is visible
+            if self.gl_widget.isVisible():
+                if PYOPENGL_VERBOSE:
+                    print("PySide Viewer: Using Qt grabFramebuffer method")
+                qimage = self.gl_widget.grabFramebuffer()
+                if qimage.save(filename, "PNG"):
+                    if PYOPENGL_VERBOSE:
+                        print(f"PySide Viewer: Qt grabFramebuffer saved to {filename}")
+                    return
+                else:
+                    raise RuntimeError("Qt grabFramebuffer failed to save image")
+            
+            # Method 2: Force render to back buffer and read pixels
+            if PYOPENGL_VERBOSE:
+                print("PySide Viewer: Using back buffer pixel reading method")
+            
+            # Store original viewport
+            original_viewport = gl.glGetIntegerv(gl.GL_VIEWPORT)
+            
+            # Set viewport to desired size
+            gl.glViewport(0, 0, self.width, self.height)
+            
+            # Clear and render
+            gl.glClearColor(*self.background_color)
+            gl.glClear(gl.GL_COLOR_BUFFER_BIT | gl.GL_DEPTH_BUFFER_BIT)
+            
+            # Use the widget's rendering logic
+            self.gl_widget._render_scene_offscreen()
+            
+            # Force rendering to complete
+            gl.glFinish()
+            
+            # Read from back buffer
+            buffer = gl.glReadPixels(0, 0, self.width, self.height, gl.GL_RGB, gl.GL_UNSIGNED_BYTE)
+            pixel_data = np.frombuffer(buffer, dtype=np.uint8)
+            
+            # Save the image (flip vertically since OpenGL reads bottom-up)
+            image = pixel_data.reshape((self.height, self.width, 3))
+            image = np.flipud(image)
+            
+            from PIL import Image
+            img = Image.fromarray(image)
+            img.save(filename, "PNG")
+            
+            # Restore original viewport
+            if original_viewport is not None:
+                gl.glViewport(*original_viewport)
+            
+            if PYOPENGL_VERBOSE:
+                print(f"PySide Viewer: Back buffer offscreen render saved to {filename}")
+                
+        except Exception as e:
+            # Method 3: Last resort - force widget to be visible temporarily
+            if PYOPENGL_VERBOSE:
+                print(f"PySide Viewer: Back buffer method failed ({e}), trying forced visibility method")
+            
+            was_visible = self.gl_widget.isVisible()
+            
+            try:
+                # Temporarily show the widget if it's not visible
+                if not was_visible:
+                    self.gl_widget.show()
+                    self.gl_widget.update()
+                    # Process events to ensure rendering occurs
+                    from PySide6.QtCore import QCoreApplication
+                    QCoreApplication.processEvents()
+                
+                # Use Qt's grabFramebuffer method
+                qimage = self.gl_widget.grabFramebuffer()
+                if qimage.save(filename, "PNG"):
+                    if PYOPENGL_VERBOSE:
+                        print(f"PySide Viewer: Forced visibility method saved to {filename}")
+                else:
+                    raise RuntimeError("Final fallback method failed to save image")
+                    
+            finally:
+                # Restore original visibility state
+                if not was_visible:
+                    self.gl_widget.hide()
+
     def num_triangles(self) -> int:
         return self.gl_widget.num_triangles()
 
