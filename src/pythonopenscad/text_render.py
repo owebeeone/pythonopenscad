@@ -1,6 +1,5 @@
 import numpy as np
 from datatrees import datatree, dtfield
-import anchorscad_lib.linear as l
 import logging
 import sys
 import os
