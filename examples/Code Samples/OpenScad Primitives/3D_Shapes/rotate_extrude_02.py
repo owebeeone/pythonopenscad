@@ -8,7 +8,7 @@ print("output SCAD file: ", filenameSCAD)
 """
     Prototype to generate the following OpenSCAD code
 
-    rotate_extrude(angle=360.0) {
+    rotate_extrude(angle=120.0) {
         square(size=5.0);
     }
 
@@ -19,6 +19,6 @@ print("output SCAD file: ", filenameSCAD)
 from pythonopenscad import *
 
 # create a simple shape
-myShape = Rotate_Extrude()(Square(size=5))
+myShape = Rotate_Extrude(angle=120)(Square(size=5))
 # Save to OpenSCAD file
 myShape.write(filenameSCAD)

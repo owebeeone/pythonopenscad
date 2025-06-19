@@ -8,7 +8,7 @@ print("output SCAD file: ", filenameSCAD)
 """
     Prototype to generate the following OpenSCAD code
 
-        cube(size=5.0);
+        sphere(r=5.0);
 
     reference: https://en.wikibooks.org/wiki/OpenSCAD_User_Manual/Primitive_Solids#sphere
 
@@ -17,6 +17,6 @@ print("output SCAD file: ", filenameSCAD)
 from pythonopenscad import *
 
 # create a simple shape
-myShape = Sphere(size=5)
+myShape = Sphere(r=5)
 # Save to OpenSCAD file
 myShape.write(filenameSCAD)

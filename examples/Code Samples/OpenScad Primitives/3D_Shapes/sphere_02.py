@@ -1,4 +1,4 @@
-#   [2025 Jun 19 - tomwwolf]
+#   [2025 Jun 18 - tomwwolf]
 import sys, os
 
 # extract filename
@@ -8,17 +8,16 @@ print("output SCAD file: ", filenameSCAD)
 """
     Prototype to generate the following OpenSCAD code
 
-    rotate_extrude(angle=360.0) {
-        square(size=5.0);
-    }
+        sphere(r=1.0, d=5.0);
+        Note - this is not correct. 
 
-    reference: https://en.wikibooks.org/wiki/OpenSCAD_User_Manual/Using_the_2D_Subsystem#rotate_extrude
+    reference: https://en.wikibooks.org/wiki/OpenSCAD_User_Manual/Primitive_Solids#sphere
 
 """
 # pythonopenscad code
 from pythonopenscad import *
 
 # create a simple shape
-myShape = Rotate_Extrude()(Square(size=5))
+myShape = Sphere(d=5)
 # Save to OpenSCAD file
 myShape.write(filenameSCAD)
