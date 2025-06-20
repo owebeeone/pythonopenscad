@@ -8,15 +8,14 @@ print("output SCAD file: ", filenameSCAD)
 """
     Prototype to generate the following OpenSCAD code
 
-    difference() {
+    intersection() {
         cylinder(h=4.0, r=1.0, center=true, $fn=100);
         rotate(a=[90.0, 0.0, 0.0]) {
             cylinder(h=4.0, r=0.9, center=true, $fn=100);
         }
-        cylinder(h=5.0, r=0.4, center=true, $fn=100);
     }
 
-    reference: https://en.wikibooks.org/wiki/OpenSCAD_User_Manual/CSG_Modelling#union
+    https://en.wikibooks.org/wiki/OpenSCAD_User_Manual/CSG_Modelling#intersection
 
 """
 # pythonopenscad code

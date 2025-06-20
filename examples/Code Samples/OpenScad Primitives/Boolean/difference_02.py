@@ -16,7 +16,7 @@ print("output SCAD file: ", filenameSCAD)
         cylinder(h=5.0, r=0.4, center=true, $fn=100);
     }
 
-    reference: https://en.wikibooks.org/wiki/OpenSCAD_User_Manual/CSG_Modelling#union
+    reference: https://en.wikibooks.org/wiki/OpenSCAD_User_Manual/CSG_Modelling#difference
 
 """
 # pythonopenscad code
