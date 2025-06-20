@@ -729,7 +729,7 @@ class PoscBase(PoscRendererBase):
             is_different_name = arg.name != arg.attr_name
             if is_different_name:
                 delattr(self, arg.name)
-            if value not in (None, NOT_PROVIDED):
+            if value is None and value is NOT_PROVIDED:
                 setattr(self, arg.attr_name, arg.typ(value))
             elif is_different_name:
                 setattr(self, arg.attr_name, None)
@@ -1187,7 +1187,7 @@ class Cylinder(PoscBase):
                 self.r2 = self.r1
                 self.r1 = self.r
                 self.r = None
-            else:
+            elif self.r is not None:
                 raise TypeError("got multiple values for argument 'r2'")
         
         if all(x is None for x in [self.r1, self.r2, self.d1, self.d2, self.d]):
