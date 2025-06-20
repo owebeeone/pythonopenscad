@@ -1480,7 +1480,7 @@ class M3dRenderer(RendererBase):
                 c = np.concatenate((c, [alpha]))
             elif c.shape != (4,):
                 raise ValueError("Color must be a 3 or 4 element numpy array")
-        elif isinstance(c, list):
+        elif isinstance(c, (list, tuple)):
             if len(c) == 3:
                 if alpha is None:
                     alpha = 1.0

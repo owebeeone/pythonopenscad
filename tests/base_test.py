@@ -404,6 +404,49 @@ class Test(unittest.TestCase):
                 ]
             ),
         )
+        
+    def test_CylinderArgs(self):
+        obj = base.Cylinder(10, 11, 12)
+        self.assertEqual(obj.r, None)
+        self.assertEqual(obj.r1, 11)
+        self.assertEqual(obj.r2, 12)
+        self.assertEqual(obj.h, 10)
+        
+        obj = base.Cylinder(10, 11)
+        self.assertEqual(obj.r, 11)
+        self.assertEqual(obj.r1, None)
+        self.assertEqual(obj.r2, None)
+        self.assertEqual(obj.h, 10)
+        
+        obj = base.Cylinder(10, r1=11, r2=12)
+        self.assertEqual(obj.r, None)
+        self.assertEqual(obj.r1, 11)
+        self.assertEqual(obj.r2, 12)
+        self.assertEqual(obj.h, 10)
+        
+        obj = base.Cylinder(10, d1=11, d2=12)
+        self.assertEqual(obj.r, None)
+        self.assertEqual(obj.d1, 11)
+        self.assertEqual(obj.d2, 12)
+        self.assertEqual(obj.h, 10)
+        
+        self.assertRaises(TypeError, base.Cylinder, 10, 11, 12, r=13)
+        self.assertRaises(TypeError, base.Cylinder, 10, 11, r1=13, r2=14)
+        
+    def test_SphereArgs(self):
+        obj = base.Sphere()
+        self.assertEqual(obj.r, 1.0)
+        self.assertEqual(obj.d, None)
+        
+        obj = base.Sphere(10)
+        self.assertEqual(obj.r, 10)
+        self.assertEqual(obj.d, None)
+        
+        obj = base.Sphere(d=10)
+        self.assertEqual(obj.r, None)
+        self.assertEqual(obj.d, 10)
+        
+
 
     def dump_str(self, s):
         return '[\n' + ',\n'.join([repr(l) for l in s.split('\n')]) + ']'
