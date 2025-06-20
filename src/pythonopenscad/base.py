@@ -104,7 +104,21 @@ class NameCollissionFieldNameReserved(PoscBaseException):
 
 class AttemptingToAddNonPoscBaseNode(PoscBaseException):
     """Attempted to add ad invalid object to child nodes."""
+
+
+class NotProvided:
+    """A value that is not provided. Used to indicate that a parameter is not provided."""
+    def __bool__(self):
+        return False
+
+    def __repr__(self):
+        return 'None'
     
+    def __str__(self):
+        return ''
+
+NOT_PROVIDED = NotProvided()
+
 @dataclass
 class PoscGlobals:
     """Global OpenSCAD parameters. Modifies the global parameters for the generated script."""
@@ -176,7 +190,7 @@ class Arg(object):
 
     def default_value_str(self):
         """Returns the default value as a string otherwise '' if no default provided."""
-        if self.default_value is None:
+        if self.default_value is None or self.default_value is NOT_PROVIDED:
             return ''
         try:
             return repr(self.default_value)
@@ -715,7 +729,7 @@ class PoscBase(PoscRendererBase):
             is_different_name = arg.name != arg.attr_name
             if is_different_name:
                 delattr(self, arg.name)
-            if value is not None:
+            if value not in (None, NOT_PROVIDED):
                 setattr(self, arg.attr_name, arg.typ(value))
             elif is_different_name:
                 setattr(self, arg.attr_name, None)
@@ -950,11 +964,13 @@ class PoscBase(PoscRendererBase):
 
 # A decorator for PoscBase classes.
 def apply_posc_attributes(clazz):
-    """Decorator that applies an equivalent constructor with it\'s own generated
+    """Decorator that applies an equivalent constructor with it's own generated
     docstring. Also adds some SolidPython script compatibility class by providing an alias
-    class in the current module."""
+    class in the current module.
+    """
     if clazz.__init__ != PoscBase.__init__:
         raise InitializerNotAllowed('class %s should not define __init__' % clazz.__name__)
+    
     # Check for name collision.
     args: Tuple[Arg] = clazz.OSC_API_SPEC.args
     for arg in args:
@@ -968,6 +984,7 @@ def apply_posc_attributes(clazz):
     for arg in args:
         setattr(clazz, arg.name, arg.to_dataclass_field())
     dataclass(repr=False)(clazz)
+
     clazz.__init__.__doc__ = clazz.OSC_API_SPEC.generate_init_doc()
     strs = []
     if clazz.__doc__:
@@ -1117,7 +1134,7 @@ class Cylinder(PoscBase):
         'cylinder',
         (
             Arg('h', float, 1.0, 'height of the cylinder or cone.', required=True),
-            Arg('r', float, 1.0, 'radius of cylinder. r1 = r2 = r.'),
+            Arg('r', float, NOT_PROVIDED, 'radius of cylinder. r1 = r2 = r.'),
             Arg('r1', float, None, 'radius, bottom of cone.'),
             Arg('r2', float, None, 'radius, top of cone.'),
             Arg('d', float, None, 'diameter of cylinder. r1 = r2 = d / 2.'),
@@ -1164,6 +1181,22 @@ class Cylinder(PoscBase):
 
     def check_valid(self):
         """Checks that the values of cylinder satisfy OpenScad cylinder requirements."""
+        
+        if self.r is not NOT_PROVIDED and self.r1 is not None:
+            if self.r2 is None:
+                self.r2 = self.r1
+                self.r1 = self.r
+                self.r = None
+            else:
+                raise TypeError("got multiple values for argument 'r2'")
+        
+        if all(x is None for x in [self.r1, self.r2, self.d1, self.d2, self.d]):
+            if self.r is NOT_PROVIDED:
+                self.r = 1.0
+        
+        if self.r is NOT_PROVIDED:
+            self.r = None
+        
         values = (('r1', self.get_r1()), ('r2', self.get_r2()))
         for k, v in values:
             if v is None:
@@ -1187,7 +1220,7 @@ class Sphere(PoscBase):
     OSC_API_SPEC = OpenScadApiSpecifier(
         'sphere',
         (
-            Arg('r', float, 1.0, 'radius of sphere. Ignores d if set.'),
+            Arg('r', float, NOT_PROVIDED, 'radius of sphere. Ignores d if set.'),
             Arg('d', float, None, 'diameter of sphere.'),
             FA_ARG,
             FS_ARG,
@@ -1205,7 +1238,16 @@ class Sphere(PoscBase):
 
     def check_valid(self):
         """Checks that the construction of cylinder is valid."""
-        if all(x is None for x in [self.r, self.d]):
+        
+        if self.d is not None:
+            if self.r is not NOT_PROVIDED and self.r is not None:
+                raise TypeError("got parameters r and d")
+            self.r = None
+            
+        elif self.r is NOT_PROVIDED:
+            self.r = 1.0
+        
+        if (self.r, self.d) == (None, None):
             raise RequiredParameterNotProvided(
                 'Both parameters r and d are None. A value for r or d must be provided.'
             )
