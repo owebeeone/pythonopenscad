@@ -889,6 +889,8 @@ class PoscBase(PoscRendererBase):
                 if val is None:
                     val = getattr(POSC_GLOBALS, attr)
                 args[attr] = val
+            else:
+                args[attr] = None
         return args
             
     def renderObj(self, renderer: M3dRenderer) -> RenderContext:
@@ -1219,7 +1221,7 @@ class Cylinder(PoscBase):
         return renderer.cylinder(
             self, self.h, self.get_r1(), self.get_r2(), 
             get_fragments_from_fn_fa_fs(self.get_r1(), **self.get_fn_fa_fs_args()),
-            centre=centre)
+            center=centre)
 
 
 @apply_posc_attributes
