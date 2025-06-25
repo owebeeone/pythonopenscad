@@ -1220,7 +1220,7 @@ class Cylinder(PoscBase):
         centre = True if self.center else False
         return renderer.cylinder(
             self, self.h, self.get_r1(), self.get_r2(), 
-            get_fragments_from_fn_fa_fs(self.get_r1(), **self.get_fn_fa_fs_args()),
+            fn=get_fragments_from_fn_fa_fs(self.get_r1(), **self.get_fn_fa_fs_args()),
             center=centre)
 
 
@@ -1546,7 +1546,8 @@ class Linear_Extrude(PoscParentBase):
     
     def renderObj(self, renderer: M3dRenderer) -> RenderContext:
         return renderer.linear_extrude(self, self.height, self.center, self.convexity, 
-                                       self.twist, self.slices, self.scale_, **self.get_fn_fa_fs_args())
+                                       self.twist, self.slices, self.scale_, 
+                                       fn=self._fn if self._fn is not None else POSC_GLOBALS._fn)
 
 
 @apply_posc_transformation_attributes
