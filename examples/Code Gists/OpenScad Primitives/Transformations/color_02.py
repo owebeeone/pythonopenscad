@@ -1,4 +1,4 @@
-#   [2025 Jun 17 - tomwwolf]
+#   [2025 Jun 21 - tomwwolf]
 import sys, os
 
 # extract filename
@@ -8,16 +8,17 @@ print("output SCAD file: ", filenameSCAD)
 """
     Prototype to generate the following OpenSCAD code
 
-        cylinder(h=10.0, r=1.0, r1=2.0, r2=3.0, center=false);
-        --- this does not appear correct---
+    color(c=[0.0, 0.5, 0.0]) {
+        cube(size=5.0, center=true);
+    }
 
-    reference: https://en.wikibooks.org/wiki/OpenSCAD_User_Manual/Primitive_Solids#cylinder
+    https://en.wikibooks.org/wiki/OpenSCAD_User_Manual/Transformations#color
 
 """
 # pythonopenscad code
 from pythonopenscad import *
 
 # create a simple shape
-myShape = Cylinder(h=10,r1=2,r2=3)
+myShape = Cube(size=5,center=True).color([0,0.5,0])
 # Save to OpenSCAD file
 myShape.write(filenameSCAD)

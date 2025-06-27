@@ -8,7 +8,7 @@ print("output SCAD file: ", filenameSCAD)
 """
     Prototype to generate the following OpenSCAD code
 
-        cylinder(h=10.0, r=1.0, d1=3.0, d2=5.0, center=false);
+        cylinder(h=10.0, d1=3.0, d2=5.0, center=false);
         --- this does not appear correct---
 
     reference: https://en.wikibooks.org/wiki/OpenSCAD_User_Manual/Primitive_Solids#cylinder

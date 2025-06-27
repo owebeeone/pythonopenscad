@@ -1,4 +1,4 @@
-#   [2025 Jun 18 - tomwwolf]
+#   [2025 Jun 21 - tomwwolf]
 import sys, os
 
 # extract filename
@@ -8,16 +8,17 @@ print("output SCAD file: ", filenameSCAD)
 """
     Prototype to generate the following OpenSCAD code
 
-        sphere(r=1.0, d=5.0, $fa=12.0, $fs=2.0, $fn=100);
-        Note - this is not right.
+    color(c=[0.5, 0.0, 0.0]) {
+        cube(size=5.0, center=true);
+    }
 
-    reference: https://en.wikibooks.org/wiki/OpenSCAD_User_Manual/Primitive_Solids#sphere
+    https://en.wikibooks.org/wiki/OpenSCAD_User_Manual/Transformations#color
 
 """
 # pythonopenscad code
 from pythonopenscad import *
 
 # create a simple shape
-myShape = Sphere(d=5, _fn = 100, _fa = 12, _fs = 2)
+myShape = Color(c=[0.5,0,0])(Cube(size=5,center=True))
 # Save to OpenSCAD file
 myShape.write(filenameSCAD)

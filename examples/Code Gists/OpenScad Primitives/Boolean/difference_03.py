@@ -1,4 +1,4 @@
-#   [2025 Jun 19 - tomwwolf]
+#   [2025 Jun 21 - tomwwolf]
 import sys, os
 
 # extract filename
@@ -6,7 +6,7 @@ dirSCAD = os.path.dirname(sys.argv[0])
 filenameSCAD = dirSCAD + '/' + os.path.splitext(os.path.basename(sys.argv[0]))[0] + '.scad'
 print("output SCAD file: ", filenameSCAD)
 """
-    Prototype to generate the following OpenSCAD code
+    Prototype to generate the following OpenSCAD code using OpenPySCAD methods
 
     difference() {
         cylinder(h=4.0, r=1.0, center=true, $fn=100);
@@ -26,7 +26,10 @@ from pythonopenscad import *
 shape1 = Cylinder(h = 4, r=1, center = True, _fn=100)
 shape2 = Rotate([90,0,0])(Cylinder(h = 4, r=0.9, center = True, _fn=100))
 shape3 = Cylinder(h = 5, r=0.4, center = True, _fn=100)
-myShape = Difference()(shape1,shape2,shape3)
+myShape = Difference()
+myShape.append(shape1)
+myShape.append(shape2)
+myShape.append(shape3)
 
 # Save to OpenSCAD file
 myShape.write(filenameSCAD)

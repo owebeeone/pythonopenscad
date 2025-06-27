@@ -10,3 +10,6 @@ frameworks.
 
 In any case, pythonopenscad provides a python API interface into the core functionality of OpenSCAD, and these sample scripts in this
 directory demonstrate the mapping into OpenSCAD at the unit test level.  
+
+Note: POSC supports both SolidPython and OpenPySCAD APIs. Depdending on the application / implementations
+both of these APIs can be intermixed to produce more readable / more maintainable code. 

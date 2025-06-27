@@ -1,4 +1,4 @@
-#   [2025 Jun 17 - tomwwolf]
+#   [2025 Jun 19 - tomwwolf]
 import sys, os
 
 # extract filename
@@ -8,16 +8,22 @@ print("output SCAD file: ", filenameSCAD)
 """
     Prototype to generate the following OpenSCAD code
 
-        cylinder(h=10.0, r=2.0, r1=3.0, r2=1.0, center=false);
-        --- this does not appear correct---
+    hull() {
+        sphere(r=5.0);
+        translate(v=[10.0, 10.0, 0.0]) {
+            sphere(r=2.0);
+        }
+    }
 
-    reference: https://en.wikibooks.org/wiki/OpenSCAD_User_Manual/Primitive_Solids#cylinder
+    reference: https://en.wikibooks.org/wiki/OpenSCAD_User_Manual/Transformations#hull
 
 """
 # pythonopenscad code
 from pythonopenscad import *
 
 # create a simple shape
-myShape = Cylinder(10,2,3,True)
+shape1 = Sphere(r=5)
+shape2 = Translate([10,10,0])(Sphere(r=2))
+myShape = (shape1 + shape2).hull()
 # Save to OpenSCAD file
 myShape.write(filenameSCAD)
