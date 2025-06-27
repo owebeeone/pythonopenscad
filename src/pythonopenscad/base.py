@@ -729,7 +729,7 @@ class PoscBase(PoscRendererBase):
             is_different_name = arg.name != arg.attr_name
             if is_different_name:
                 delattr(self, arg.name)
-            if value is None and value is NOT_PROVIDED:
+            if value is not None and value is not NOT_PROVIDED:
                 setattr(self, arg.attr_name, arg.typ(value))
             elif is_different_name:
                 setattr(self, arg.attr_name, None)
@@ -879,6 +879,19 @@ class PoscBase(PoscRendererBase):
         """
         with open(filename, 'w', encoding=encoding) as fp:
             self.dump(fp, _fn, _fa, _fs)
+            
+    def get_fn_fa_fs_args(self) -> dict[str, int | float]:
+        """Returns a dictionary of the fn, fa and fs arguments."""
+        args = {}
+        for attr in ['fn', 'fa', 'fs']:
+            if hasattr(self, attr):
+                val = getattr(self, attr)
+                if val is None:
+                    val = getattr(POSC_GLOBALS, attr)
+                args[attr] = val
+            else:
+                args[attr] = None
+        return args
             
     def renderObj(self, renderer: M3dRenderer) -> RenderContext:
         assert False, "Not implemented"
@@ -1207,8 +1220,8 @@ class Cylinder(PoscBase):
         centre = True if self.center else False
         return renderer.cylinder(
             self, self.h, self.get_r1(), self.get_r2(), 
-            get_fragments_from_fn_fa_fs(self.get_r1(), self._fn, self._fa, self._fs),
-            centre)
+            fn=get_fragments_from_fn_fa_fs(self.get_r1(), **self.get_fn_fa_fs_args()),
+            center=centre)
 
 
 @apply_posc_attributes
@@ -1254,7 +1267,7 @@ class Sphere(PoscBase):
         self.check_required_parameters()
     
     def renderObj(self, renderer: M3dRenderer) -> RenderContext:
-        return renderer.sphere(self, self.r, get_fragments_from_fn_fa_fs(self.r, self._fn, self._fa, self._fs))
+        return renderer.sphere(self, self.r, get_fragments_from_fn_fa_fs(self.r, **self.get_fn_fa_fs_args()))
 
 
 @apply_posc_attributes
@@ -1423,7 +1436,7 @@ class Offset(PoscParentBase):
         self.check_required_parameters()
         
     def renderObj(self, renderer: M3dRenderer) -> RenderContext:
-        return renderer.offset(self, self.r, self.delta, self.chamfer, self._fn, self._fa, self._fs)
+        return renderer.offset(self, self.r, self.delta, self.chamfer, **self.get_fn_fa_fs_args())
 
 
 @apply_posc_transformation_attributes
@@ -1533,7 +1546,8 @@ class Linear_Extrude(PoscParentBase):
     
     def renderObj(self, renderer: M3dRenderer) -> RenderContext:
         return renderer.linear_extrude(self, self.height, self.center, self.convexity, 
-                                       self.twist, self.slices, self.scale_, self._fn)
+                                       self.twist, self.slices, self.scale_, 
+                                       fn=self._fn if self._fn is not None else POSC_GLOBALS._fn)
 
 
 @apply_posc_transformation_attributes
@@ -1560,9 +1574,7 @@ class Rotate_Extrude(PoscParentBase):
         return renderer.rotate_extrude(self, 
                                        self.angle, 
                                        self.convexity, 
-                                       self._fn, 
-                                       self._fa, 
-                                       self._fs)
+                                       **self.get_fn_fa_fs_args())
 
 
 @apply_posc_attributes
@@ -1602,7 +1614,7 @@ class Circle(PoscBase):
             r = self.r
         else:
             r = self.d / 2  
-        fn = get_fragments_from_fn_fa_fs(r, self._fn, self._fa, self._fs)
+        fn = get_fragments_from_fn_fa_fs(r, **self.get_fn_fa_fs_args())
         return renderer.circle(self, r, fn)
 
 

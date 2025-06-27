@@ -6,7 +6,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "pythonopenscad"
-version = "2.2.9"
+version = "2.2.13"
 authors = [
     { name = "Gianni Mariani", email = "gianni@mariani.ws" },
 ]
