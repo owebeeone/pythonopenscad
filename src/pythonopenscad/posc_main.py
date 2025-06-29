@@ -8,7 +8,7 @@ import manifold3d as m3d
 # Assume these imports are valid within the project structure
 from datatrees import datatree, Node, dtfield
 import pythonopenscad as posc
-from pythonopenscad.m3dapi import M3dRenderer, RenderContextManifold, manifold_to_stl
+from pythonopenscad.m3dapi import M3dRenderer, RenderContextCrossSection, RenderContextManifold, manifold_to_stl
 from pythonopenscad.viewer.viewer import Viewer, Model
 from pythonopenscad.modifier import PoscRendererBase
 
@@ -39,7 +39,11 @@ class PoscModel:
         if self._render_context is None:
             posc_obj = self.get_posc_obj()
             try:
-                self._render_context = posc_obj.renderObj(M3dRenderer())
+                renderer = M3dRenderer()
+                self._render_context = posc_obj.renderObj(renderer)
+                if isinstance(self._render_context, RenderContextCrossSection):
+                    # We can only handle manifolds, Linear extrude the cross section 1 unit.
+                    self._render_context = renderer._linear_extrude([self._render_context], 1)
             except Exception as e:
                 print(f"Error rendering object '{self.name}': {e}", file=sys.stderr)
                 raise
@@ -107,7 +111,22 @@ class PoscMainRunner:
     parser: argparse.ArgumentParser | None = dtfield(
         self_default=lambda s: s._make_parser(), init=False)
     output_base: str | None = dtfield(default=None, init=False)
-
+    default_scad: bool = False
+    default_png: bool = False
+    default_view: bool = True
+    default_stl: bool = False
+    default_wireframe: bool = False
+    default_backface_culling: bool = True
+    default_bounding_box_mode: bool = False
+    default_zbuffer_occlusion: bool = True
+    default_coalesce: bool = True
+    default_width: int = 800
+    default_height: int = 600
+    default_title: str | None = None
+    default_projection: str = 'perspective'
+    default_bg_color: str = "0.98,0.98,0.85,1.0"
+    default_output_base: str | None = None
+    
     @property
     def args(self) -> argparse.Namespace:
         if self._args is None:
@@ -121,37 +140,37 @@ class PoscMainRunner:
         parser.add_argument(
             "--output-base",
             type=str,
-            default=None,
+            default=self.default_output_base,
             help="Base name for output files (STL, PNG). Defaults to the name of the calling script."
         )
         add_bool_arg(parser, "solids", "Only process solid geometry (ignore shells/debug geometry).", default=False)
 
         # --- Actions ---
-        add_bool_arg(parser, "view", "View the models in the OpenGL viewer.", default=True)
-        add_bool_arg(parser, "stl", "Export solid models to STL files.", default=False)
-        add_bool_arg(parser, "png", "Save a PNG image using the viewer settings (requires viewer modification for non-interactive use).", default=False)
-        add_bool_arg(parser, "scad", "Export to SCAD file (Not implemented).", default=False)
-        add_bool_arg(parser, "wireframe", "Start viewer in wireframe mode.", default=False)
-        add_bool_arg(parser, "backface-culling", "Disable backface culling in the viewer.", default=True)
-        add_bool_arg(parser, "bounding-box-mode", "Initial bounding box mode (0=off, 1=wireframe, 2=solid).", default=False)
-        add_bool_arg(parser, "zbuffer-occlusion", "Disable Z-buffer occlusion for wireframes.", default=True)
-        add_bool_arg(parser, "coalesce", "Model coalescing (may impact transparency rendering).", default=True)
+        add_bool_arg(parser, "view", "View the models in the OpenGL viewer.", default=self.default_view)
+        add_bool_arg(parser, "stl", "Export solid models to STL files.", default=self.default_stl)
+        add_bool_arg(parser, "png", "Save a PNG image using the viewer settings (requires viewer modification for non-interactive use).", default=self.default_png)
+        add_bool_arg(parser, "scad", "Export to SCAD file (Not implemented).", default=self.default_scad)
+        add_bool_arg(parser, "wireframe", "Start viewer in wireframe mode.", default=self.default_wireframe)
+        add_bool_arg(parser, "backface-culling", "Disable backface culling in the viewer.", default=self.default_backface_culling)
+        add_bool_arg(parser, "bounding-box-mode", "Initial bounding box mode (0=off, 1=wireframe, 2=solid).", default=self.default_bounding_box_mode)
+        add_bool_arg(parser, "zbuffer-occlusion", "Disable Z-buffer occlusion for wireframes.", default=self.default_zbuffer_occlusion)
+        add_bool_arg(parser, "coalesce", "Model coalescing (may impact transparency rendering).", default=self.default_coalesce)
 
         # --- Viewer Options ---
-        parser.add_argument("--width", type=int, default=800, help="Viewer window width.")
-        parser.add_argument("--height", type=int, default=600, help="Viewer window height.")
-        parser.add_argument("--title", type=str, default=None, help="Viewer window title.")
+        parser.add_argument("--width", type=int, default=self.default_width, help="Viewer window width.")
+        parser.add_argument("--height", type=int, default=self.default_height, help="Viewer window height.")
+        parser.add_argument("--title", type=str, default=self.default_title, help="Viewer window title.")
         parser.add_argument(
             "--projection",
             type=str,
             choices=['perspective', 'orthographic'],
-            default='perspective',
+            default=self.default_projection,
             help="Initial viewer projection mode."
         )
         parser.add_argument(
             "--bg-color",
             type=str,
-            default="0.98,0.98,0.85,1.0", # Default from Viewer
+            default=self.default_bg_color,
             help="Viewer background color as comma-separated RGBA floats (e.g., '0.1,0.1,0.1,1.0')."
         )
         
@@ -186,6 +205,11 @@ class PoscMainRunner:
 
              self.posc_models.append(PoscModel(item, name=name))
 
+    def _prepare_output_base(self):
+        """Prepare the output base name."""
+        if self.args.output_base is None:
+            return self.script_path
+        return self.args.output_base
 
     def run(self):
         self.check_args()
@@ -200,11 +224,17 @@ class PoscMainRunner:
             print("No action specified. Use --view, --stl, --png etc.", file=sys.stderr)
             return
 
+        output_base = self._prepare_output_base()
         # --- SCAD Action ---
         if self.args.scad:
-            lazy_union = posc.LazyUnion()(*[model.get_posc_obj() for model in self.posc_models])
-            with open(f"{self.args.output_base}.scad", "w") as f:
-                lazy_union.dump(f)
+            if len(self.posc_models) == 1:
+                model = self.posc_models[0].get_posc_obj()
+            else:
+                model = posc.LazyUnion()(*[model.get_posc_obj() for model in self.posc_models])
+            print(f"Exporting {len(self.posc_models)} models to SCAD: {output_base}.scad")
+            filename = f"{output_base}.scad"
+            model.write(filename)
+            print(f"Exported SCAD: {output_base}.scad")
 
         # --- STL Action ---
         if self.args.stl:
@@ -214,7 +244,7 @@ class PoscMainRunner:
                 # TODO: Handle shell manifolds.
                 if solid_manifold:
                     suffix = f"_{i}" if len(self.posc_models) > 1 else ""
-                    filename = f"{self.args.output_base}{suffix}.stl"
+                    filename = f"{output_base}{suffix}.stl"
                     manifold_to_stl(solid_manifold, filename=filename, update_normals=False)
                     print(f"Exported STL: {filename}")
                     exported_count += 1
@@ -255,7 +285,7 @@ class PoscMainRunner:
                 )
                 
                 if self.args.png:
-                    filename = f"{self.args.output_base}.png"
+                    filename = f"{output_base}.png"
                     viewer.offscreen_render(filename)
                     print(f"Saved PNG: {filename}")
                     
@@ -264,7 +294,23 @@ class PoscMainRunner:
                     print(f"triangle count = {viewer.num_triangles()}")
                     viewer.run() # Enters GLUT main loop
 
-def posc_main(items: List[Union[Callable[[], posc.PoscBase], posc.PoscBase]]):
+def posc_main(
+    items: List[Union[Callable[[], posc.PoscBase], posc.PoscBase]],
+    default_scad: bool = False,
+    default_png: bool = False,
+    default_view: bool = True,
+    default_stl: bool = False,
+    default_wireframe: bool = False,
+    default_backface_culling: bool = True,
+    default_bounding_box_mode: bool = False,
+    default_zbuffer_occlusion: bool = True,
+    default_coalesce: bool = True,
+    default_width: int = 800,
+    default_height: int = 600,
+    default_title: str | None = None,
+    default_projection: str = 'perspective',
+    default_bg_color: str = "0.98,0.98,0.85,1.0",
+    ):
     """
     Main entry point for processing PythonOpenSCAD objects via command line.
 
@@ -279,7 +325,22 @@ def posc_main(items: List[Union[Callable[[], posc.PoscBase], posc.PoscBase]]):
     except IndexError:
         script_path = "unknown_script.py" # Fallback if stack inspection fails
 
-    runner = PoscMainRunner(items, script_path)
+    runner = PoscMainRunner(items, 
+                            script_path,
+                            default_scad=default_scad,
+                            default_png=default_png,
+                            default_view=default_view,
+                            default_stl=default_stl,
+                            default_wireframe=default_wireframe,
+                            default_backface_culling=default_backface_culling,
+                            default_bounding_box_mode=default_bounding_box_mode,
+                            default_zbuffer_occlusion=default_zbuffer_occlusion,
+                            default_coalesce=default_coalesce,
+                            default_width=default_width,
+                            default_height=default_height,
+                            default_title=default_title,
+                            default_projection=default_projection,
+                            default_bg_color=default_bg_color)
     runner.run()
 
 
@@ -305,9 +366,13 @@ if __name__ == "__main__":
     
     # Define some example objects/lambdas
     def create_sphere():
-        return posc.Sphere(r=5).add_modifier(posc.DEBUG)
+        return posc.Color("red")(posc.Sphere(r=5).add_modifier(posc.DEBUG))
+    
+    def create_cross_section():
+        # Cross section is linear extruded by the renderer.
+        return posc.Color("green").append(posc.Circle(r=10))
     
     my_cube = posc.Cube(10)
 
-    posc_main([my_cube, create_sphere])
+    posc_main([my_cube, create_sphere, create_cross_section])
     print("Example finished.")
