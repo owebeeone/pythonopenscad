@@ -1258,7 +1258,7 @@ class M3dRenderer(RendererBase):
     def _square(
         self, size: float | tuple[float, float], center: bool = False
     ) -> RenderContextCrossSection:
-        if not isinstance(size, tuple):
+        if isinstance(size, float):
             size = (size, size)
         return RenderContextCrossSection(
             self, solid_objs=(m3d.CrossSection.square(size, True if center else False),)

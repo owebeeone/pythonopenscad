@@ -650,7 +650,7 @@ class Viewer(ViewerBase):
             Viewer.terminate()
 
     @staticmethod
-    def terminate():
+    def terminate(no_exit: bool = False):
         """Safely terminate all viewers and clean up GLUT resources.
 
         Call this method to properly exit the application and clean up all resources.
@@ -703,10 +703,7 @@ class Viewer(ViewerBase):
             if PYOPENGL_VERBOSE:
                 print(f"Viewer: Error exiting GLUT main loop: {e}")
             # As a fallback, try to exit more abruptly
-            try:
-                glut.glutExit()
-            except Exception:
-                pass
+            pass
 
         # Force process termination if GLUT doesn't exit properly
         # This is especially important on macOS where glutLeaveMainLoop() may not work
@@ -717,13 +714,15 @@ class Viewer(ViewerBase):
             # If we're still here, GLUT didn't terminate the process
             if PYOPENGL_VERBOSE:
                 print("Viewer: GLUT main loop didn't terminate process, forcing exit")
-            sys.exit(0)
+            if not no_exit:
+                sys.exit(0)
         except Exception as e:
             if PYOPENGL_VERBOSE:
                 print(f"Viewer: Error during forced exit: {e}")
-            # Last resort - use os._exit to bypass any cleanup
-            import os
-            os._exit(0)
+            if not no_exit:
+                # Last resort - use os._exit to bypass any cleanup
+                import os
+                os._exit(0)
 
     def _render_absolute_fallback(self):
         """An absolute fallback rendering mode that should work on any OpenGL version.

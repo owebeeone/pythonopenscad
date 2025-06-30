@@ -293,6 +293,9 @@ class PoscMainRunner:
                     print(Viewer.VIEWER_HELP_TEXT)
                     print(f"triangle count = {viewer.num_triangles()}")
                     viewer.run() # Enters GLUT main loop
+                
+                if self.args.png and not self.args.view:
+                    viewer.terminate(no_exit=True)
 
 def posc_main(
     items: List[Union[Callable[[], posc.PoscBase], posc.PoscBase]],
@@ -310,6 +313,7 @@ def posc_main(
     default_title: str | None = None,
     default_projection: str = 'perspective',
     default_bg_color: str = "0.98,0.98,0.85,1.0",
+    output_base: str | None = None
     ):
     """
     Main entry point for processing PythonOpenSCAD objects via command line.
@@ -319,11 +323,14 @@ def posc_main(
                that return PoscBase objects.
     """
     # Get the file path of the script that called posc_main
-    try:
-        calling_frame = inspect.stack()[1]
-        script_path = calling_frame.filename
-    except IndexError:
-        script_path = "unknown_script.py" # Fallback if stack inspection fails
+    if output_base is None:
+        try:
+            calling_frame = inspect.stack()[1]
+            script_path = calling_frame.filename
+        except IndexError:
+            script_path = "unknown_script.py" # Fallback if stack inspection fails
+    else:
+        script_path = output_base
 
     runner = PoscMainRunner(items, 
                             script_path,
@@ -340,7 +347,8 @@ def posc_main(
                             default_height=default_height,
                             default_title=default_title,
                             default_projection=default_projection,
-                            default_bg_color=default_bg_color)
+                            default_bg_color=default_bg_color,
+                            default_output_base=output_base)
     runner.run()
 
 

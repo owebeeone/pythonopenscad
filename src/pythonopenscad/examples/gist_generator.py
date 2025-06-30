@@ -9,6 +9,8 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 import pythonopenscad as posc
+from pythonopenscad.posc_main import posc_main
+from pythonopenscad.viewer.viewer import Viewer
 
 # --- Templates for the generated gist files ---
 
@@ -23,14 +25,16 @@ GIST_TEMPLATE = '''
 """
 {filename}: A PythonOpenScad example gist.
 
+Note: This file was automatically generated.
+
 {explain_text}
 
 {code_expression}
 
-This file was automatically generated.
-
+{class_pydoc}
+{init_pydoc}
 ---
-How to Run:
+How to run this example:
 
 - To view in the interactive viewer:
   python -m {module_path} --view
@@ -42,8 +46,6 @@ How to Run:
   python -m {module_path} --stl --no-view --no-scad
 ---
 
-For more details on the `{class_name}` class, refer to the official
-OpenSCAD documentation or use Python's `help({class_name})`.
 """
 
 # 1. Import the necessary components from the library.
@@ -99,13 +101,23 @@ class GistSpec:
     @property
     def file_path(self):
         return os.path.join(self.file_location, self.file_name)
+    
+    def make_image(self, posc_obj: posc.PoscBase):
+        """
+        Makes an image of the posc_obj.
+        """
+        output_base = Path(os.path.splitext(self.file_path)[0]).as_posix()
+        posc_main([posc_obj], 
+                  default_view=False, 
+                  default_scad=False, 
+                  default_stl=False, 
+                  default_png=True,
+                  output_base=output_base)
 
     def create(self):
         """
         Generates and writes the gist file based on the spec.
         """
-        print(f"Generating gist for: {self.file_path}...")
-
         # Create the module path from the file path
         # e.g., "pythonopenscad/examples/gists/file.py" -> "pythonopenscad.examples.gists.file"
         module_path = os.path.splitext(self.file_path)[0]
@@ -150,14 +162,25 @@ class GistSpec:
             code_expression=code_expression,
             module_path=module_path,
             posc_imports=posc_imports_str,
-            code=self.code.strip()
+            code=self.code.strip(),
+            class_pydoc=self.posc_class.__doc__ or "",
+            init_pydoc=self.posc_class.__init__.__doc__ or ""
         )
 
         # Write the generated content to the file
         with open(self.file_path, "w") as f:
             f.write(content.strip())
-        print(f" -> Successfully created {self.file_path}")
+        
+        try:
+            self.make_image(MODEL)
+        except Exception as e:
+            print(f" -> Error making image for {self.file_name}: {e}")
 
+@dataclass
+class GistFolderSpec:
+    """A dataclass that holds the specification for a single gist folder."""
+    folder_location: str
+    description: str
 
 # --- Gist Directory Paths ---
 # These globals define the output directories for each category of gists.
@@ -167,6 +190,39 @@ GISTS_TRANSFORMS_PATH = "pythonopenscad/examples/gists_transforms"
 GISTS_CSG_PATH = "pythonopenscad/examples/gists_csg"
 GISTS_OTHER_PATH = "pythonopenscad/examples/gists_other"
 
+MD_FILE_PER_EXAMPLE_TEMPLATE = """\
+     
+"""
+
+ALL_GIST_FOLDERS = [
+    GistFolderSpec(
+        folder_location=GISTS_2D_PATH,
+        description="""\
+2D Shapes
+
+These gists demonstrate the creation of 2D shapes using the pythonopenscad library.
+These shapes are 2D and do not have a depth but when rendered they are extruded to a depth of 1.
+
+
+"""
+    ),
+    GistFolderSpec(
+        folder_location=GISTS_3D_PATH,
+        description="3D Shapes"
+    ),
+    GistFolderSpec(
+        folder_location=GISTS_TRANSFORMS_PATH,
+        description="Transformations"
+    ),
+    GistFolderSpec(
+        folder_location=GISTS_CSG_PATH,
+        description="CSG Modelling"
+    ),
+    GistFolderSpec(
+        folder_location=GISTS_OTHER_PATH,
+        description="Other Features"
+    ),
+]
 
 ALL_GISTS = [
     # --- 2D Shapes ---

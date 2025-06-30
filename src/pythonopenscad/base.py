@@ -1541,7 +1541,6 @@ class Linear_Extrude(PoscParentBase):
             FN_ARG,
         ),
         OPEN_SCAD_URL_TAIL_2D,
-        'Linear_Extrude',
     )
     
     def renderObj(self, renderer: M3dRenderer) -> RenderContext:
