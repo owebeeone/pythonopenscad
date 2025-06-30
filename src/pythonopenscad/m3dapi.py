@@ -389,7 +389,8 @@ class RenderContext(Generic[TM3d]):
             return self.transform(transform)
 
     def mirror(self, normal: np.ndarray) -> 'RenderContext':
-        return RenderContext(self.api, self.manifold.mirror(_make_array(normal, np.float64)))
+        transform = _mirror(normal)
+        return self.transform(transform)
 
     def property(self, property_values: NpArray[np.float32], idx: int = 3) -> 'RenderContext':
         # TODO: Implement this
@@ -990,39 +991,50 @@ class M3dRenderer(RendererBase):
         if triangles is not None and faces is not None:
             raise ValueError("Cannot specify both faces and triangles")
 
-        if triangles is None:
-            # Convert inputs to numpy arrays if they aren't already
-            verts_array = np.asarray(verts, dtype=np.float32)
+        verts_array = np.asarray(verts, dtype=np.float32)
 
+        if triangles is None:
             # Triangulate each face and collect the indices
-            tri_verts = []
+            tri_verts_list = []
             quad_idxs = []
+            poly_faces = []
+
             for face in faces:
                 face_verts_n = len(face)
                 if face_verts_n == 3:
-                    tri_verts.extend(face)
+                    tri_verts_list.append(face)
                 elif face_verts_n == 4:
                     quad_idxs.append(face)
-                else:
-                    tri_verts.extend(triangulate_3d_face(verts_array, [face]))
-            if quad_idxs:
-                quad_idxs = np.array(quad_idxs, dtype=np.uint32)
-                choice = choose_quad_triangulation(quad_idxs, verts_array)
-                quad_tris = generate_triangle_indices(quad_idxs, choice)
-                tri_verts = np.concatenate((tri_verts, quad_tris))
+                elif face_verts_n > 4:
+                    # Collect complex polygons to triangulate them all at once later
+                    poly_faces.append(face)
 
-            try:
-                return self._mesh(
-                    vert_properties=verts_array, tri_verts=np.asarray(tri_verts, dtype=np.uint32)
-                )
-            except Exception as e:
-                print(f"Error triangulating faces: {e}")
-                raise
+            # Triangulate complex polygons if any
+            if poly_faces:
+                for face in poly_faces:
+                    tris = triangulate_3d_face(verts_array, [face])
+                    tri_verts_list.extend(tris)
+
+            # Handle quads
+            if quad_idxs:
+                quad_idxs_arr = np.array(quad_idxs, dtype=np.uint32)
+                choice = choose_quad_triangulation(quad_idxs_arr, verts_array)
+                quad_tris = generate_triangle_indices(quad_idxs_arr, choice)
+                tri_verts_list.extend(quad_tris.tolist())
+
+            tri_verts = np.array(tri_verts_list, dtype=np.uint32)
 
         elif faces is not None:
-            return self._mesh(vert_properties=verts_array, tri_verts=triangles)
+            raise ValueError("faces is not supported when triangles is provided")
+
         else:
-            raise ValueError("Must specify either faces or triangles but not both.")
+            tri_verts = np.asarray(triangles, dtype=np.uint32)
+
+        try:
+            return self._mesh(vert_properties=verts_array, tri_verts=tri_verts)
+        except Exception as e:
+            print(f"Error creating mesh: {e}")
+            raise
 
     def difference(
         self,
@@ -1246,6 +1258,8 @@ class M3dRenderer(RendererBase):
     def _square(
         self, size: float | tuple[float, float], center: bool = False
     ) -> RenderContextCrossSection:
+        if not isinstance(size, tuple):
+            size = (size, size)
         return RenderContextCrossSection(
             self, solid_objs=(m3d.CrossSection.square(size, True if center else False),)
         )
@@ -1332,26 +1346,66 @@ class M3dRenderer(RendererBase):
         convexity: int | None = None,
         twist: float | None = None,
         slices: int | None = None,
-        scale: tuple[float, float] | None = None,
+        scale: tuple[float, float] | float | None = None,
         fn: float | None = None,
     ) -> RenderContextManifold:
         assert all(isinstance(c, RenderContextCrossSection) for c in contexts)
         union_solids = self._union(contexts)
         solids = union_solids._apply_and_merge(union_solids.get_solids)
+        solid = solids[0]
         if not scale:
             scale = (1.0, 1.0)
         if twist is None:
             twist = 0.0
         if slices is None:
             slices = 16 if twist else 1
+        if twist != 0.0:
+            # Long lengths in the cross-section can cause issues with the twist.
+            # We need to split the cross-section into smaller pieces.
+            solid = self._segment_cross_section(solid, twist, slices)
+        if not isinstance(scale, tuple):
+            scale = (scale, scale)
         rctxt = RenderContextManifold(
             self,
-            solid_objs=(self._apply_properties(solids[0].extrude(height, slices, twist, scale)),),
+            solid_objs=(self._apply_properties(solid.extrude(height, slices, -twist, scale)),),
         )
 
         if center:
             return rctxt.translate([0, 0, -height / 2])
         return rctxt
+    
+    def _segment_cross_section(self, solid: m3d.CrossSection, twist: float, slices: int = 4) \
+        -> m3d.CrossSection:
+        """The cross-section is a collection of polygons. It is being extruded with twist
+        and if we don't cut long segments, the extrusion will be jagged/aliased. So we split the
+        edges into smaller segments (keeping them straight) but that will create smaller facets
+        that will clean up the aliasing.
+        """
+        twist_factor = np.abs(np.sin(twist))
+        if slices <= 1:
+            return solid
+        polys = solid.to_polygons()
+        new_polys = []
+        for poly in polys:
+            last_point = poly[0]
+            if any(last_point != poly[-1]):
+                poly = np.concatenate((poly, [last_point]))
+            new_poly = [last_point]
+            for point in poly[1:]:
+                # Calculate the length of the segment.
+                length = np.linalg.norm(point - last_point) * twist_factor
+                if length > 1.0:
+                    count = int(length)
+                    if count > slices:
+                        count = slices
+                    for i in range(count - 1):
+                        new_poly.append(last_point + (point - last_point) * (i + 1) / count)
+                    new_poly.append(point)
+                new_poly.append(point)
+                last_point = point
+            new_polys.append(new_poly)
+        solid = m3d.CrossSection(new_polys)
+        return solid
 
     def hull(self, posc_obj: PoscRendererBase) -> RenderContextManifold | RenderContextCrossSection:
         return RenderStateCheckManifold.check(self, posc_obj, lambda ops: self._hull(ops))
@@ -1377,13 +1431,11 @@ class M3dRenderer(RendererBase):
             self, transform_mat=IDENTITY_TRANSFORM, solid_objs=(solid_obj,), shell_objs=shells
         )
 
-    def minkowski(
-        self, posc_obj: PoscRendererBase, ops: list[RenderContextManifold]
-    ) -> RenderContextManifold:
+    def minkowski(self, posc_obj: PoscRendererBase) -> RenderContextManifold:
         return RenderStateCheckManifold.check(self, posc_obj, lambda ops: self._minkowski(ops))
 
     def _minkowski(self, ops: list[RenderContextManifold]) -> RenderContextManifold:
-        raise NotImplementedError("minkowski is not implemented")
+        raise NotImplementedError("minkowski is not implemented in the manifold renderer")
 
     def render(self, posc_obj: PoscRendererBase, convexity: int) -> RenderContextManifold:
         return RenderStateCheckManifold.check(
@@ -1532,11 +1584,11 @@ class M3dRenderer(RendererBase):
     def _scale(self, ops: list[RenderContextCrossSection], v: np.ndarray) -> 'M3dRenderer':
         return self._union(ops).scale(v)
 
-    def resize(self, posc_obj: PoscRendererBase, v: np.ndarray) -> 'M3dRenderer':
-        return RenderStateCheckManifold.check(self, posc_obj, lambda ops: self._resize(ops, v))
+    def resize(self, posc_obj: PoscRendererBase, newsize: np.ndarray, auto: bool | list[bool]) -> 'M3dRenderer':
+        return RenderStateCheckManifold.check(self, posc_obj, lambda ops: self._resize(ops, newsize, auto))
 
-    def _resize(self, ops: list[RenderContextCrossSection], v: np.ndarray) -> 'M3dRenderer':
-        return self._union(ops).resize(v)
+    def _resize(self, ops: list[RenderContextCrossSection], newsize: np.ndarray, auto: bool | list[bool]) -> 'M3dRenderer':
+        return self._union(ops).resize(newsize, auto)
 
     def mirror(self, posc_obj: PoscRendererBase, v: np.ndarray) -> 'M3dRenderer':
         return RenderStateCheckManifold.check(self, posc_obj, lambda ops: self._mirror(ops, v))
