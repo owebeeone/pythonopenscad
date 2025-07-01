@@ -1363,7 +1363,7 @@ class M3dRenderer(RendererBase):
             # Long lengths in the cross-section can cause issues with the twist.
             # We need to split the cross-section into smaller pieces.
             solid = self._segment_cross_section(solid, twist, slices)
-        if not isinstance(scale, tuple):
+        if isinstance(scale, float):
             scale = (scale, scale)
         rctxt = RenderContextManifold(
             self,
