@@ -26,7 +26,7 @@ python -m pythonopenscad.examples.gists_2d.circle_example --view
 ```
 
 ### Image:
-![Circle](pythonopenscad/examples/gists_2d/circle_example.png)
+![Circle](/pythonopenscad/examples/gists_2d/circle_example.png)
      
 ## Square
     
