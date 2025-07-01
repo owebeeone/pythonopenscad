@@ -171,7 +171,7 @@ class GistSpec:
         Makes an image of the posc_obj.
         """
         output_base = Path(os.path.splitext(self.file_path)[0]).as_posix()
-        self.params_dict['image_path'] = f'{self.file_name}.png'
+        self.params_dict['image_path'] = f'{Path(self.file_name).stem}.png'
         posc_main([posc_obj], 
                   default_view=False, 
                   default_scad=False, 

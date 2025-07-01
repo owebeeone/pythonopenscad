@@ -26,7 +26,7 @@ python -m pythonopenscad.examples.gists_2d.circle_example --view
 ```
 
 ### Image:
-![Circle](circle_example.py.png)
+![Circle](circle_example.png)
      
 ## Square
     
@@ -49,7 +49,7 @@ python -m pythonopenscad.examples.gists_2d.square_example --view
 ```
 
 ### Image:
-![Square](square_example.py.png)
+![Square](square_example.png)
      
 ## Polygon
     
@@ -72,7 +72,7 @@ python -m pythonopenscad.examples.gists_2d.polygon_example --view
 ```
 
 ### Image:
-![Polygon](polygon_example.py.png)
+![Polygon](polygon_example.png)
      
 ## Text
     
@@ -95,5 +95,5 @@ python -m pythonopenscad.examples.gists_2d.text_example --view
 ```
 
 ### Image:
-![Text](text_example.py.png)
+![Text](text_example.png)
      

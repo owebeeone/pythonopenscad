@@ -35,7 +35,7 @@ python -m pythonopenscad.examples.gists_csg.union_functional --view
 ```
 
 ### Image:
-![Union](union_functional.py.png)
+![Union](union_functional.png)
      
 ## Union
     
@@ -67,7 +67,7 @@ python -m pythonopenscad.examples.gists_csg.union_operator --view
 ```
 
 ### Image:
-![Union](union_operator.py.png)
+![Union](union_operator.png)
      
 ## Difference
     
@@ -100,7 +100,7 @@ python -m pythonopenscad.examples.gists_csg.difference_functional --view
 ```
 
 ### Image:
-![Difference](difference_functional.py.png)
+![Difference](difference_functional.png)
      
 ## Difference
     
@@ -130,7 +130,7 @@ python -m pythonopenscad.examples.gists_csg.difference_operator --view
 ```
 
 ### Image:
-![Difference](difference_operator.py.png)
+![Difference](difference_operator.png)
      
 ## Intersection
     
@@ -163,7 +163,7 @@ python -m pythonopenscad.examples.gists_csg.intersection_functional --view
 ```
 
 ### Image:
-![Intersection](intersection_functional.py.png)
+![Intersection](intersection_functional.png)
      
 ## Intersection
     
@@ -193,7 +193,7 @@ python -m pythonopenscad.examples.gists_csg.intersection_operator --view
 ```
 
 ### Image:
-![Intersection](intersection_operator.py.png)
+![Intersection](intersection_operator.png)
      
 ## Hull
     
@@ -230,7 +230,7 @@ python -m pythonopenscad.examples.gists_csg.hull_example --view
 ```
 
 ### Image:
-![Hull](hull_example.py.png)
+![Hull](hull_example.png)
      
 ## Minkowski
     
@@ -256,5 +256,5 @@ python -m pythonopenscad.examples.gists_csg.minkowski_example --view
 ```
 
 ### Image:
-![Minkowski](minkowski_example.py.png)
+![Minkowski](minkowski_example.png)
      

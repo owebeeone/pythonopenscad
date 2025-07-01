@@ -29,7 +29,7 @@ python -m pythonopenscad.examples.gists_other.global_variables_example --view
 ```
 
 ### Image:
-![Global Variables](global_variables_example.py.png)
+![Global Variables](global_variables_example.png)
      
 ## Modules
     
@@ -79,7 +79,7 @@ python -m pythonopenscad.examples.gists_other.modules_example --view
 ```
 
 ### Image:
-![Modules](modules_example.py.png)
+![Modules](modules_example.png)
      
 ## Render
     
@@ -107,7 +107,7 @@ python -m pythonopenscad.examples.gists_other.render_example --view
 ```
 
 ### Image:
-![Render](render_example.py.png)
+![Render](render_example.png)
      
 ## Snake Case Style
     
@@ -140,5 +140,5 @@ python -m pythonopenscad.examples.gists_other.snake_case_style_example --view
 ```
 
 ### Image:
-![Snake Case Style](snake_case_style_example.py.png)
+![Snake Case Style](snake_case_style_example.png)
      
