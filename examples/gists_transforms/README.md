@@ -25,7 +25,7 @@ python -m pythonopenscad.examples.gists_transforms.translate_example --view
 ```
 
 ### Image:
-![Translate](pythonopenscad/examples/gists_transforms/translate_example.png)
+![Translate](translate_example.py.png)
      
 ## Rotate
     
@@ -50,7 +50,7 @@ python -m pythonopenscad.examples.gists_transforms.rotate_example --view
 ```
 
 ### Image:
-![Rotate](pythonopenscad/examples/gists_transforms/rotate_example.png)
+![Rotate](rotate_example.py.png)
      
 ## Scale
     
@@ -75,7 +75,7 @@ python -m pythonopenscad.examples.gists_transforms.scale_example --view
 ```
 
 ### Image:
-![Scale](pythonopenscad/examples/gists_transforms/scale_example.png)
+![Scale](scale_example.py.png)
      
 ## Resize
     
@@ -100,7 +100,7 @@ python -m pythonopenscad.examples.gists_transforms.resize_example --view
 ```
 
 ### Image:
-![Resize](pythonopenscad/examples/gists_transforms/resize_example.png)
+![Resize](resize_example.py.png)
      
 ## Mirror
     
@@ -138,7 +138,7 @@ python -m pythonopenscad.examples.gists_transforms.mirror_example --view
 ```
 
 ### Image:
-![Mirror](pythonopenscad/examples/gists_transforms/mirror_example.png)
+![Mirror](mirror_example.py.png)
      
 ## Color
     
@@ -163,7 +163,7 @@ python -m pythonopenscad.examples.gists_transforms.color_example --view
 ```
 
 ### Image:
-![Color](pythonopenscad/examples/gists_transforms/color_example.png)
+![Color](color_example.py.png)
      
 ## Multmatrix
     
@@ -193,7 +193,7 @@ python -m pythonopenscad.examples.gists_transforms.multmatrix_example --view
 ```
 
 ### Image:
-![Multmatrix](pythonopenscad/examples/gists_transforms/multmatrix_example.png)
+![Multmatrix](multmatrix_example.py.png)
      
 ## Projection
     
@@ -223,7 +223,7 @@ python -m pythonopenscad.examples.gists_transforms.projection_example --view
 ```
 
 ### Image:
-![Projection](pythonopenscad/examples/gists_transforms/projection_example.png)
+![Projection](projection_example.py.png)
      
 ## Linear_Extrude
     
@@ -248,7 +248,7 @@ python -m pythonopenscad.examples.gists_transforms.linear_extrude_example --view
 ```
 
 ### Image:
-![Linear_Extrude](pythonopenscad/examples/gists_transforms/linear_extrude_example.png)
+![Linear_Extrude](linear_extrude_example.py.png)
      
 ## Rotate_Extrude
     
@@ -275,7 +275,7 @@ python -m pythonopenscad.examples.gists_transforms.rotate_extrude_example --view
 ```
 
 ### Image:
-![Rotate_Extrude](pythonopenscad/examples/gists_transforms/rotate_extrude_example.png)
+![Rotate_Extrude](rotate_extrude_example.py.png)
      
 ## Offset
     
@@ -303,5 +303,5 @@ python -m pythonopenscad.examples.gists_transforms.offset_example --view
 ```
 
 ### Image:
-![Offset](pythonopenscad/examples/gists_transforms/offset_example.png)
+![Offset](offset_example.py.png)
      

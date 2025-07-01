@@ -23,7 +23,7 @@ python -m pythonopenscad.examples.gists_3d.cube_example --view
 ```
 
 ### Image:
-![Cube](pythonopenscad/examples/gists_3d/cube_example.png)
+![Cube](cube_example.py.png)
      
 ## Sphere
     
@@ -46,7 +46,7 @@ python -m pythonopenscad.examples.gists_3d.sphere_example --view
 ```
 
 ### Image:
-![Sphere](pythonopenscad/examples/gists_3d/sphere_example.png)
+![Sphere](sphere_example.py.png)
      
 ## Cylinder
     
@@ -69,7 +69,7 @@ python -m pythonopenscad.examples.gists_3d.cylinder_example --view
 ```
 
 ### Image:
-![Cylinder](pythonopenscad/examples/gists_3d/cylinder_example.png)
+![Cylinder](cylinder_example.py.png)
      
 ## Polyhedron
     
@@ -95,5 +95,5 @@ python -m pythonopenscad.examples.gists_3d.polyhedron_example --view
 ```
 
 ### Image:
-![Polyhedron](pythonopenscad/examples/gists_3d/polyhedron_example.png)
+![Polyhedron](polyhedron_example.py.png)
      
