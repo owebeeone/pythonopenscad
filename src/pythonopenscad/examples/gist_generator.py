@@ -6,8 +6,9 @@ from a set of specifications. This allows for the rapid creation of
 consistent, high-quality example files that can be run as Python modules.
 """
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 import pythonopenscad as posc
 from pythonopenscad.posc_main import posc_main
 from pythonopenscad.viewer.viewer import Viewer
@@ -29,7 +30,9 @@ Note: This file was automatically generated.
 
 {explain_text}
 
+```openscad
 {code_expression}
+```
 
 {class_pydoc}
 {init_pydoc}
@@ -60,6 +63,65 @@ if __name__ == "__main__":
     posc_main([MODEL], default_view=True, default_scad=True)
 '''
 
+MD_FILE_PER_EXAMPLE_TITLE_TEMPLATE = '''\
+{class_name}
+'''
+
+MD_FILE_PER_EXAMPLE_TEMPLATE = """\
+## {title}
+    
+### Python Code:
+```python
+from pythonopenscad import {posc_imports}
+
+{code}
+```
+    
+### OpenSCAD Code:
+```js
+{code_expression}
+```
+    
+### How to run this example in a viewer:
+```bash
+python -m {module_path} --view
+```
+
+### Image:
+![{title}]({image_path})
+     
+"""
+
+@dataclass
+class GistMdFileGenerator:
+    gist_spec: 'GistFolderSpec'
+    chunks: list[str] = field(default_factory=list, init=False)
+    
+    def __post_init__(self):
+        self.chunks.append("# " + self.gist_spec.description + "\n")
+    
+    def add_chunk(self, chunk: str):
+        self.chunks.append(chunk)
+        
+    def file_path(self):
+        return os.path.join(self.gist_spec.folder_location, 'README.md')
+    
+    def write(self):
+        with open(self.file_path(), 'w') as f:
+            for chunk in self.chunks:
+                f.write(chunk)
+
+    def new_example(self, gist_spec: 'GistSpec'):
+        
+        title = gist_spec.md_title_spec.format(
+            class_name=gist_spec.posc_class.__name__
+        ).strip()
+        
+        self.add_chunk(MD_FILE_PER_EXAMPLE_TEMPLATE.format(
+            title=title,
+            **gist_spec.params_dict
+        ))
+        
 
 class PoscCaptureDict(dict):
     """
@@ -79,14 +141,13 @@ class PoscCaptureDict(dict):
                 value = getattr(self._module, key)
                 self[key] = value
                 # If it's a PoscBase class, add its name to our import list.
-                if isinstance(value, type) and issubclass(value, posc.PoscBase):
-                     self.captured_names.add(key)
-                # Also capture modifier functions like translate, rotate, etc.
-                elif callable(value) and not isinstance(value, type):
-                     self.captured_names.add(key)
+                self.captured_names.add(key)
                 return value
             raise KeyError(f"'{key}' not found in the pythonopenscad module.")
         return super().__getitem__(key)
+    
+    def get_captured_names(self):
+        return sorted(self.captured_names)
 
 
 @dataclass
@@ -97,6 +158,9 @@ class GistSpec:
     code: str
     posc_class: type | None = None
     explain_text: str | None = GIST_TEMPLATE_EXPLANATION
+    md_title_spec: str | None = MD_FILE_PER_EXAMPLE_TITLE_TEMPLATE
+    
+    params_dict: dict[str, Any] = field(default_factory=dict, init=False)
     
     @property
     def file_path(self):
@@ -107,14 +171,18 @@ class GistSpec:
         Makes an image of the posc_obj.
         """
         output_base = Path(os.path.splitext(self.file_path)[0]).as_posix()
+        self.params_dict['image_path'] = f'{output_base}.png'
         posc_main([posc_obj], 
                   default_view=False, 
                   default_scad=False, 
                   default_stl=False, 
                   default_png=True,
                   output_base=output_base)
+        
+    def set_params(self, **kwargs):
+        self.params_dict.update(kwargs)
 
-    def create(self):
+    def create(self, all_md_files: dict[str, GistMdFileGenerator]):
         """
         Generates and writes the gist file based on the spec.
         """
@@ -153,9 +221,8 @@ class GistSpec:
         explain_text = self.explain_text.format(
             class_name=self.posc_class.__name__
         )
-
-        # Populate the template
-        content = GIST_TEMPLATE.format(
+        
+        self.set_params(
             filename=filename,
             explain_text=explain_text,
             class_name=self.posc_class.__name__,
@@ -164,17 +231,36 @@ class GistSpec:
             posc_imports=posc_imports_str,
             code=self.code.strip(),
             class_pydoc=self.posc_class.__doc__ or "",
-            init_pydoc=self.posc_class.__init__.__doc__ or ""
-        )
+            init_pydoc=self.posc_class.__init__.__doc__ or "")
 
+        # Populate the template
+        content = GIST_TEMPLATE.format(
+            **self.params_dict
+        ).strip()
+        
         # Write the generated content to the file
         with open(self.file_path, "w") as f:
-            f.write(content.strip())
+            f.write(content)
+        
+        # Write the generated content to src/pythonopenscad/examples too.
+        # We're using the gist_generator.py file to locate the examples directory.
+        this_path = Path(__file__)    
+        examples_path = this_path.parent.parent.parent
+        src_python_file_path = examples_path / self.file_location
+        src_python_file_path.mkdir(parents=True, exist_ok=True)
+        rel_file_path = src_python_file_path / self.file_name
+        
+        # Write the generated content to the file
+        with open(rel_file_path, "w") as f:
+            f.write(content)
         
         try:
             self.make_image(MODEL)
         except Exception as e:
             print(f" -> Error making image for {self.file_name}: {e}")
+            
+        # Add the gist spec to the md file generator.
+        all_md_files[self.file_location].new_example(self)
 
 @dataclass
 class GistFolderSpec:
@@ -190,9 +276,6 @@ GISTS_TRANSFORMS_PATH = "pythonopenscad/examples/gists_transforms"
 GISTS_CSG_PATH = "pythonopenscad/examples/gists_csg"
 GISTS_OTHER_PATH = "pythonopenscad/examples/gists_other"
 
-MD_FILE_PER_EXAMPLE_TEMPLATE = """\
-     
-"""
 
 ALL_GIST_FOLDERS = [
     GistFolderSpec(
@@ -208,19 +291,35 @@ These shapes are 2D and do not have a depth but when rendered they are extruded 
     ),
     GistFolderSpec(
         folder_location=GISTS_3D_PATH,
-        description="3D Shapes"
+        description="""\
+3D Shapes
+
+These gists demonstrate the creation of 3D shapes using the pythonopenscad library.
+"""
     ),
     GistFolderSpec(
         folder_location=GISTS_TRANSFORMS_PATH,
-        description="Transformations"
+        description="""\
+Transformations
+
+These gists demonstrate the use of transformations on shapes.
+"""
     ),
     GistFolderSpec(
         folder_location=GISTS_CSG_PATH,
-        description="CSG Modelling"
+        description="""\
+CSG Modelling
+
+These gists demonstrate the use of CSG operations to create complex shapes.
+"""
     ),
     GistFolderSpec(
         folder_location=GISTS_OTHER_PATH,
-        description="Other Features"
+        description="""\
+Other Features
+
+These gists demonstrate other features of the pythonopenscad library.
+"""
     ),
 ]
 
@@ -395,6 +494,39 @@ ALL_GISTS = [
     # --- Other Features ---
     GistSpec(
         file_location=GISTS_OTHER_PATH,
+        file_name="global_variables_example.py",
+        code="""\
+POSC_GLOBALS._fn = 50
+MODEL = Sphere(r=10) + Cylinder(h=12, r=4)
+""",
+        explain_text="This shows how to set the $fn global variable.",
+        md_title_spec="Global Variables"
+    ),
+    GistSpec(
+        file_location=GISTS_OTHER_PATH,
+        file_name="modules_example.py",
+        code="""\
+MODEL = LazyUnion()(
+    Module("my_module")(Sphere(r=10), Cylinder(h=12, r=4)),
+    Module("my_other_module")(
+        Translate([10, 0, 0])(Cube(10),
+        Module("my_module")(Sphere(r=10), Cylinder(h=12, r=4)))
+    )
+)
+
+# Notice the openscad version of this code only shows up once:
+#     Module("my_module")(Sphere(r=10), Cylinder(h=12, r=4))
+# This allows for more compact code and less duplicated processing.
+""",
+        explain_text="""Compactify using Module types.
+
+Module in pythonopenscad is basically a named union. The generated code is
+split into OpenSCAD modules.
+""",
+        md_title_spec="Modules"
+    ),
+    GistSpec(
+        file_location=GISTS_OTHER_PATH,
         file_name="render_example.py",
         code="MODEL = Render(convexity=10)(Difference()(Cube(10), Sphere(r=6)))"
     ),
@@ -405,7 +537,8 @@ ALL_GISTS = [
     color("red")(cube(10, center=True)),
     color("blue")(sphere(r=7))
 )""",
-        explain_text="This shows how to use the snake_case style for pythonopenscad classes."
+        explain_text="This shows how to use the snake_case style for pythonopenscad classes.",
+        md_title_spec="Snake Case Style"
     ),
     # NOTE: Import and Surface require external files and are harder to make
     # self-contained gists for. They are omitted here but could be added if
@@ -419,10 +552,18 @@ def main():
     # Define all the gists we want to create.
     # The generator will create the 'generated_gists' directory.
     all_gists = ALL_GISTS
+    
+    # Map the folder specs to their md file generators.
+    all_md_files = {spec.folder_location: GistMdFileGenerator(gist_spec=spec) for spec in ALL_GIST_FOLDERS}
 
     # Loop through the specs and create each file.
     for spec in all_gists:
-        spec.create()
+        posc.POSC_GLOBALS.clear()
+        spec.create(all_md_files)
+
+    # Write the md files.
+    for md_file_generator in all_md_files.values():
+        md_file_generator.write()
 
     print("\nGist generation complete.")
 

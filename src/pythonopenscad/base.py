@@ -134,6 +134,12 @@ class PoscGlobals:
             ('$fs', self._fs if _fs is None else _fs)
         )
 
+    def clear(self):
+        """Clears the global variables."""
+        self._fn = None
+        self._fa = None
+        self._fs = None
+
 # Setting the _fn, _fs and _fa variables will result in the header to
 # the generated script to include the global parameters.
 POSC_GLOBALS = PoscGlobals()
