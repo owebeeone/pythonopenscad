@@ -208,7 +208,7 @@ class Test(unittest.TestCase):
         self.assertEqual(obj.get_modifiers(), '%')
         self.assertEqual(str(obj), '%cylinder(h=1.0, r=1.0, center=false);\n')
         self.assertEqual(
-            repr(obj), 'cylinder(h=1.0, r=1.0, center=False).add_modifier(*{TRANSPARENT})\n'
+            repr(obj), 'cylinder(h=1.0, r=1.0, center=False).add_modifier(*{BACKGROUND})\n'
         )
         self.assertFalse(obj.has_modifier(base.DEBUG))
         self.assertTrue(obj.has_modifier(base.TRANSPARENT))
