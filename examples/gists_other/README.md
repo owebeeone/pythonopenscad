@@ -142,3 +142,153 @@ python -m pythonopenscad.examples.gists_other.snake_case_style_example --view
 ### Image:
 ![Snake Case Style](snake_case_style_example.png)
      
+## Background Modifier (%)
+    
+### Python Code:
+```python
+from pythonopenscad import BACKGROUND, Color, Cube, Sphere
+
+MODEL = Color("limegreen")(Cube(10)) - Color("violet")(Sphere(r=7)).add_modifier(BACKGROUND)
+```
+    
+### OpenSCAD Code:
+```js
+difference() {
+  color(c="limegreen") {
+    cube(size=10.0);
+  }
+  %color(c="violet") {
+    sphere(r=7.0);
+  }
+}
+
+```
+    
+### How to run this example in a viewer:
+```bash
+python -m pythonopenscad.examples.gists_other.modifier_background_example --view
+```
+
+### Image:
+![Background Modifier (%)](modifier_background_example.png)
+     
+## Disable Modifier (*)
+    
+### Python Code:
+```python
+from pythonopenscad import Color, Cube, DISABLE, Sphere
+
+MODEL = Color("limegreen")(Cube(10)) + Color("violet")(Sphere(r=7)).add_modifier(DISABLE)
+```
+    
+### OpenSCAD Code:
+```js
+union() {
+  color(c="limegreen") {
+    cube(size=10.0);
+  }
+  *color(c="violet") {
+    sphere(r=7.0);
+  }
+}
+
+```
+    
+### How to run this example in a viewer:
+```bash
+python -m pythonopenscad.examples.gists_other.modifier_disable_example --view
+```
+
+### Image:
+![Disable Modifier (*)](modifier_disable_example.png)
+     
+## Show Only Modifier (!)
+    
+### Python Code:
+```python
+from pythonopenscad import Color, Cube, SHOW_ONLY, Sphere
+
+MODEL = Color("limegreen")(Cube(10)) + Color("violet")(Sphere(r=7)).add_modifier(SHOW_ONLY)
+```
+    
+### OpenSCAD Code:
+```js
+union() {
+  color(c="limegreen") {
+    cube(size=10.0);
+  }
+  !color(c="violet") {
+    sphere(r=7.0);
+  }
+}
+
+```
+    
+### How to run this example in a viewer:
+```bash
+python -m pythonopenscad.examples.gists_other.modifier_show_only_example --view
+```
+
+### Image:
+![Show Only Modifier (!)](modifier_show_only_example.png)
+     
+## Debug Modifier (#)
+    
+### Python Code:
+```python
+from pythonopenscad import Color, Cube, DEBUG, Sphere
+
+MODEL = Color("limegreen")(Cube(10)) + Color("violet")(Sphere(r=7)).add_modifier(DEBUG)
+```
+    
+### OpenSCAD Code:
+```js
+union() {
+  color(c="limegreen") {
+    cube(size=10.0);
+  }
+  #color(c="violet") {
+    sphere(r=7.0);
+  }
+}
+
+```
+    
+### How to run this example in a viewer:
+```bash
+python -m pythonopenscad.examples.gists_other.modifier_debug_example --view
+```
+
+### Image:
+![Debug Modifier (#)](modifier_debug_example.png)
+     
+## Combine Modifiers (# %)
+    
+### Python Code:
+```python
+from pythonopenscad import BACKGROUND, Color, Cube, DEBUG, Sphere
+
+MODEL = Color("limegreen")(Cube(10)) + Color("violet")(Sphere(r=7)).add_modifier(DEBUG, BACKGROUND)
+```
+    
+### OpenSCAD Code:
+```js
+union() {
+  color(c="limegreen") {
+    cube(size=10.0);
+  }
+  #%color(c="violet") {
+    sphere(r=7.0);
+  }
+}
+
+```
+    
+### How to run this example in a viewer:
+```bash
+python -m pythonopenscad.examples.gists_other.modifier_combinations_example --view
+```
+
+### Image:
+![Combine Modifiers (# %)](modifier_combinations_example.png)
+     

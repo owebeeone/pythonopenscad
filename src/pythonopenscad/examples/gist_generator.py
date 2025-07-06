@@ -8,6 +8,7 @@ consistent, high-quality example files that can be run as Python modules.
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
+import sys
 from typing import Any
 import pythonopenscad as posc
 from pythonopenscad.posc_main import posc_main
@@ -196,7 +197,11 @@ class GistSpec:
         
         # Execute the code. It will define 'MODEL' within the capture_dict's scope.
         # The globals dict is empty for security.
-        exec(self.code, {}, capture_dict)
+        try:
+            exec(self.code, {}, capture_dict)
+        except Exception as e:
+            print(f" -> Error executing code {self.code}: {e}", file=sys.stderr)
+            return
         
         # Retrieve the created MODEL object from the dict
         MODEL = capture_dict['MODEL']
@@ -539,6 +544,57 @@ split into OpenSCAD modules.
 )""",
         explain_text="This shows how to use the snake_case style for pythonopenscad classes.",
         md_title_spec="Snake Case Style"
+    ),
+    GistSpec(
+        file_location=GISTS_OTHER_PATH,
+        file_name="modifier_background_example.py",
+        code="""\
+MODEL = Color("limegreen")(Cube(10)) - Color("violet")(Sphere(r=7)).add_modifier(BACKGROUND)
+""",
+        explain_text="This shows how to use the background (%) modifier. This will be shown"
+                     " in the viewer but discarded when generating the mesh files.",
+        md_title_spec="Background Modifier (%)"
+    ),
+    GistSpec(
+        file_location=GISTS_OTHER_PATH,
+        file_name="modifier_disable_example.py",
+        code="""\
+MODEL = Color("limegreen")(Cube(10)) + Color("violet")(Sphere(r=7)).add_modifier(DISABLE)
+""",
+        explain_text="This shows how to use the disable (*) modifier. This will drop "
+                     "the sphere from the viewer and mesh files.",
+        md_title_spec="Disable Modifier (*)"
+    ),
+    GistSpec(
+        file_location=GISTS_OTHER_PATH,
+        file_name="modifier_show_only_example.py",
+        code="""\
+MODEL = Color("limegreen")(Cube(10)) + Color("violet")(Sphere(r=7)).add_modifier(SHOW_ONLY)
+""",
+        explain_text="This shows how to use the show_only (!) modifier. This will keep "
+                     "only the sphere. It is a way to discard all other shapes.",
+        md_title_spec="Show Only Modifier (!)"
+    ),
+    GistSpec(
+        file_location=GISTS_OTHER_PATH,
+        file_name="modifier_debug_example.py",
+        code="""\
+MODEL = Color("limegreen")(Cube(10)) + Color("violet")(Sphere(r=7)).add_modifier(DEBUG)
+""",
+        explain_text="This shows how to use the debug (#) modifier. This will highlight "
+                     "the sphere in the viewer.",
+        md_title_spec="Debug Modifier (#)"
+    ),
+    GistSpec(
+        file_location=GISTS_OTHER_PATH,
+        file_name="modifier_combinations_example.py",
+        code="""\
+MODEL = Color("limegreen")(Cube(10)) + Color("violet")(Sphere(r=7)).add_modifier(DEBUG, BACKGROUND)
+""",
+        explain_text="This shows how to use the debug (#) and background (%) modifiers. "
+                     "This will highlight the sphere in the viewer and make it the "
+                     "background.",
+        md_title_spec="Combine Modifiers (# %)"
     ),
     # NOTE: Import and Surface require external files and are harder to make
     # self-contained gists for. They are omitted here but could be added if

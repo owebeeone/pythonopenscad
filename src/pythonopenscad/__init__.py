@@ -99,6 +99,7 @@ from .base import (
 
 from pythonopenscad.modifier import (
     OscModifier,
+    BACKGROUND,
     DISABLE,
     SHOW_ONLY,
     DEBUG,
@@ -132,6 +133,7 @@ except ImportError:
 
 __all__ = [
     "Arg",
+    "BACKGROUND",
     "BASE_MODIFIERS",
     "BASE_MODIFIERS_SET",
     "Circle",

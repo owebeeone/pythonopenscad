@@ -23,8 +23,9 @@ class OscModifier(object):
 DISABLE = OscModifier('*', 'DISABLE') # Ignore this subtree
 SHOW_ONLY = OscModifier('!', 'SHOW_ONLY') # Ignore the rest of the tree
 DEBUG = OscModifier('#', 'DEBUG') # Highlight the object
-TRANSPARENT = OscModifier('%', 'TRANSPARENT')  # Background modifier
-BASE_MODIFIERS = (DISABLE, SHOW_ONLY, DEBUG, TRANSPARENT)
+BACKGROUND = OscModifier('%', 'BACKGROUND')  # Background modifier
+TRANSPARENT = BACKGROUND # alias for background
+BASE_MODIFIERS = (DISABLE, SHOW_ONLY, DEBUG, BACKGROUND)
 BASE_MODIFIERS_SET = set(BASE_MODIFIERS)
 
 
